@@ -487,6 +487,38 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true });
     }
 
+    if (action === "update_user_role") {
+      const { user_id, role } = body;
+
+      if (!isAdmin) {
+        return jsonResponse({ error: "Only admins can change user roles" }, 403);
+      }
+
+      const VALID_ROLES = ["admin", "processor", "customer_service", "opr", "cs_admin", "opr_admin"] as const;
+      if (!role || !VALID_ROLES.includes(role)) {
+        return jsonResponse({ error: "Invalid role" }, 400);
+      }
+
+      if (!user_id) {
+        return jsonResponse({ error: "user_id is required" }, 400);
+      }
+
+      if (user_id === callerId) {
+        return jsonResponse({ error: "You cannot change your own role." }, 400);
+      }
+
+      const { error: roleError } = await adminClient
+        .from("user_roles")
+        .update({ role })
+        .eq("user_id", user_id);
+
+      if (roleError) {
+        return jsonResponse({ error: roleError.message }, 400);
+      }
+
+      return jsonResponse({ success: true });
+    }
+
     if (action === "delete_lead") {
       const { lead_id, job_id } = body;
 
