@@ -29,7 +29,7 @@ import {
   QUO_LEAD_STATUS_CONFIG,
   type QuoLeadStatus,
 } from "@/lib/quo-dashboard";
-import { extractTranscriptFromPayload } from "@/lib/quo-chat";
+import { extractTranscriptFromPayload, type QuoChatMedia } from "@/lib/quo-chat";
 import ImageLightbox from "@/components/leads/ImageLightbox";
 
 interface MessageItem {
@@ -39,7 +39,7 @@ interface MessageItem {
   direction?: string | null;
   message_time: string | null;
   created_at?: string;
-  media?: any[];
+  media?: QuoChatMedia[];
   status?: string | null;
 }
 
@@ -53,6 +53,8 @@ interface QuoChatDialogProps {
     number_name?: string | null;
     status?: string | null;
     agent_name?: string | null;
+    quo_conversation_id?: string | null;
+    quo_phone_number_id?: string | null;
   } | null;
   onStatusChange?: (newStatus: QuoLeadStatus) => void;
 }
@@ -92,7 +94,7 @@ export default function QuoChatDialog({
         if (error) {
           console.error("Error fetching messages for chat", error);
         } else if (!isCancelled && data) {
-          const formatted = data.map((r: any) => ({
+          const formatted = data.map((r) => ({
             ...r,
             text: r.text || extractTranscriptFromPayload(r.raw_payload) || ""
           }));
@@ -167,9 +169,9 @@ export default function QuoChatDialog({
     setMessages((prev) => [...prev, optimisticMsg]);
 
     const chatUrl = getQuoChatUrl(
-      (conversation as any).quo_conversation_id,
+      conversation.quo_conversation_id,
       conversation.customer_number,
-      (conversation as any).quo_phone_number_id
+      conversation.quo_phone_number_id
     );
 
     // Save message to Supabase database
@@ -209,8 +211,8 @@ export default function QuoChatDialog({
       } else {
         toast.error(`Extension notice: ${extRes.error || "Failed to complete send"}`, { id: toastId });
       }
-    } catch (err: any) {
-      toast.error(`Extension notice: ${err?.message || "Extension dispatch error"}`, { id: toastId });
+    } catch (err) {
+      toast.error(`Extension notice: ${(err as { message?: string } | null)?.message || "Extension dispatch error"}`, { id: toastId });
     } finally {
       setSending(false);
     }
@@ -226,9 +228,9 @@ export default function QuoChatDialog({
     setSending(true);
 
     const chatUrl = getQuoChatUrl(
-      (conversation as any).quo_conversation_id,
+      conversation.quo_conversation_id,
       conversation.customer_number,
-      (conversation as any).quo_phone_number_id
+      conversation.quo_phone_number_id
     );
 
     const toastId = toast.loading(`Scheduling message for "${scheduleTime}" via Extension...`);
@@ -241,8 +243,8 @@ export default function QuoChatDialog({
       } else {
         toast.error(`Failed to schedule: ${extRes.error || "Cancelled"}`, { id: toastId });
       }
-    } catch (err: any) {
-      toast.error(`Failed to schedule: ${err?.message || "Extension error"}`, { id: toastId });
+    } catch (err) {
+      toast.error(`Failed to schedule: ${(err as { message?: string } | null)?.message || "Extension error"}`, { id: toastId });
     } finally {
       setSending(false);
     }

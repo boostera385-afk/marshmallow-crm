@@ -77,7 +77,7 @@ async function generateTotpCode(secret: string): Promise<string> {
   return otp.toString().padStart(6, "0");
 }
 
-async function verifyCallerToken(req: Request, adminClient: any, supabaseUrl: string) {
+async function verifyCallerToken(req: Request, adminClient: ReturnType<typeof createClient>, supabaseUrl: string) {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return { error: "Unauthorized - no token provided", status: 401 };
@@ -110,12 +110,12 @@ async function verifyCallerToken(req: Request, adminClient: any, supabaseUrl: st
         if (sub) {
           const { data: profile } = await adminClient.from('profiles').select('id').eq('id', sub).single();
           if (profile) {
-            user = { id: sub } as any;
+            user = { id: sub } as NonNullable<typeof user>;
             error = null;
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { /* Leave the caller invalid when token fallback decoding fails. */ }
   }
 
   if (!user || error) {
@@ -547,11 +547,11 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: factorError.message }, 400);
       }
 
-      const totpFactors = factorData?.factors?.filter((f: any) => f.factor_type === "totp") || [];
+      const totpFactors = factorData?.factors?.filter((f) => f.factor_type === "totp") || [];
       return jsonResponse({
         success: true,
         factors: totpFactors,
-        has_active_totp: totpFactors.some((f: any) => f.status === "verified"),
+        has_active_totp: totpFactors.some((f) => f.status === "verified"),
       });
     }
 

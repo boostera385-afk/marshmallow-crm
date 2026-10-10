@@ -286,7 +286,7 @@ const Settings = () => {
     enabled: isAdmin || currentRole === "cs_admin",
     queryFn: async () => {
       try {
-        const { data, error } = await supabase.rpc("get_users_totp_status" as any);
+        const { data, error } = await supabase.rpc("get_users_totp_status");
         if (error || !data) return [];
         return data as { user_id: string; has_totp: boolean }[];
       } catch {
@@ -327,8 +327,8 @@ const Settings = () => {
       } else {
         toast.error("Failed to generate TOTP credentials");
       }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to setup TOTP");
+    } catch (err) {
+      toast.error((err as { message?: string }).message || "Failed to setup TOTP");
     } finally {
       setTotpLoadingUser(null);
     }
@@ -340,8 +340,8 @@ const Settings = () => {
       await adminApi.deleteTotpUser(userId);
       queryClient.invalidateQueries({ queryKey: ["users-totp-status"] });
       toast.success(`TOTP deleted for ${userName}`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to delete TOTP");
+    } catch (err) {
+      toast.error((err as { message?: string }).message || "Failed to delete TOTP");
     } finally {
       setTotpLoadingUser(null);
     }

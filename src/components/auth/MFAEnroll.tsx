@@ -11,7 +11,7 @@ import { motion } from 'framer-motion';
 
 export default function MFAEnroll() {
   const { user } = useAuth();
-  const [factors, setFactors] = useState<any[]>([]);
+  const [factors, setFactors] = useState<NonNullable<Awaited<ReturnType<typeof supabase.auth.mfa.listFactors>>['data']>['totp']>([]);
   const [enrolling, setEnrolling] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);

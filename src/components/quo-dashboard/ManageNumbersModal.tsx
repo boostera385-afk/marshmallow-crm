@@ -207,7 +207,7 @@ export default function ManageNumbersModal({
         .eq("id", item.id);
 
       onPreferencesUpdated();
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to save number preference", err);
     }
   };
@@ -243,8 +243,8 @@ export default function ManageNumbersModal({
 
       toast.success("Number preferences saved successfully!");
       onPreferencesUpdated();
-    } catch (err: any) {
-      toast.error(`Error saving preferences: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error saving preferences: ${(err as { message?: string }).message}`);
     } finally {
       setSaving(false);
     }

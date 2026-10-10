@@ -117,7 +117,7 @@ describe("formatLeadForGoogleSheet", () => {
       job_id: `JOB-P2-${i}`,
     }));
 
-    (supabase as any).from = (table: string) => {
+    (supabase as unknown as { from: (table: string) => unknown }).from = (table: string) => {
       if (table === "leads") {
         return {
           select: () => ({
@@ -149,7 +149,7 @@ describe("formatLeadForGoogleSheet", () => {
           }),
         };
       }
-      return originalFrom.call(supabase, table as any);
+      return originalFrom.call(supabase, table as Parameters<typeof supabase.from>[0]);
     };
 
     try {
@@ -158,7 +158,7 @@ describe("formatLeadForGoogleSheet", () => {
       expect(results[0]["Lead ID"]).toBe("JOB-P1-0");
       expect(results[1000]["Lead ID"]).toBe("JOB-P2-0");
     } finally {
-      (supabase as any).from = originalFrom;
+      supabase.from = originalFrom;
     }
   });
 
@@ -174,7 +174,7 @@ describe("formatLeadForGoogleSheet", () => {
     Object.defineProperty(supabase, "functions", {
       configurable: true,
       value: {
-        invoke: (fnName: string, options: any) => {
+        invoke: (fnName: string, options: { body: unknown }) => {
           if (fnName === "google-sheets-sync") {
             expect(options.body).toEqual({
               action: "ping",
@@ -203,7 +203,7 @@ describe("formatLeadForGoogleSheet", () => {
       if (originalDescriptor) {
         Object.defineProperty(supabase, "functions", originalDescriptor);
       } else {
-        delete (supabase as any).functions;
+        delete (supabase as unknown as { functions?: unknown }).functions;
       }
     }
   });
@@ -223,7 +223,7 @@ describe("formatLeadForGoogleSheet", () => {
         .rejects.toThrow("Quota exceeded");
     } finally {
       if (originalDescriptor) Object.defineProperty(supabase, "functions", originalDescriptor);
-      else delete (supabase as any).functions;
+      else delete (supabase as unknown as { functions?: unknown }).functions;
     }
   });
 
@@ -251,7 +251,7 @@ describe("formatLeadForGoogleSheet", () => {
         .rejects.toThrow("A delivery batch is in flight; retry the rebuild in a moment.");
     } finally {
       if (originalDescriptor) Object.defineProperty(supabase, "functions", originalDescriptor);
-      else delete (supabase as any).functions;
+      else delete (supabase as unknown as { functions?: unknown }).functions;
     }
   });
 });

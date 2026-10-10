@@ -68,7 +68,15 @@ export function useMessageTemplate(key: MessageTemplateKey) {
   return useQuery({
     queryKey: ["message-template", key],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (supabase as unknown as {
+        from(table: "message_templates"): {
+          select(columns: "template"): {
+            eq(column: "key", value: MessageTemplateKey): {
+              maybeSingle(): PromiseLike<{ data: { template: string } | null; error: unknown }>;
+            };
+          };
+        };
+      })
         .from("message_templates")
         .select("template")
         .eq("key", key)

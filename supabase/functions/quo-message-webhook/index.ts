@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
     }
 
     let conversationRowId = null;
-    let existingLead: { id: string | null } = { id: null };
+    const existingLead: { id: string | null } = { id: null };
 
     if (!conversation.id && message.id) {
       // For transcript/summary events, we might not have the conversation ID in the payload.

@@ -109,7 +109,7 @@ describe("QuoPhoneTrigger", () => {
       subscribe,
       unsubscribe: vi.fn(),
     };
-    vi.spyOn(supabase, "channel").mockReturnValue(realtimeChannel as any);
+    vi.spyOn(supabase, "channel").mockReturnValue(realtimeChannel as unknown as ReturnType<typeof supabase.channel>);
     vi.spyOn(supabase, "removeChannel").mockResolvedValue("ok");
 
     render(

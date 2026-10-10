@@ -413,7 +413,7 @@ export function sendQuoMessageViaExtension(
   timeoutMs: number = 45000
 ): Promise<QuoExtensionResponse> {
   return new Promise((resolve) => {
-    let timer: any = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     function handleMessageResponse(event: MessageEvent) {
       if (event.data && event.data.action === "QUO_SEND_MESSAGE_RESPONSE") {
@@ -447,12 +447,12 @@ export function sendQuoMessageViaExtension(
         },
         "*"
       );
-    } catch (err: any) {
+    } catch (err) {
       window.removeEventListener("message", handleMessageResponse);
       if (timer) clearTimeout(timer);
       resolve({
         success: false,
-        error: err?.message || "Failed to dispatch postMessage to window",
+        error: (err as { message?: string } | null)?.message || "Failed to dispatch postMessage to window",
       });
     }
   });
@@ -468,7 +468,7 @@ export function scheduleQuoMessageViaExtension(
   timeoutMs: number = 60000
 ): Promise<QuoExtensionResponse> {
   return new Promise((resolve) => {
-    let timer: any = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     function handleMessageResponse(event: MessageEvent) {
       if (event.data && event.data.action === "QUO_SEND_MESSAGE_RESPONSE") {
@@ -503,12 +503,12 @@ export function scheduleQuoMessageViaExtension(
         },
         "*"
       );
-    } catch (err: any) {
+    } catch (err) {
       window.removeEventListener("message", handleMessageResponse);
       if (timer) clearTimeout(timer);
       resolve({
         success: false,
-        error: err?.message || "Failed to dispatch postMessage to window",
+        error: (err as { message?: string } | null)?.message || "Failed to dispatch postMessage to window",
       });
     }
   });

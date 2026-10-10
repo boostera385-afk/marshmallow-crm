@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 import type { TechnicianRecord } from "@/components/technicians/TechnicianDialog";
 
 export const TECHNICIAN_SELECT =
@@ -24,17 +25,17 @@ export async function fetchAllTechnicians(): Promise<TechnicianRecord[]> {
     const selectCols = useFallback ? TECHNICIAN_FALLBACK_SELECT : TECHNICIAN_SELECT;
     let res = await supabase
       .from("technicians")
-      .select(selectCols as any)
+      .select(selectCols)
       .order("is_active", { ascending: false })
       .order("name", { ascending: true })
       .order("id", { ascending: true })
-      .range(from, to);
+      .range(from, to) as unknown as PostgrestSingleResponse<TechnicianRecord[]>;
 
-    if (res.error && (res.error.message?.includes("code") || (res.error as any).code === "42703")) {
+    if (res.error && (res.error.message?.includes("code") || res.error.code === "42703")) {
       useFallback = true;
       res = await supabase
         .from("technicians")
-        .select(TECHNICIAN_FALLBACK_SELECT as any)
+        .select(TECHNICIAN_FALLBACK_SELECT)
         .order("is_active", { ascending: false })
         .order("name", { ascending: true })
         .order("id", { ascending: true })

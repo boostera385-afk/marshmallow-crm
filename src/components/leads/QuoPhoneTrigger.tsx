@@ -6,9 +6,10 @@ import { CheckCheck, Loader2, MessageSquare, Phone, Send, Clock, ChevronDown, Gr
 import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
+import type { Tables, Json } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizePhoneE164, stripPhone } from "@/lib/phone";
-import { fetchQuoChatThread, sendQuoChatMessage, type QuoChatMessage } from "@/lib/quo-chat";
+import { fetchQuoChatThread, sendQuoChatMessage, type QuoChatMessage, type QuoChatThreadResponse } from "@/lib/quo-chat";
 import {
   formatEasternTime,
   formatLocalRelativeTime,
@@ -55,6 +56,9 @@ function getPhoneKey(value: string | null | undefined) {
   const digits = (value ?? "").replace(/\D/g, "");
   return digits.length >= 10 ? digits.slice(-10) : digits;
 }
+
+type UnreadConversation = Pick<Tables<"quo_conversations">, "customer_number" | "last_customer_message_at" | "last_agent_message_at" | "last_message_at"> & { quo_phone_numbers: Pick<Tables<"quo_phone_numbers">, "number" | "display_number" | "name"> | null };
+type RealtimeChatMessage = Pick<Tables<"quo_messages">, "id" | "sender" | "text" | "conversation_id" | "direction" | "status" | "message_time" | "created_at"> & { recipients?: Json; quo_created_at?: string | null; media?: QuoChatMessage["media"] };
 
 const QUICK_CHAT_UNREAD_REFRESH_DELAY = 200;
 const QUICK_CHAT_UNREAD_CHUNK_SIZE = 50;
@@ -105,7 +109,7 @@ async function refreshQuickChatUnreadStatuses() {
 
   if (!phones.length) return;
 
-  const rowsByPhone = new Map<string, any[]>();
+  const rowsByPhone = new Map<string, UnreadConversation[]>();
 
   for (let index = 0; index < phones.length; index += QUICK_CHAT_UNREAD_CHUNK_SIZE) {
     const chunk = phones.slice(index, index + QUICK_CHAT_UNREAD_CHUNK_SIZE);
@@ -132,10 +136,10 @@ async function refreshQuickChatUnreadStatuses() {
   watchers.forEach((watcher) => {
     const normalized = normalizePhoneE164(watcher.phone) ?? getPhoneKey(watcher.phone);
     const rows = normalized ? rowsByPhone.get(normalized) ?? [] : [];
-    let match: any | null = null;
+    let match: UnreadConversation | null = null;
     if (rows.length > 0) {
       match =
-        rows.find((row: any) => {
+        rows.find((row) => {
           const numRow = row.quo_phone_numbers;
           const isTech = isTechLineNumber(numRow?.number || numRow?.display_number || numRow?.name);
           return watcher.chatType === "tech" ? isTech : !isTech;
@@ -197,7 +201,7 @@ export default function QuoPhoneTrigger({
     id?: string;
     quoConversationId?: string;
     quoPhoneNumberId?: string;
-    phoneNumberObj?: any;
+    phoneNumberObj?: QuoChatThreadResponse["phoneNumber"];
     numberName?: string;
     numberEmoji?: string;
     status?: string;
@@ -280,7 +284,7 @@ export default function QuoPhoneTrigger({
         const numObj = response.phoneNumber;
         const numName = getQuoNumberName(numObj, numObj?.formattedNumber);
         const numEmoji = getQuoNumberEmoji(numObj, numObj?.formattedNumber);
-        const convStatus = (response.conversation as any)?.current_status || (response.conversation as any)?.status || "raw";
+        const convStatus = response.conversation?.current_status || response.conversation?.status || "raw";
 
         setConversationMeta({
           databaseId: response.conversation?.databaseId,
@@ -352,7 +356,7 @@ export default function QuoPhoneTrigger({
           filter: `conversation_id=eq.${databaseConversationId}`,
         },
         (payload) => {
-          const row = payload.new as any;
+          const row = payload.new as RealtimeChatMessage;
           if (!row?.id) return;
           const newMessage: QuoChatMessage = {
             id: row.id,
@@ -465,8 +469,8 @@ export default function QuoPhoneTrigger({
         }
         toast.error(`Extension notice: ${errorMsg}`, { id: toastId });
       }
-    } catch (err: any) {
-      toast.error(`Extension notice: ${err?.message || "Extension dispatch error"}`, { id: toastId });
+    } catch (err) {
+      toast.error(`Extension notice: ${(err as { message?: string } | null)?.message || "Extension dispatch error"}`, { id: toastId });
     } finally {
       setSending(false);
     }
@@ -507,8 +511,8 @@ export default function QuoPhoneTrigger({
         }
         toast.error(`Failed to schedule: ${errorMsg}`, { id: toastId });
       }
-    } catch (err: any) {
-      toast.error(`Failed to schedule: ${err?.message || "Extension error"}`, { id: toastId });
+    } catch (err) {
+      toast.error(`Failed to schedule: ${(err as { message?: string } | null)?.message || "Extension error"}`, { id: toastId });
     } finally {
       setSending(false);
     }

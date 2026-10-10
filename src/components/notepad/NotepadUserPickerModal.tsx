@@ -38,19 +38,19 @@ export default function NotepadUserPickerModal() {
       setLoading(true);
       try {
         const [{ data: profiles }, { data: roles }] = await Promise.all([
-          supabase.from("profiles_public" as any).select("id, full_name, email"),
-          supabase.from("user_roles" as any).select("user_id, role"),
+          supabase.from("profiles_public").select("id, full_name, email") as unknown as PromiseLike<{ data: { id: string; full_name: string | null; email: string | null }[] | null }>,
+          supabase.from("user_roles").select("user_id, role"),
         ]);
 
         const roleMap: Record<string, string> = {};
         if (roles) {
-          roles.forEach((r: any) => {
+          roles.forEach((r) => {
             roleMap[r.user_id] = r.role;
           });
         }
 
         if (profiles) {
-          const list: WorkspaceUser[] = profiles.map((p: any) => ({
+          const list: WorkspaceUser[] = profiles.map((p) => ({
             id: p.id,
             full_name: p.full_name || p.email || "Unknown User",
             email: p.email || "",

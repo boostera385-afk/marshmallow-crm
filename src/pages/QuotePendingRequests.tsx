@@ -42,10 +42,10 @@ export default function QuotePendingRequests() {
   } = useQuery({
     queryKey: ["profiles-map"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("profiles_public" as never).select("id, full_name") as any;
+      const { data, error } = await supabase.from("profiles_public").select("id, full_name");
       if (error) return {};
-      const map: Record<string, string> = {};
-      data.forEach((p: any) => { map[p.id] = p.full_name; });
+      const map: Record<string, string | null> = {};
+      data!.forEach((p) => { map[p.id as string] = p.full_name; });
       return map;
     },
     staleTime: 60000,

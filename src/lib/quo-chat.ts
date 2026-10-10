@@ -1,4 +1,16 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { TablesInsert } from "@/integrations/supabase/types";
+
+export interface QuoChatMedia {
+  type?: string | null;
+  mime_type?: string | null;
+  url?: string;
+  src?: string;
+}
+
+type TranscriptEntry = { content?: unknown; text?: unknown; userId?: unknown; user?: unknown };
+type TranscriptFields = { transcript?: unknown; transcriptText?: unknown; voicemailTranscript?: unknown };
+type TranscriptPayload = { data?: TranscriptFields & { call?: TranscriptFields; message?: TranscriptFields } };
 
 export interface QuoChatMessage {
   id: string;
@@ -12,7 +24,7 @@ export interface QuoChatMessage {
   status?: string | null;
   createdAt: string;
   updatedAt?: string | null;
-  media?: any[];
+  media?: QuoChatMedia[];
 }
 
 export interface QuoChatThreadResponse {
@@ -34,6 +46,8 @@ export interface QuoChatThreadResponse {
     name?: string | null;
     updatedAt?: string | null;
     lastActivityAt?: string | null;
+    current_status?: string | null;
+    status?: string | null;
   } | null;
   messages: QuoChatMessage[];
 }
@@ -48,17 +62,17 @@ import { isTechLineNumber, TECH_COMMUNICATIONS_NUMBER } from "@/lib/quo-dashboar
 /**
  * Reads the conversation stored by the Quo webhook (no Quo API calls).
  */
-export function extractTranscriptFromPayload(payload: any): string | null {
-  if (!payload || !payload.data) return null;
-  const data = payload.data;
+export function extractTranscriptFromPayload(payload: unknown): string | null {
+  if (!payload || !(payload as TranscriptPayload).data) return null;
+  const data = (payload as TranscriptPayload).data;
   const call = data.call || {};
   const msg = data.message || {};
 
-  const extract = (value: any): string | null => {
+  const extract = (value: unknown): string | null => {
     if (!value) return null;
     if (typeof value === "string") return value;
     if (Array.isArray(value)) {
-      const extracted = value.map((v: any) => {
+      const extracted = value.map((v: TranscriptEntry | string | number | boolean | null) => {
         if (typeof v === "object" && v !== null) {
           if (typeof v.content === "string") {
             const speaker = v.userId ? "Agent" : "Customer";
@@ -109,12 +123,12 @@ export async function fetchQuoChatThread(participant: string, chatType?: "custom
   let conversation = null;
   if (conversations && conversations.length > 0) {
     if (chatType === "tech") {
-      conversation = conversations.find((c: any) => {
+      conversation = conversations.find((c) => {
         const numRow = c.quo_phone_numbers;
         return isTechLineNumber(numRow?.number || numRow?.display_number || numRow?.name);
       }) ?? null;
     } else if (chatType === "customer") {
-      conversation = conversations.find((c: any) => {
+      conversation = conversations.find((c) => {
         const numRow = c.quo_phone_numbers;
         return !isTechLineNumber(numRow?.number || numRow?.display_number || numRow?.name);
       }) ?? null;
@@ -159,7 +173,7 @@ export async function fetchQuoChatThread(participant: string, chatType?: "custom
       direction: row.direction === "outgoing" ? "outgoing" : "incoming",
       status: row.status,
       createdAt: row.message_time ?? row.quo_created_at ?? row.created_at,
-      media: Array.isArray(row.media) ? (row.media as any[]) : [],
+      media: Array.isArray(row.media) ? (row.media as unknown as QuoChatMedia[]) : [],
     }));
   }
 
@@ -194,7 +208,7 @@ export async function fetchQuoChatThread(participant: string, chatType?: "custom
 export async function sendQuoChatMessage(participant: string, content: string, chatType?: "customer" | "tech") {
   const { data: auth } = await supabase.auth.getUser();
 
-  const insertData: Record<string, any> = {
+  const insertData: TablesInsert<"quo_outbound_messages"> = {
     to_number: participant,
     body: content,
     created_by: auth.user?.id ?? null,

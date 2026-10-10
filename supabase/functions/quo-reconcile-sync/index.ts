@@ -223,7 +223,7 @@ Deno.serve(async (req) => {
     }
 
     let insertedOrUpdated = 0;
-    let analyzed = 0;
+    const analyzed = 0;
     let skipped = 0;
 
     for (const rawMessage of allMessages) {

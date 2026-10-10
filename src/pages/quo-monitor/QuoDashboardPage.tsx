@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Table,
@@ -138,7 +139,7 @@ export default function QuoDashboardPage() {
 
   const preferencesMap = useMemo(() => {
     const map: Record<string, { phone_number_id: string; hidden: boolean; sort_order: number; label_override?: string | null; emoji?: string | null }> = {};
-    numberPreferences.forEach((pref: any) => {
+    numberPreferences.forEach((pref) => {
       if (pref.phone_number_id) {
         map[pref.phone_number_id] = pref;
       }
@@ -166,12 +167,12 @@ export default function QuoDashboardPage() {
     queryKey: ["quo-number-display-map"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("quo_ai_settings" as any)
+        .from("quo_ai_settings")
         .select("value")
         .eq("key", QUO_NUMBER_DISPLAY_SETTING_KEY)
         .maybeSingle();
       if (error) return {};
-      const value = (data as any)?.value;
+      const value = data?.value;
       return value && typeof value === "object" ? (value as QuoNumberDisplayMap) : {};
     },
   });
@@ -184,10 +185,10 @@ export default function QuoDashboardPage() {
         const emoji = (entry?.emoji || "").trim();
         if (label || emoji) cleaned[id] = { ...(label ? { label } : {}), ...(emoji ? { emoji } : {}) };
       });
-      const { error } = await supabase.from("quo_ai_settings" as any).upsert(
+      const { error } = await supabase.from("quo_ai_settings").upsert(
         {
           key: QUO_NUMBER_DISPLAY_SETTING_KEY,
-          value: cleaned,
+          value: cleaned as unknown as Json,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "key" }
@@ -414,13 +415,13 @@ export default function QuoDashboardPage() {
     queryKey: ["quo-webhook-paused-setting"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("quo_ai_settings" as any)
+        .from("quo_ai_settings")
         .select("value")
         .eq("key", "quo_webhook_ingestion_paused")
         .maybeSingle();
 
       if (error) return false;
-      return (data as any)?.value === true;
+      return data?.value === true;
     },
   });
 
@@ -428,7 +429,7 @@ export default function QuoDashboardPage() {
   const toggleWebhookMutation = useMutation({
     mutationFn: async (shouldPause: boolean) => {
       const { error } = await supabase
-        .from("quo_ai_settings" as any)
+        .from("quo_ai_settings")
         .upsert(
           {
             key: "quo_webhook_ingestion_paused",

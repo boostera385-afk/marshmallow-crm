@@ -338,7 +338,7 @@ export function ImportTechniciansDialog({ open, onOpenChange, onImported }: Prop
           .insert(chunk.map((c) => c.payload))
           .select("id, area");
 
-        if (error && (error.message?.includes("code") || (error as any).code === "42703")) {
+        if (error && (error.message?.includes("code") || error.code === "42703")) {
           const chunkWithoutCode = chunk.map((c) => {
             const { code: _, ...rest } = c.payload;
             return rest;
@@ -386,8 +386,8 @@ export function ImportTechniciansDialog({ open, onOpenChange, onImported }: Prop
       
       // Start background geocoding backfill
       startGeocodeBackfill();
-    } catch (e: any) {
-      toast({ title: "Import failed", description: e.message || "An error occurred", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Import failed", description: (e as { message?: string }).message || "An error occurred", variant: "destructive" });
     } finally {
       setImporting(false);
     }

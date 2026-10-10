@@ -62,23 +62,23 @@ function FloatingNotepadWindow({ targetUserId, windowIndex }: SingleNotepadProps
       try {
         const [{ data: profile }, { data: userRole }] = await Promise.all([
           supabase
-            .from("profiles_public" as any)
+            .from("profiles_public")
             .select("full_name, email")
             .eq("id", targetUserId)
-            .maybeSingle(),
+            .maybeSingle() as unknown as PromiseLike<{ data: { full_name: string | null; email: string | null } | null }>,
           supabase
-            .from("user_roles" as any)
+            .from("user_roles")
             .select("role")
             .eq("user_id", targetUserId)
             .maybeSingle(),
         ]);
 
         if (profile) {
-          const p = profile as any;
+          const p = profile;
           setTargetUserName(p.full_name || p.email || "User");
         }
         if (userRole) {
-          setTargetUserRole((userRole as any).role);
+          setTargetUserRole(userRole.role);
         }
       } catch (err) {
         console.error("Failed to fetch user info for notepad window", err);
@@ -96,7 +96,7 @@ function FloatingNotepadWindow({ targetUserId, windowIndex }: SingleNotepadProps
       setLoading(true);
       try {
         const { data, error } = await supabase
-          .from("user_notepads" as any)
+          .from("user_notepads")
           .select("content")
           .eq("user_id", targetUserId)
           .maybeSingle();
@@ -106,7 +106,7 @@ function FloatingNotepadWindow({ targetUserId, windowIndex }: SingleNotepadProps
         }
 
         if (!isCancelled) {
-          const loadedText = (data as any)?.content || "";
+          const loadedText = data?.content || "";
           setContent(loadedText);
           setInitialLoadedContent(loadedText);
           lastSavedRef.current = loadedText;
@@ -139,7 +139,7 @@ function FloatingNotepadWindow({ targetUserId, windowIndex }: SingleNotepadProps
 
       setSavingStatus("saving");
       try {
-        const { error } = await supabase.from("user_notepads" as any).upsert(
+        const { error } = await supabase.from("user_notepads").upsert(
           {
             user_id: targetUserId,
             content: textToSave,

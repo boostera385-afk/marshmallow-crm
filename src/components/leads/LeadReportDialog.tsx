@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/supabase-paginate";
 import {
@@ -30,6 +31,9 @@ import { cn } from "@/lib/utils";
 import { subDays, startOfDay, endOfDay, isWithinInterval } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 
+type ReportLead = Pick<Tables<"leads">, "id" | "created_at" | "created_by" | "reference_name" | "job_id" | "customer_name" | "customer_phone" | "status"> & { created_by_name?: string | null };
+type ReportRange = "today" | "yesterday" | "7d" | "30d" | "custom";
+
 interface LeadReportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -55,10 +59,10 @@ interface LeadAuditRow {
 
 export default function LeadReportDialog({ open, onOpenChange }: LeadReportDialogProps) {
   const { user, role } = useAuth();
-  const [range, setRange] = useState<"today" | "yesterday" | "7d" | "30d" | "custom">("today");
+  const [range, setRange] = useState<ReportRange>("today");
   const [loading, setLoading] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
-  const [rawLeads, setRawLeads] = useState<any[]>([]);
+  const [rawLeads, setRawLeads] = useState<ReportLead[]>([]);
   const [customRange, setCustomRange] = useState<DateRange | undefined>();
 
   const isCS = role === "customer_service";
@@ -120,7 +124,7 @@ export default function LeadReportDialog({ open, onOpenChange }: LeadReportDialo
 
       // Page through the whole date range so the report/export isn't capped at
       // PostgREST's 1000-row limit.
-      const data = await fetchAllRows<Record<string, unknown>>((from, to) => {
+      const data = await fetchAllRows<ReportLead>((from, to) => {
         let query = supabase
           .from("leads")
           .select("id, created_at, created_by, reference_name, job_id, customer_name, customer_phone, status")
@@ -136,8 +140,8 @@ export default function LeadReportDialog({ open, onOpenChange }: LeadReportDialo
         return query.order("created_at", { ascending: false }).order("id", { ascending: false }).range(from, to);
       });
       setRawLeads(data);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to load report data.");
+    } catch (error) {
+      toast.error((error as { message?: string }).message || "Failed to load report data.");
     } finally {
       setLoading(false);
     }
@@ -209,8 +213,8 @@ export default function LeadReportDialog({ open, onOpenChange }: LeadReportDialo
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       toast.success("CSV report downloaded successfully.");
-    } catch (err: any) {
-      toast.error("Failed to export report: " + err.message);
+    } catch (err) {
+      toast.error("Failed to export report: " + (err as { message?: string }).message);
     }
   };
 
@@ -318,7 +322,7 @@ export default function LeadReportDialog({ open, onOpenChange }: LeadReportDialo
           </div>
 
           <div className="flex items-center gap-3 pr-6">
-            <Select value={range} onValueChange={(val: any) => setRange(val)}>
+            <Select value={range} onValueChange={(val) => setRange(val as ReportRange)}>
               <SelectTrigger className="w-[140px] h-9 rounded-xl border border-border/60">
                 <SelectValue placeholder="Date Range" />
               </SelectTrigger>
