@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import MapFilterControls from "@/components/map/MapFilterControls";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -2093,27 +2093,10 @@ export default function MapViewPage() {
                   {multiTechSelectMode ? `Selecting ${selectedTechIds.length}` : "Select nearby techs"}
                 </Button>
               )}
-              <Select value={serviceFilter} onValueChange={setServiceFilter}>
-                <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-[180px] sm:text-xs">
-                  <SelectValue placeholder="All services" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All services</SelectItem>
-                  {services.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={stateFilter} onValueChange={setStateFilter}>
-                <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-[150px] sm:text-xs">
-                  <SelectValue placeholder="All states" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All states</SelectItem>
-                  {availableStates.map((code) => (
-                    <SelectItem key={code} value={code}>{code} · {US_STATES[code]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="relative flex items-center gap-1 flex-1 min-w-[240px]" ref={omniInputWrapRef}>
+              <MapFilterControls services={services} states={availableStates.map((code) => ({ code, name: US_STATES[code] }))}
+                service={serviceFilter} state={stateFilter} onServiceChange={setServiceFilter} onStateChange={setStateFilter}
+                onMenuOpen={() => setShowOmni(false)} />
+              <div className="relative flex min-w-0 flex-1 basis-full items-center gap-1 sm:min-w-[240px] sm:basis-[300px]" ref={omniInputWrapRef}>
                 <div className="relative flex-1">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
@@ -2171,7 +2154,7 @@ export default function MapViewPage() {
               )}
 
               {/* Coverage tool: draw a green "good coverage" radius on click. */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Button
                   size="sm"
                   variant={coverageOn ? "default" : "outline"}
@@ -2212,7 +2195,7 @@ export default function MapViewPage() {
                 )}
               </div>
 
-              <div className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground">
+              <div className="ml-auto flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-blue-500 border border-white" /> Technician</span>
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-red-500 border border-white" /> Urgent Lead</span>
                 {selectedTech && (
@@ -2229,7 +2212,7 @@ export default function MapViewPage() {
 
       {mapVisible && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-          <Card className="overflow-hidden border-border/60">
+          <Card className="relative isolate z-0 overflow-hidden border-border/60">
             <div ref={mapEl} className="h-[calc(100vh-320px)] min-h-[420px] w-full" />
           </Card>
 
