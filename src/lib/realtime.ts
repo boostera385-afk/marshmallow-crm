@@ -24,6 +24,15 @@ export function setupGlobalRealtime() {
         realtimeBus.dispatchEvent(new CustomEvent("lead_notes", { detail: payload }));
       }
     )
+    .on("postgres_changes", { event: "*", schema: "public", table: "lead_hold_alerts" }, (payload) => {
+      realtimeBus.dispatchEvent(new CustomEvent("lead_hold_alerts", { detail: payload }));
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "lead_copy_role_permissions" }, () => {
+      realtimeBus.dispatchEvent(new Event("lead_copy_role_permissions"));
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "lead_copy_user_permissions" }, () => {
+      realtimeBus.dispatchEvent(new Event("lead_copy_user_permissions"));
+    })
     .subscribe((status, err) => {
       if (status === 'SUBSCRIBED') {
         console.log("Global Realtime Channel Connected");
