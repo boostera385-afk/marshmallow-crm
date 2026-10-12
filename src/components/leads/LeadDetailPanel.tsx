@@ -40,6 +40,7 @@ import { showsUrgentCheck } from "@/lib/urgent-verification";
 import LeadUpdatesSection from "./LeadUpdatesSection";
 import PaymentDialog from "./PaymentDialog";
 import CopyLeadButton from "./CopyLeadButton";
+import CompleteLeadCopyButton from "./CompleteLeadCopyButton";
 import NoteThread from "./NoteThread";
 import NearbyAreasList, { type NearbyAreasData } from "./NearbyAreasList";
 import CancellationRequestSheet from "./CancellationRequestSheet";
@@ -803,7 +804,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                 </div>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
                 {hasQuickChatAccess && lead.customer_phone && (
                   <QuoPhoneTrigger
                     contactName={lead.customer_name}
@@ -827,6 +828,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                   </QuoPhoneTrigger>
                 )}
                 <CopyLeadButton lead={lead} />
+                <CompleteLeadCopyButton lead={lead} />
 
                 {!isOpr && (
                   <Button
