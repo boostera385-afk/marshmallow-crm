@@ -213,3 +213,4 @@ Never apply the minimal fixture to an existing Supabase project.
   only in Lovable before merging; a new sync can replace unsynced editor changes.
 - Lovable sync and CRM publication remain unverified. Do not revert to #122 or
   reapply the database migration; publish only after checking the latest preview.
+- Fresh push trigger sent to sync repository updates with Lovable.
