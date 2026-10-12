@@ -66,7 +66,14 @@ export const formatLeadSchedule = (lead: Pick<Lead, "scheduled_date" | "schedule
   return dateText;
 };
 
-export const buildCompleteLeadCopyText = (lead: Lead, includeQuote = true) => {
+export interface LeadCopyDetails {
+  service_details?: string | null;
+  address?: string | null;
+  customer_schedule_requirements?: string | null;
+  quote?: string | null;
+  show_quote_to_opr?: boolean | null;
+}
+export const buildCompleteLeadCopyText = (lead: LeadCopyDetails, includeQuote = true) => {
   const lines = [
     ["Service Details", lead.service_details],
     ["Address", lead.address],
