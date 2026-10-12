@@ -1,7 +1,7 @@
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 export interface LightboxImage {
   src: string;
@@ -13,13 +13,14 @@ interface ImageLightboxProps {
   initialIndex?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusRef?: RefObject<HTMLElement>;
 }
 
 function normalize(item: string | LightboxImage): LightboxImage {
   return typeof item === "string" ? { src: item } : item;
 }
 
-export default function ImageLightbox({ images, initialIndex = 0, open, onOpenChange }: ImageLightboxProps) {
+export default function ImageLightbox({ images, initialIndex = 0, open, onOpenChange, returnFocusRef }: ImageLightboxProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [usedFallback, setUsedFallback] = useState(false);
@@ -50,9 +51,17 @@ export default function ImageLightbox({ images, initialIndex = 0, open, onOpenCh
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         hideClose
+        onCloseAutoFocus={(event) => {
+          if (returnFocusRef?.current?.isConnected) {
+            event.preventDefault();
+            returnFocusRef.current.focus();
+          }
+        }}
         overlayClassName="z-[100]"
         className="z-[100] max-w-[90vw] max-h-[90vh] p-0 bg-black/95 border-none overflow-hidden"
       >
+        <DialogTitle className="sr-only">Photo preview</DialogTitle>
+        <DialogDescription className="sr-only">View the saved images. Use the previous and next buttons to browse photos.</DialogDescription>
         <Button
           variant="ghost"
           size="icon"
@@ -92,7 +101,7 @@ export default function ImageLightbox({ images, initialIndex = 0, open, onOpenCh
               style={{ opacity: imgLoaded ? 1 : 0, transition: "opacity 200ms ease" }}
               onLoad={() => setImgLoaded(true)}
               onError={() => {
-                console.error("[Lightbox] Image failed to load:", displaySrc);
+                console.error("[Lightbox] Image failed to load");
                 if (!usedFallback && currentFallback && currentFallback !== currentSrc) {
                   // Try fallback (usually a smaller cached preview)
                   setUsedFallback(true);
