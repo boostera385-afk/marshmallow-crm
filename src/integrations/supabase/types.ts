@@ -468,6 +468,36 @@ export type Database = {
           },
         ]
       }
+      lead_copy_role_permissions: {
+        Row: {
+          allowed: boolean
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          allowed?: boolean
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          allowed?: boolean
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      lead_copy_user_permissions: {
+        Row: {
+          allowed: boolean
+          user_id: string
+        }
+        Insert: {
+          allowed: boolean
+          user_id: string
+        }
+        Update: {
+          allowed?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       lead_drafts: {
         Row: {
           draft_data: Json
@@ -493,6 +523,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "lead_drafts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_hold_alerts: {
+        Row: {
+          created_at: string
+          id: string
+          lead_id: string
+          read: boolean
+          reason: string
+          revision: string
+          snapshot: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lead_id: string
+          read?: boolean
+          reason: string
+          revision?: string
+          snapshot: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lead_id?: string
+          read?: boolean
+          reason?: string
+          revision?: string
+          snapshot?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_hold_alerts_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
@@ -2450,6 +2521,10 @@ export type Database = {
       }
     }
     Functions: {
+      acknowledge_operator_hold_alert: {
+        Args: { p_alerts: Json; p_id: string; p_revision: string }
+        Returns: number
+      }
       advance_sheets_sync_watermark: { Args: never; Returns: string }
       apply_urgent_form_fixes: {
         Args: { p_fixes: Json; p_lead_id: string }
@@ -2594,6 +2669,9 @@ export type Database = {
         Args: { p_number_ids?: string[]; p_since?: string; p_until?: string }
         Returns: number
       }
+      get_lead_copy_access: { Args: never; Returns: boolean }
+      get_lead_copy_settings: { Args: never; Returns: Json }
+      get_operator_hold_alerts: { Args: never; Returns: Json }
       get_opr_codes_summary: {
         Args: never
         Returns: {
@@ -2935,6 +3013,14 @@ export type Database = {
       }
       set_can_add_manual_leads: {
         Args: { allowed: boolean; target_user_id: string }
+        Returns: undefined
+      }
+      set_lead_copy_permission: {
+        Args: {
+          p_allowed: boolean
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_user_id: string
+        }
         Returns: undefined
       }
       sheets_sync_lag: {

@@ -44,6 +44,32 @@
 
 ## Manual deployment order
 
+**Applied with user approval on 2026-10-12 via Supabase MCP** to project
+`kxiqholnmhkwhdkhtopp` (Marshmallow). The exact reviewed SQL below was recorded
+remotely as version `20261012054907`, name
+`lead_copy_permissions_and_operator_hold_alerts`. Do not reapply it just because
+the MCP-generated version differs from the source filename. No historical lead
+updates or backfill were performed. The original rollback section remains valid;
+export any new alerts/settings before using it.
+
+Types were regenerated with the command below and reviewed: only the three new
+public tables and five RPCs were added. Read-only MCP checks verified RLS,
+authenticated-only RPC grants, fixed search paths, default-enabled roles, the
+trigger and all four publication entries. Copy access returned true for Admin,
+OPR, OPR Admin and CS sample callers, and false without a caller. The inbox had no
+historical rows. This does not verify real status transitions or production UI.
+The write-based harness has **not** been run against the shared project.
+
+Post-application advisors were inspected. The private cancellation-origin table
+intentionally has RLS with no browser policies/grants
+([informational advisory](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)).
+The two small permission tables have overlapping Admin/manage and read SELECT
+policies ([performance warning](https://supabase.com/docs/guides/database/database-linter?lint=0006_multiple_permissive_policies));
+this does not widen non-admin write access. The new lead foreign-key index is
+currently unused ([informational advisory](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index));
+retain it for alert cleanup rather than removing it before traffic exists.
+Pre-existing security/performance warnings remain outside this task's scope.
+
 1. Review and manually apply the exact contents of
    `supabase/migrations/20261012041715_lead_copy_permissions_and_operator_hold_alerts.sql`
    in the Marshmallow Supabase SQL Editor. It is idempotent and includes rollback
@@ -57,8 +83,8 @@
    `npx supabase gen types --project-id kxiqholnmhkwhdkhtopp --schema public --lang typescript`.
    Save the generator output as UTF-8 to `src/integrations/supabase/types.ts`, review
    the diff, and rerun typecheck/tests. Never hand-edit this generated file.
-   Until the manual SQL is applied, `src/lib/operator-workflow.ts` uses a narrow,
-   runtime-validated RPC adapter; generated types for these new objects are pending.
+   `src/lib/operator-workflow.ts` retains runtime JSON validation and explicit
+   nullable arguments, now checked against the regenerated client without a cast.
 4. Run `supabase/tests/100_copy_permissions_operator_hold.sql` first on isolated
    test data. It is write-based, synthetic, and rolls back; obtain explicit approval
    before running it on the shared project. Read every PASS/FAIL row. Existing paid,
@@ -150,6 +176,27 @@ Never apply the minimal fixture to an existing Supabase project.
   test/typecheck attempts also encountered process interruptions in this environment.
 - Disposable Postgres: all 30 behavioral checks passed; exact migration applied
   twice. This fixture does not contain the full deployed lead approval/RLS triggers.
-- No remote schema/data mutations, CRM publication, or live workflow QA performed.
-  Generated types for the unapplied SQL remain pending. Source publication is a
-  separate step from database application, CRM Publish, and live verification.
+- The initial branch verification above preceded migration application. The
+  approved MCP application and type regeneration are recorded in the deployment
+  section. CRM publication and live workflow QA still remain separate pending steps.
+
+## Saved-photo View action follow-up
+
+- `src/components/leads/LeadPhotoActions.tsx` now exposes View N photos alongside
+  the existing copy/handoff actions wherever this shared component is rendered.
+  It signs saved paths on demand, retains original ordering, handles request/load
+  failures, and ignores stale responses when the lead's photos change.
+- `src/components/leads/ImageLightbox.tsx` remains the shared previous/next/close
+  viewer, now with an accessible dialog name and no signed URL logged on failure.
+- Regression coverage is in `LeadPhotoActions.test.tsx` and the network-isolated
+  browser suite. Donut already previews its intake thumbnails; no extension source
+  changes, version bump or ZIP installation are required for this CRM fix.
+- Follow-up verification: changed-file lint passed; full lint remains at the same
+  111 pre-existing errors / 29 warnings. Both app/node typechecks passed.
+  `npm test`: 60 files / 463 tests passed. Browser suite: all 14 scenarios passed
+  in one run, including photo navigation, Escape and focus restoration on desktop
+  and 390px mobile layouts. Build/unchanged Donut v1.7.0 integrity check passed.
+  Disposable PostgreSQL: all 30 checks passed with the migration applied twice.
+  No production write-based workflow harness, customer-record edits, Quo sending,
+  CRM Publish, or live browser QA was performed. Committing/pushing this follow-up
+  does not publish the CRM; publication and live verification remain pending.
