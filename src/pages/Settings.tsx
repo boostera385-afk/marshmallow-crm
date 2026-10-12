@@ -482,13 +482,8 @@ const Settings = () => {
       const existingUser = getUserById(userId);
       const previousRole = existingUser?.role ?? null;
 
-      const { data: existing } = await supabase.from("user_roles").select("id").eq("user_id", userId).single();
-
-      if (existing) {
-        await supabase.from("user_roles").update({ role }).eq("user_id", userId);
-      } else {
-        await supabase.from("user_roles").insert({ user_id: userId, role });
-      }
+      // Use the secure edge function to bypass RLS and update the role safely
+      await adminApi.updateUserRole(userId, role);
 
       // Operators and OPR admins each get a permanent, unique OPR code. The RPC
       // is a no-op if they already have one.
