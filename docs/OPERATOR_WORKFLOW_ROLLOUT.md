@@ -200,3 +200,16 @@ Never apply the minimal fixture to an existing Supabase project.
   No production write-based workflow harness, customer-record edits, Quo sending,
   CRM Publish, or live browser QA was performed. Committing/pushing this follow-up
   does not publish the CRM; publication and live verification remain pending.
+
+## GitHub / Lovable sync check (2026-10-12)
+
+- Verified PR #123 is merged into `main` at `1dae7cd`, including the saved-photo
+  View action and regenerated database types. This check changes documentation only.
+- If Lovable still previews #122, return to the latest version and confirm its
+  GitHub connection uses `pastry-marketing/Marshmallow`, branch `main`.
+- Merging this check provides a fresh push notification on `main`. Lovable's
+  [sync troubleshooting](https://docs.lovable.dev/integrations/github) recommends
+  a new push when a previous GitHub notification was missed. Check for edits held
+  only in Lovable before merging; a new sync can replace unsynced editor changes.
+- Lovable sync and CRM publication remain unverified. Do not revert to #122 or
+  reapply the database migration; publish only after checking the latest preview.
