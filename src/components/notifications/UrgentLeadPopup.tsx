@@ -105,6 +105,9 @@ export default function UrgentLeadPopup() {
           }
         },
       )
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}`,
+      }, () => { void fetchUrgent(); })
       .subscribe();
 
     return () => {

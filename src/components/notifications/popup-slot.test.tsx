@@ -7,7 +7,7 @@ function Popup({
   id,
   wantsToShow,
 }: {
-  id: "urgent" | "jobInProgress" | "incompleteDetails" | "quoteUpdated";
+  id: "holdJob" | "urgent" | "jobInProgress" | "incompleteDetails" | "quoteUpdated";
   wantsToShow: boolean;
 }) {
   const isVisible = useNotificationPopupSlot(id, wantsToShow);
@@ -16,6 +16,11 @@ function Popup({
 }
 
 describe("notification popup slot", () => {
+  it("gives a stop-work hold instruction priority over urgent work alerts", () => {
+    render(<NotificationPopupProvider><Popup id="urgent" wantsToShow /><Popup id="holdJob" wantsToShow /></NotificationPopupProvider>);
+    expect(screen.getByTestId("holdJob")).toBeInTheDocument();
+    expect(screen.queryByTestId("urgent")).not.toBeInTheDocument();
+  });
   it("shows only the highest priority popup when several are eligible", () => {
     render(
       <NotificationPopupProvider>

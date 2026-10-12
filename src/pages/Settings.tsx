@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy, RefreshCw, KeyRound, Lock, FileText, BookOpen, Megaphone, FileSpreadsheet, Hash } from "lucide-react";
 import { DocumentationTab } from "@/components/settings/DocumentationTab";
 import { GoogleSheetsTab } from "@/components/settings/GoogleSheetsTab";
+import LeadCopyAccessSettings from "@/components/settings/LeadCopyAccessSettings";
 const CrmUpdates = lazy(() => import("@/pages/CrmUpdates"));
 import { cn } from "@/lib/utils";
 import { ALL_LEAD_STATUSES, STATUS_LABELS, ALL_NAV_ITEMS } from "@/lib/constants";
@@ -1252,6 +1253,8 @@ const Settings = () => {
       )}
 
       {activeTab === "nav_permissions" && (
+        <div className="space-y-4">
+        <LeadCopyAccessSettings users={users} />
         <Card className="overflow-hidden border-border/60 bg-card/95">
           <CardContent className="p-0">
             <div className="flex flex-col gap-2 border-b border-border/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1364,6 +1367,7 @@ const Settings = () => {
             </div>
           </CardContent>
         </Card>
+        </div>
       )}
 
       {activeTab === "status_permissions" && (

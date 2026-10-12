@@ -2015,11 +2015,7 @@ function LeadCard({
               </Button>
             </div>
 
-            <div
-              className={`flex flex-wrap items-center gap-1.5 ${
-                isOpr ? "hidden" : ""
-              }`}
-            >
+            <div className="flex flex-wrap items-center gap-1.5">
               {!isOpr && (
                 <Button
                   variant="outline"
@@ -2032,12 +2028,10 @@ function LeadCard({
                 </Button>
               )}
 
-              {!isOpr && (
-                <CompleteLeadCopyButton
-                  lead={lead}
-                  className="crm-lead-card-inner h-11 shrink-0 whitespace-nowrap rounded-[14px] px-3 text-[11px] font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/28 hover:bg-primary/[0.05] hover:shadow-[0_18px_28px_-20px_rgba(59,130,246,0.2)] dark:hover:bg-primary/[0.10] dark:hover:shadow-none"
-                />
-              )}
+              <CompleteLeadCopyButton
+                lead={lead}
+                className="crm-lead-card-inner h-11 shrink-0 whitespace-nowrap rounded-[14px] px-3 text-[11px] font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/28 hover:bg-primary/[0.05] hover:shadow-[0_18px_28px_-20px_rgba(59,130,246,0.2)] dark:hover:bg-primary/[0.10] dark:hover:shadow-none"
+              />
 
               {(isAdmin || isProcessor) && (
                 <div className="ml-auto flex shrink-0 items-center gap-1.5">

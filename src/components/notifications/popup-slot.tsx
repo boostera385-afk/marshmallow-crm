@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
  */
 
 export const POPUP_PRIORITY = {
+  holdJob: 5,
   urgent: 10,
   jobInProgress: 20,
   incompleteDetails: 25,

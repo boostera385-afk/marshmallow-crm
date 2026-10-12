@@ -5,7 +5,9 @@ import type { Lead } from "@/types";
 import CompleteLeadCopyButton from "./CompleteLeadCopyButton";
 
 const auth = vi.hoisted(() => ({ role: "admin" }));
+const permission = vi.hoisted(() => ({ allowed: true, loading: false, error: null as Error | null }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => auth }));
+vi.mock("@/hooks/useOperatorWorkflow", () => ({ useLeadCopyAccess: () => permission }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 afterEach(() => {
@@ -13,9 +15,40 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
   auth.role = "admin";
+  permission.allowed = true;
+  permission.loading = false;
+  permission.error = null;
 });
 
 describe("complete lead copy action", () => {
+  it.each(["opr", "opr_admin"])("shows the enabled-by-default copy action for %s", async (role) => {
+    auth.role = role;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(<CompleteLeadCopyButton lead={{ service_details: "Repair", address: "10 Main St Apt 2", customer_schedule_requirements: "Friday", quote: "$150" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Complete Details" }));
+    await screen.findByRole("button", { name: "Copied" });
+    expect(writeText).toHaveBeenCalledWith("Service Details: Repair\nAddress: 10 Main St Apt 2\nSchedule Requirement: Friday\nQuote: $150");
+  });
+
+  it("hides the copy action when Admin denies access", () => {
+    permission.allowed = false;
+    render(<CompleteLeadCopyButton lead={{ quote: "private" }} />);
+    expect(screen.queryByRole("button", { name: "Copy Complete Details" })).toBeNull();
+  });
+
+  it.each(["loading", "error"])("does not copy while permission is %s", (state) => {
+    permission.allowed = false;
+    permission.loading = state === "loading";
+    permission.error = state === "error" ? new Error("Unavailable") : null;
+    const writeText = vi.fn();
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(<CompleteLeadCopyButton lead={{ quote: "private" }} />);
+    const button = screen.getByRole("button", { name: "Copy Complete Details" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(writeText).not.toHaveBeenCalled();
+  });
   it("copies all four labels even on an empty lead without opening the parent card", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
