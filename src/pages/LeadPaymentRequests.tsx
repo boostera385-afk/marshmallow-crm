@@ -72,7 +72,7 @@ export default function LeadPaymentRequests() {
   const { data: requests = [], isLoading } = useQuery<Row[]>({
     queryKey: ["lead-payment-requests-page"],
     queryFn: async () => {
-      const { data: rows, error } = await (supabase.from as any)("lead_payment_requests")
+      const { data: rows, error } = await supabase.from("lead_payment_requests")
         .select("*")
         .eq("status", "pending")
         .order("created_at", { ascending: false });
@@ -132,7 +132,7 @@ export default function LeadPaymentRequests() {
             const { data: leadData } = await supabase.from("leads").select("*").eq("id", newRow.lead_id).single();
             let requesterName = newRow.requested_by_name || null;
             if (newRow.requested_by) {
-              const { data: profile } = await supabase.from("profiles_public" as never).select("full_name").eq("id", newRow.requested_by).maybeSingle() as any;
+              const { data: profile } = await supabase.from("profiles_public").select("full_name").eq("id", newRow.requested_by).maybeSingle();
               if (profile) requesterName = profile.full_name;
             }
 

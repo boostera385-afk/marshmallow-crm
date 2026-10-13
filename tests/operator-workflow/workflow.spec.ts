@@ -165,11 +165,120 @@ test("Admin can change role default and apply user override", async ({ page }) =
   await expect(roleSwitch).toBeChecked();
   await roleSwitch.click();
   await expect(roleSwitch).not.toBeChecked();
+  await page.getByRole("button", { name: /User overrides/ }).click();
   const override = page.getByRole("combobox", { name: "Copy override for Synthetic Operator" });
   await override.click();
   await page.getByRole("option", { name: "Allow", exact: true }).click();
   await expect(override).toContainText("Allow");
   await expect(page.getByText("Operator · Effective access: Allowed", { exact: true })).toBeVisible();
+});
+
+async function mockSettingsUsers(page: Page) {
+  await mockSession(page, "admin");
+  await page.route("**/rest/v1/user_roles?select=user_id%2Crole", (route) => route.fulfill({ json: [
+    { user_id: USER_ID, role: "admin" }, { user_id: JOB_ID, role: "opr" }, { user_id: ALERT_ID, role: "processor" },
+  ] }));
+  await page.route("**/rest/v1/profiles?select=id%2Cemail%2Cfull_name%2C*", (route) => route.fulfill({ json: [
+    { id: USER_ID, full_name: "Synthetic Admin" },
+    { id: JOB_ID, full_name: "Synthetic Operator With A Long Display Name" },
+    { id: ALERT_ID, full_name: "Synthetic Processor" },
+  ] }));
+}
+
+for (const width of [1920, 1440, 1366, 1024, 390]) {
+  test(`Feature Access is usable without horizontal scrolling at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 768 });
+    await mockSettingsUsers(page);
+    await page.goto("/settings");
+    await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+    const next = page.getByRole("button", { name: "Next features" });
+    await next.scrollIntoViewIfNeeded();
+    await expect(page.getByRole("button", { name: "Previous features" })).toBeDisabled();
+    if (width >= 1024) {
+      const initialMatrix = page.getByRole("table");
+      await expect(initialMatrix.getByRole("columnheader")).toHaveCount(5);
+      const scroll = await initialMatrix.evaluate((element) => ({ width: element.parentElement!.clientWidth, content: element.parentElement!.scrollWidth }));
+      expect(scroll.content).toBeLessThanOrEqual(scroll.width);
+    }
+    if (width === 1366) await page.screenshot({ path: test.info().outputPath("feature-access-desktop.png") });
+    await next.click();
+    await expect(page.getByRole("status").filter({ hasText: "Features" })).toContainText("Features 5–8");
+    await page.getByLabel("Find feature", { exact: true }).fill("Quickchat");
+    await expect(page.getByRole("status").filter({ hasText: "Features" })).toContainText("Features 1–2 of 2");
+    await page.getByLabel("Find user", { exact: true }).fill("Synthetic Operator");
+    const targetSwitch = page.getByRole("switch", { name: "CX Quickchat for Synthetic Operator With A Long Display Name", exact: true }).filter({ visible: true });
+    await expect(targetSwitch).toBeVisible();
+    const bounds = await targetSwitch.boundingBox();
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    if (width >= 1024) {
+      const matrix = page.getByRole("table");
+      await expect(matrix).toBeVisible();
+      await expect(matrix.getByRole("columnheader")).toHaveCount(3);
+      await expect(matrix.getByText("Synthetic Operator With A Long Display Name")).toBeVisible();
+      const scroll = await matrix.evaluate((element) => ({ width: element.parentElement!.clientWidth, content: element.parentElement!.scrollWidth }));
+      expect(scroll.content).toBeLessThanOrEqual(scroll.width);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await page.getByLabel("Find user", { exact: true }).fill("No such user");
+    await expect(page.getByText(/No matching users/)).toBeVisible();
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await expect(page.getByLabel("Find user", { exact: true })).toHaveValue("");
+    await next.focus();
+    await expect(next).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("status").filter({ hasText: "Features" })).toContainText("Features 5–8");
+  });
+}
+
+test("Feature Access labels fixed permissions instead of offering ineffective toggles", async ({ page }) => {
+  await mockSettingsUsers(page);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  await page.getByLabel("Find feature", { exact: true }).fill("Optimization");
+  const matrix = page.getByRole("table");
+  await expect(matrix.getByText("Admin only")).toHaveCount(2);
+  await expect(matrix.getByRole("switch")).toHaveCount(0);
+  await page.getByLabel("Find feature", { exact: true }).fill("Cancellation");
+  const processor = matrix.getByRole("row").filter({ hasText: "Synthetic Processor" });
+  await expect(processor).toContainText("Allowed");
+  await expect(processor).toContainText("Included with role");
+  await expect(processor.getByRole("switch")).toHaveCount(0);
+});
+
+test("Feature Access reports a failed navigation save without success or access change", async ({ page }) => {
+  await mockSettingsUsers(page);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.route("**/rest/v1/navigation_permissions*", async (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: [] });
+    return route.fulfill({ status: 403, json: { message: "Synthetic permission denied", code: "42501" } });
+  });
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  await page.getByLabel("Find feature", { exact: true }).fill("Quickchat");
+  const control = page.getByRole("table").getByRole("switch", { name: "CX Quickchat for Synthetic Operator With A Long Display Name", exact: true });
+  await expect(control).not.toBeChecked();
+  await control.click();
+  await expect(page.getByText("Synthetic permission denied", { exact: true }).first()).toBeVisible();
+  await expect(control).not.toBeChecked();
+  await expect(page.getByText("Navigation permission updated", { exact: true })).toHaveCount(0);
+});
+
+test("Feature Access does not offer unverified grants when navigation loading fails", async ({ page }) => {
+  await mockSettingsUsers(page);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.route("**/rest/v1/navigation_permissions*", (route) => route.fulfill({
+    status: 403, json: { message: "Synthetic permissions unavailable", code: "42501" },
+  }));
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Navigation permissions could not be loaded" })).toBeVisible();
+  await page.getByLabel("Find feature", { exact: true }).fill("Quickchat");
+  await expect(page.getByRole("table").getByRole("switch")).toHaveCount(0);
+  await expect(page.getByRole("table").getByText("Unavailable", { exact: true })).toHaveCount(4);
+  await page.route("**/rest/v1/navigation_permissions*", (route) => route.fulfill({ json: [] }));
+  await page.getByRole("button", { name: "Retry navigation permissions" }).click();
+  await expect(page.getByRole("table").getByRole("switch")).toHaveCount(4);
 });
 
 for (const width of [1440, 1024, 768, 390, 320]) {

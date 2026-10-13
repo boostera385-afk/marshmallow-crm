@@ -31,7 +31,7 @@ export function useQuoAttention(params: {
     enabled,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("quo_conversations")
         .select("last_customer_message_at, last_agent_message_at, customer_number")
         .ilike("customer_number", `%${last10}`)

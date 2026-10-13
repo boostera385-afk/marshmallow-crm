@@ -11,6 +11,8 @@
     "build": "vite build",
     "build:dev": "npm run extension:check && vite build --mode development",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
+    "validate": "npm run lint && npm run typecheck && npm test && npm run build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

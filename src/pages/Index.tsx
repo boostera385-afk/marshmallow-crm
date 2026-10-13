@@ -229,7 +229,7 @@ const ActivityLogs = () => {
     const changes = parsed.changes;
     if (!changes || typeof changes !== "object" || Array.isArray(changes)) return [];
 
-    return Object.entries(changes as Record<string, any>)
+    return Object.entries(changes as Record<string, { before?: unknown; after?: unknown }>)
       .map(([field, value]) => {
         if (!value || typeof value !== "object") return null;
 

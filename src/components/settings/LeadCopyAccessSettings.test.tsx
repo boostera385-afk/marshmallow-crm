@@ -21,6 +21,7 @@ beforeEach(() => {
   state.role = "admin";
   state.fetch.mockResolvedValue({ roles: [{ role: "opr", allowed: true }], users: [] });
   state.save.mockResolvedValue(undefined);
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
 });
 afterEach(() => { cleanup(); clients.splice(0).forEach((client) => client.clear()); });
 
@@ -33,6 +34,7 @@ describe("admin copy access settings", () => {
     fireEvent.click(control);
     await waitFor(() => expect(state.save).toHaveBeenCalledWith("opr", null, false));
     await waitFor(() => expect(control).not.toBeChecked());
+    fireEvent.click(screen.getByRole("button", { name: /User overrides/ }));
     expect(screen.getByText("Operator · Effective access: Denied")).toBeInTheDocument();
   });
   it("reports a failed save without pretending access changed", async () => {
@@ -56,5 +58,37 @@ describe("admin copy access settings", () => {
     renderSettings();
     expect(screen.queryByText("Copy Complete Details")).toBeNull();
     expect(state.fetch).not.toHaveBeenCalled();
+  });
+  it("keeps the user list collapsed until requested and supports finding a specific user", async () => {
+    renderSettings();
+    expect(screen.queryByRole("combobox", { name: "Copy override for Test Operator" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /User overrides/ }));
+    expect(await screen.findByRole("combobox", { name: "Copy override for Test Operator" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Find user for Copy Details"), { target: { value: "Nobody" } });
+    expect(screen.getByText(/No matching users/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Find user for Copy Details"), { target: { value: "operator" } });
+    expect(screen.getByRole("combobox", { name: "Copy override for Test Operator" })).toBeInTheDocument();
+  });
+  it.each([
+    ["Deny", false, "Denied"],
+    ["Allow", true, "Allowed"],
+    ["Inherit role default", null, "Denied"],
+  ] as const)("saves a user %s choice and displays the effective access", async (choice, allowed, effective) => {
+    state.fetch.mockResolvedValue({ roles: [{ role: "opr", allowed: false }], users: [{ user_id: "operator", allowed: true }] });
+    renderSettings();
+    fireEvent.click(screen.getByRole("button", { name: /User overrides/ }));
+    const control = screen.getByRole("combobox", { name: "Copy override for Test Operator" });
+    await waitFor(() => expect(control).not.toBeDisabled());
+    // Ensure the test changes the selected value, including an explicit Allow.
+    if (choice === "Allow") {
+      state.fetch.mockResolvedValue({ roles: [{ role: "opr", allowed: false }], users: [{ user_id: "operator", allowed: false }] });
+      await clients[clients.length - 1].invalidateQueries({ queryKey: ["lead-copy-settings"] });
+      await waitFor(() => expect(control).toHaveTextContent("Deny"));
+    }
+    state.fetch.mockResolvedValue({ roles: [{ role: "opr", allowed: false }], users: allowed === null ? [] : [{ user_id: "operator", allowed }] });
+    fireEvent.keyDown(control, { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: choice }));
+    await waitFor(() => expect(state.save).toHaveBeenCalledWith(null, "operator", allowed));
+    await waitFor(() => expect(screen.getByText(`Operator · Effective access: ${effective}`)).toBeInTheDocument());
   });
 });

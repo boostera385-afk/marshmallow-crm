@@ -105,7 +105,7 @@ export default function LeadStatusHistoryDialog({ leadId, open, onOpenChange, cu
           filter: `target_id=eq.${leadId}`,
         },
         (payload) => {
-          const newLog = payload.new as any;
+          const newLog = payload.new as { action: string };
           if (["created", "status_changed", "status_change"].includes(newLog.action)) {
             // Re-fetch to guarantee correct ordering and display format
             void fetchHistory();
@@ -141,11 +141,11 @@ export default function LeadStatusHistoryDialog({ leadId, open, onOpenChange, cu
                 const isCreation = log.action === "created";
                 const date = new Date(log.created_at);
                 
-                let parsedDetails: any = null;
+                let parsedDetails: StatusHistoryLog["details"] = null;
                 if (typeof log.details === "string") {
                   try {
                     parsedDetails = JSON.parse(log.details);
-                  } catch (e) {}
+                  } catch (e) { /* Keep missing details when legacy JSON is malformed. */ }
                 } else {
                   parsedDetails = log.details;
                 }
@@ -182,9 +182,9 @@ export default function LeadStatusHistoryDialog({ leadId, open, onOpenChange, cu
                       // Infer from the very next status change log since we filtered for only these actions
                       if (!initialStatus && history[i + 1]) {
                         const nextLog = history[i + 1];
-                        let nextDetails: any = null;
+                        let nextDetails: StatusHistoryLog["details"] = null;
                         if (typeof nextLog.details === "string") {
-                          try { nextDetails = JSON.parse(nextLog.details); } catch(e) {}
+                          try { nextDetails = JSON.parse(nextLog.details); } catch(e) { /* Keep missing details when legacy JSON is malformed. */ }
                         } else {
                           nextDetails = nextLog.details;
                         }

@@ -143,7 +143,7 @@ export default function AppSidebar() {
   const { data: pendingPaymentCount = 0 } = useQuery({
     queryKey: ["pending-payment-requests-count"],
     queryFn: async () => {
-      const { count, error } = await (supabase.from as any)("lead_payment_requests")
+      const { count, error } = await supabase.from("lead_payment_requests")
         .select("*", { count: "exact", head: true })
         .eq("status", "pending");
       if (error) {

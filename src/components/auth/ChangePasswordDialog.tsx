@@ -134,8 +134,8 @@ export default function ChangePasswordDialog({ open, onOpenChange, userEmail }: 
       toast.success("Password updated successfully.");
       clearForm();
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.message || "Could not update password. Please try again.");
+    } catch (err) {
+      toast.error((err as { message?: string } | null)?.message || "Could not update password. Please try again.");
     } finally {
       setSaving(false);
       void verifyClient.auth.signOut();

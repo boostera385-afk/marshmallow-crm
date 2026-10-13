@@ -1080,7 +1080,7 @@ export default function LeadsPage() {
       const noteSummaryByLead: Record<string, { general: string; cs: string; processor: string }> = {};
         const historyByLead: Record<string, string> = {};
         let noteRows: LeadNoteExportRow[] = [];
-        let historyRows: any[] = [];
+        let historyRows: { target_id: string; user_name: string | null; action: string; created_at: string; details: string | { status_to?: unknown } | null }[] = [];
         const chunkSize = 100;
   
         for (let i = 0; i < leadIdsToExport.length; i += chunkSize) {
@@ -1108,7 +1108,7 @@ export default function LeadsPage() {
             noteRows = noteRows.concat(notesRes.data as LeadNoteExportRow[]);
           }
           if (logsRes.data) {
-            historyRows = historyRows.concat(logsRes.data);
+            historyRows = historyRows.concat(logsRes.data as typeof historyRows);
           }
         }
   
@@ -1129,7 +1129,7 @@ export default function LeadsPage() {
           if (log.action === "status_changed" || log.action === "status_change") {
             let parsed = null;
             if (typeof log.details === "string") {
-              try { parsed = JSON.parse(log.details); } catch(e) {}
+              try { parsed = JSON.parse(log.details); } catch(e) { /* Keep the original action text when details are not valid JSON. */ }
             } else {
               parsed = log.details;
             }
@@ -1209,8 +1209,8 @@ export default function LeadsPage() {
 
       toast.success(`Exported ${exportRows.length} leads successfully`);
       setShowExportDialog(false);
-    } catch (err: any) {
-      toast.error(`Export failed: ${err.message}`);
+    } catch (err) {
+      toast.error(`Export failed: ${(err as { message?: string }).message}`);
     } finally {
       setIsExporting(false);
     }

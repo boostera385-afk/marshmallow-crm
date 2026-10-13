@@ -120,8 +120,8 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
   useEffect(() => {
     if (!canViewThread) return;
 
-    const handleNotes = (e: any) => {
-      const payload = e.detail;
+    const handleNotes = (e: Event) => {
+      const payload = (e as CustomEvent<{ new: { note_type?: string; lead_id?: string }; old: { note_type?: string; lead_id?: string } }>).detail;
       const newRow = payload.new as { note_type?: string; lead_id?: string };
       const oldRow = payload.old as { note_type?: string; lead_id?: string };
 

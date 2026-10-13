@@ -5,8 +5,15 @@
 - Copy Complete Details is enabled by default for every existing role, including
   Operator (`opr`) and Operator Admin (`opr_admin`). Admin always retains access.
 - Settings → Feature Access → Copy Complete Details offers role switches and
-  per-user Inherit / Allow / Deny. The user override wins. Only Admin may change
+  per-user Inherit / Allow / Deny under the expandable **User overrides** row.
+  Search by name or filter by role to find a specific teammate. The user override wins. Only Admin may change
   these settings; no profile flag or navigation grant can bypass them.
+- Feature & Navigation Access is desktop-first: four columns per page, Previous /
+  Next arrows, sticky table headings, user/role filters and feature search, without
+  horizontal dragging. Narrow screens use labelled stacked controls. Fixed role
+  and profile-flag permissions are labelled rather than offered as ineffective
+  switches. Failed permission reads show Unavailable with a retry action; failed
+  navigation writes do not show save success or change the displayed grant.
 - The same permission gates lead cards, Operator cards, tables, both detail views,
   and the hold snapshot's copy action. Quote visibility remains independent.
 - The latest `main` moved the list copy button into an action row hidden from both
@@ -140,7 +147,7 @@ Never apply the minimal fixture to an existing Supabase project.
   `src/components/leads/LeadDetailPanel.tsx`, `src/pages/LeadDetailPage.tsx`,
   and the small copy-input interface in `src/lib/lead-copy.ts`.
 - Admin settings: `src/components/settings/LeadCopyAccessSettings.tsx` and
-  `src/pages/Settings.tsx`.
+  `src/components/settings/FeatureAccessMatrix.tsx`, integrated in `src/pages/Settings.tsx`.
 - Map layout: `src/components/map/MapFilterControls.tsx` and
   `src/pages/MapViewPage.tsx`.
 - Shared queries/RPC boundary: `src/hooks/useOperatorWorkflow.ts` and
@@ -156,7 +163,27 @@ Never apply the minimal fixture to an existing Supabase project.
   `scripts/test-operator-workflow-db.mjs` described above.
 - Parity record: `docs/CRM_EXTENSION_PARITY.md` and this rollout guide.
 
-## Local verification result
+## Desktop branch verification before main integration
+
+- `npm run lint`: no errors; 29 existing warnings.
+- `npm run typecheck`: passed.
+- `npm test -- --maxWorkers=2`: 61 files, 466 tests passed. The worker limit avoids
+  resource exhaustion on the local Windows machine without changing test timeouts
+  or skipping assertions. The final settings-focused rerun also passed (12 tests).
+- `npm run build`: passed, including the unchanged Donut v1.7.0 integrity check;
+  existing bundle-size, mixed-import and Browserslist warnings remain.
+- Browser suite: all 20 tests passed, including both Operator roles, Admin role/user
+  control, hidden quotes, acknowledgement/history, desktop Feature Access at
+  1920/1440/1366/1024px plus a narrow-screen fallback, filtering/arrow keyboard use,
+  fixed gates, failed navigation saves/read recovery, and
+  1440/1024/768/390/320px map filter geometry, menu selection and keyboard focus.
+- Disposable Postgres: all 30 behavioral checks passed; exact migration applied
+  twice. This fixture does not contain the full deployed lead approval/RLS triggers.
+- No remote schema/data mutations, CRM publication, or live workflow QA performed
+  during desktop branch verification. The subsequent integration retains `main`'s
+  regenerated types and the earlier approved SQL application record above.
+
+## Earlier operator-workflow verification
 
 - `npm run lint` on the latest-main base: 111 pre-existing errors and 29 warnings.
   Changed-file lint also reports the three inherited `any` errors in
@@ -214,3 +241,21 @@ Never apply the minimal fixture to an existing Supabase project.
 - Lovable sync and CRM publication remain unverified. Do not revert to #122 or
   reapply the database migration; publish only after checking the latest preview.
 - Fresh push trigger sent to sync repository updates with Lovable.
+
+## PR #126 main integration (2026-10-13)
+
+- Resolved all seven conflicts against `main` at `63e6376`. Retained the desktop
+  Feature Access matrix, searchable/collapsible Copy Details overrides, and both
+  branches' behavioral tests. Also retained `main`'s saved-photo preview, secure
+  role-update API, regenerated database types and cast-free workflow RPC boundary.
+- The approved migration application record above is preserved. No migration or
+  extension source changed; do not reapply SQL just to resolve this PR.
+- Verification of the combined source: lint passed with 29 existing warnings;
+  `npm run typecheck` passed; `npm test -- --maxWorkers=2` passed all 471 tests in
+  61 files; all 22 network-isolated browser scenarios passed; build and unchanged
+  Donut v1.7.0 integrity check passed. All 30 disposable PostgreSQL checks passed,
+  including applying the exact migration twice.
+- Resolution/testing used an isolated worktree to preserve uncommitted local
+  configuration. No production writes, backend deployment, CRM Publish or live
+  workflow verification were performed. Updating the PR branch does not merge
+  it into `main` or publish the CRM.
