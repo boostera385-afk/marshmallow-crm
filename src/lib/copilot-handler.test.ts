@@ -55,4 +55,27 @@ describe("authenticated Copilot handler", () => {
     expect((await handle(ask("find technician Alice"))).status).toBe(403);
     expect(budget.rpc).not.toHaveBeenCalled();
   });
+  it("keeps AI optional and provides deterministic alternatives when disabled", async () => {
+    access.aiEnabled = false;
+    const response = await handle(ask("what is a heat pump?", { allowAi: true }));
+    expect(await response.json()).toMatchObject({ source: "crm", title: "CRM tools remain available" });
+    expect(generate).not.toHaveBeenCalled();
+  });
+  it("does not reserve or call the provider without explicit user consent", async () => {
+    const response = await handle(ask("what is a heat pump?"));
+    expect(await response.json()).toMatchObject({ source: "crm", title: "CRM tools remain available" });
+    expect(generate).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled();
+  });
+  it("uses no allowance when the server-side OpenAI key is missing", async () => {
+    aiConfigured.mockReturnValue(false);
+    const response = await handle(ask("what is a heat pump?", { allowAi: true }));
+    expect(await response.json()).toMatchObject({ source: "crm", title: "CRM tools remain available" });
+    expect(generate).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled();
+  });
+  it("permits optional AI for an allowed non-admin without using privileged CRM reads", async () => {
+    access.role = "customer_service"; access.sections = ["leads"];
+    const response = await handle(ask("what is a heat pump?", { allowAi: true }));
+    expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ source: "ai", aiUsed: true });
+    expect(budget.rpc.mock.calls.map((call) => call[0])).toEqual(["copilot_reserve_ai", "copilot_finish_ai"]);
+  });
 });
