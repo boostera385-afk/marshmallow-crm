@@ -46,4 +46,24 @@ describe("Copilot panel", () => {
     expect(await screen.findByText("Unavailable")).toBeVisible(); expect(screen.getByText("0")).toBeVisible();
     expect(screen.getByText(result.text)).toBeVisible(); expect(document.querySelector("img")).toBeNull();
   });
+  it("does not double submit a question while one is in flight", async () => {
+    let resolve: (result: CopilotResult) => void;
+    state.ask.mockImplementation(() => new Promise<CopilotResult>((done) => { resolve = done; })); panel();
+    const suggestion = screen.getByRole("button", { name: "My daily report" });
+    fireEvent.click(suggestion); fireEvent.click(suggestion);
+    expect(state.ask).toHaveBeenCalledTimes(1);
+    resolve!(emptyCopilotResult("report")); await screen.findByText(/Checked/);
+  });
+  it("separates backend failures from outcomes and never automatically retries AI", async () => {
+    state.ask.mockRejectedValue(new CopilotApiError("AI unavailable", 503)); panel();
+    fireEvent.click(screen.getByRole("button", { name: "My daily report" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("AI unavailable");
+    expect(state.ask).toHaveBeenCalledTimes(1);
+  });
+  it("closes and discards session results on server access denial", async () => {
+    state.ask.mockRejectedValue(new CopilotApiError("Access changed", 403)); panel();
+    fireEvent.click(screen.getByRole("button", { name: "My daily report" }));
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });
