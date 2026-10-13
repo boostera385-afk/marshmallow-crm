@@ -31,7 +31,7 @@ import { GoogleSheetsTab } from "@/components/settings/GoogleSheetsTab";
 import LeadCopyAccessSettings from "@/components/settings/LeadCopyAccessSettings";
 import CopilotAccessSettings from "@/components/settings/CopilotAccessSettings";
 import CopilotPermissionSwitch from "@/components/settings/CopilotPermissionSwitch";
-import FeatureAccessMatrix, { type AccessFeature } from "@/components/settings/FeatureAccessMatrix";
+import { type AccessFeature } from "@/components/settings/FeatureAccessMatrix";
 const CrmUpdates = lazy(() => import("@/pages/CrmUpdates"));
 import { cn } from "@/lib/utils";
 import { ALL_LEAD_STATUSES, STATUS_LABELS, ALL_NAV_ITEMS } from "@/lib/constants";
@@ -1286,10 +1286,9 @@ const Settings = () => {
 
       {activeTab === "nav_permissions" && isAdmin && (
         <div className="space-y-4">
-          <LeadCopyAccessSettings users={users} />
           <CopilotAccessSettings users={users} />
+          <LeadCopyAccessSettings users={users} features={featureColumns} />
           {navPermissionsError && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 p-4"><p role="alert" className="text-sm text-destructive">Navigation permissions could not be loaded: {navPermissionsError.message}</p><Button variant="outline" onClick={() => void refetchNavPermissions()}>Retry navigation permissions</Button></div>}
-          <FeatureAccessMatrix users={users} features={featureColumns} />
         </div>
       )}
 

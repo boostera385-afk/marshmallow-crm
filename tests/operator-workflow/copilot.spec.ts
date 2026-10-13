@@ -172,6 +172,16 @@ test("AI failure is bounded, explicit and never automatically retried", async ({
 test("Admin manages role default, searchable override and explicit global switch", async ({ page }) => {
   const fixture = await isolatedCopilot(page); await page.goto("/settings");
   await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  // PR #127 now owns matrix rendering inside the copy settings panel. Keep
+  // both permission systems searchable in a single matrix after merging main.
+  await expect(page.getByRole("table")).toHaveCount(1);
+  await page.getByLabel("Find feature", { exact: true }).fill("copy complete details");
+  await expect(page.getByRole("table").getByRole("columnheader", { name: "Copy All Details", exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByRole("combobox", { name: "Copy All Details override for Synthetic Operator", exact: true })).toBeEnabled();
+  await page.getByLabel("Find feature", { exact: true }).fill("copilot");
+  await expect(page.getByRole("table").getByRole("columnheader", { name: "Marshmallow Copilot", exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByRole("switch", { name: "Marshmallow Copilot for Synthetic Operator", exact: true })).toBeEnabled();
+  await page.getByLabel("Find feature", { exact: true }).fill("");
   const control = page.getByRole("switch", { name: "Allow Copilot for Operator", exact: true });
   await expect(control).not.toBeChecked(); await control.click(); await expect(control).toBeChecked();
   await page.getByRole("button", { name: "Copilot user overrides" }).click();

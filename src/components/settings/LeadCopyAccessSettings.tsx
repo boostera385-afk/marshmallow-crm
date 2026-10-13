@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { COPY_ROLES, fetchLeadCopySettings, resolveLeadCopyAccess, setLeadCopyPermission } from "@/lib/operator-workflow";
 import { useAuth } from "@/contexts/AuthContext";
 import type { AppRole } from "@/types";
+import FeatureAccessMatrix, { type AccessFeature, type AccessUser } from "./FeatureAccessMatrix";
 
-interface Props { users: { id: string; full_name: string | null; role: AppRole }[] }
-export default function LeadCopyAccessSettings({ users }: Props) {
+interface Props<T extends AccessUser> { users: T[]; features?: AccessFeature<T>[] }
+export default function LeadCopyAccessSettings<T extends AccessUser>({ users, features }: Props<T>) {
   const { user, role } = useAuth();
   const [overridesOpen, setOverridesOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -40,7 +41,34 @@ export default function LeadCopyAccessSettings({ users }: Props) {
     (roleFilter === "all" || target.role === roleFilter) &&
     (target.full_name || "Unnamed user").toLowerCase().includes(search.trim().toLowerCase()),
   );
+  const renderOverride = (target: T, label: string, compact = false) => {
+    const override = settings.data?.users.find((row) => row.user_id === target.id)?.allowed;
+    return (
+      <Select value={override === undefined ? "inherit" : override ? "allow" : "deny"} disabled={disabled}
+        onValueChange={(value) => save.mutate({ targetRole: null, userId: target.id, allowed: value === "inherit" ? null : value === "allow" })}>
+        <SelectTrigger className={compact ? "w-full min-w-0 text-xs" : "w-full shrink-0 sm:w-48"} aria-label={`${label} for ${target.full_name || "Unnamed user"}`}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="inherit">Inherit role default</SelectItem>
+          <SelectItem value="allow">Allow</SelectItem>
+          <SelectItem value="deny">Deny</SelectItem>
+        </SelectContent>
+      </Select>
+    );
+  };
+  const copyFeature: AccessFeature<T> = {
+    key: "copy_all_details", label: "Copy All Details", searchTerms: ["Copy Complete Details", "Copy Details"],
+    renderControl: (target) => {
+      const override = settings.data?.users.find((row) => row.user_id === target.id)?.allowed;
+      const roleAllowed = settings.data?.roles.find((row) => row.role === target.role)?.allowed ?? true;
+      const allowed = resolveLeadCopyAccess(target.role, roleAllowed, override);
+      return <div className="mx-auto w-full max-w-48 space-y-2">
+        <p className="text-xs font-medium">Effective access: {!settings.data || settings.isError ? "Not verified" : allowed ? "Allowed" : "Denied"}</p>
+        {renderOverride(target, "Copy All Details override", true)}
+      </div>;
+    },
+  };
   return (
+    <>
     <Card className="border-border/60">
       <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="flex items-start gap-3">
@@ -92,15 +120,7 @@ export default function LeadCopyAccessSettings({ users }: Props) {
                    <p className="break-words font-medium">{target.full_name || "Unnamed user"}</p>
                    <p className="text-xs text-muted-foreground">{label} · Effective access: {!settings.data || settings.isError ? "Not verified" : allowed ? "Allowed" : "Denied"}</p>
                 </div>
-                <Select value={override === undefined ? "inherit" : override ? "allow" : "deny"} disabled={disabled}
-                  onValueChange={(value) => save.mutate({ targetRole: null, userId: target.id, allowed: value === "inherit" ? null : value === "allow" })}>
-                  <SelectTrigger className="w-full shrink-0 sm:w-48" aria-label={`Copy override for ${target.full_name || "Unnamed user"}`}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="inherit">Inherit role default</SelectItem>
-                    <SelectItem value="allow">Allow</SelectItem>
-                    <SelectItem value="deny">Deny</SelectItem>
-                  </SelectContent>
-                </Select>
+                 {renderOverride(target, "Copy override")}
               </div>
             );
           })}
@@ -110,5 +130,7 @@ export default function LeadCopyAccessSettings({ users }: Props) {
         </Collapsible>
       </CardContent>
     </Card>
+    {features && <FeatureAccessMatrix users={users} features={[copyFeature, ...features]} />}
+    </>
   );
 }

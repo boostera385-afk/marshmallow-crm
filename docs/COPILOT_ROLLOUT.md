@@ -224,6 +224,27 @@ There is no Donut counterpart; extension source/artifacts remain untouched. Thes
 changes await frontend publication; signed-in production QA, live AI testing
 and real multi-connection quota load testing remain unverified.
 
+## PR #128 integration with main
+
+[PR #128](https://github.com/pastry-marketing/Marshmallow/pull/128) targets `main`.
+After the initial conflict-free check, PR #127 advanced main to `087276c`, causing
+conflicts in `src/pages/Settings.tsx`,
+`src/components/settings/FeatureAccessMatrix.tsx` and
+`docs/CRM_EXTENSION_PARITY.md`. Resolution preserves the new searchable Copy All
+Details matrix controls and Copilot controls together in a single table. The copy
+panel retains ownership of its query/mutation and matrix rendering; Copilot global
+configuration remains separate above it. No duplicate matrix or permission bypass
+was introduced. Both features remain CRM-only, with Donut unchanged.
+
+The updated browser regression searches the same rendered Settings matrix for
+Copy Complete Details and Copilot and verifies both editors are available before
+exercising the existing Copilot permissions/global-disable flow. All 557 unit
+tests and 38 isolated browser tests passed after integration, along with lint,
+typecheck, build and extension integrity. No database/function source changed in
+this resolution, so SQL harnesses and Deno checks were not rerun for the merge.
+Merging the PR and confirming/publishing the live CRM remain separate from this
+branch integration. The already-applied Copilot migrations must not be rerun.
+
 ## Local verification commands
 
 Verified locally on 2026-10-13:
@@ -232,8 +253,8 @@ Verified locally on 2026-10-13:
 | --- | --- |
 | Full lint | Pass: zero errors; 29 existing warnings |
 | App and tooling typecheck | Pass |
-| Full unit suite (`npm test -- --maxWorkers=2`) | 550 tests / 67 files passed, including Admin AI controls and explicit AI follow-up privacy coverage |
-| Full network-isolated browser suite | 35 passed, including 13 Copilot cases and the prior 22 workflow cases |
+| Full unit suite (`npm test -- --maxWorkers=2`) | 557 tests / 67 files passed after integrating main, including Admin AI controls and copy-matrix coverage |
+| Full network-isolated browser suite | 38 passed after integrating main, including 13 Copilot cases and 25 workflow cases |
 | Exact isolated SQL harness | 58 behavioral PASS and 29 read-only smoke PASS; both migrations applied twice; six-role baseline unchanged |
 | Deno Edge Function check | Pass |
 | Production build and extension integrity | Pass; Donut v1.7.0 source/ZIP unchanged and verified |
