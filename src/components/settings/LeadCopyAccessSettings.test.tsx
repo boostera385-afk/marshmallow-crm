@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppRole } from "@/types";
@@ -9,12 +9,12 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => state }));
 vi.mock("@/lib/operator-workflow", async (original) => ({ ...await original<typeof import("@/lib/operator-workflow")>(), fetchLeadCopySettings: state.fetch, setLeadCopyPermission: state.save }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const clients: QueryClient[] = [];
-function renderSettings() {
+function renderSettings(withMatrix = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.push(client);
   return render(<QueryClientProvider client={client}><LeadCopyAccessSettings users={[
     { id: "operator", full_name: "Test Operator", role: "opr" },
-  ]} /></QueryClientProvider>);
+  ]} features={withMatrix ? [] : undefined} /></QueryClientProvider>);
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -90,5 +90,57 @@ describe("admin copy access settings", () => {
     fireEvent.click(screen.getByRole("option", { name: choice }));
     await waitFor(() => expect(state.save).toHaveBeenCalledWith(null, "operator", allowed));
     await waitFor(() => expect(screen.getByText(`Operator · Effective access: ${effective}`)).toBeInTheDocument());
+  });
+  it.each(["copy all details", "copy complete details", "copy details"])("finds %s in the matrix and shows the saved override, not just the role default", async (search) => {
+    state.fetch.mockResolvedValue({ roles: [{ role: "opr", allowed: true }], users: [{ user_id: "operator", allowed: false }] });
+    renderSettings(true);
+    fireEvent.change(screen.getByLabelText("Find feature"), { target: { value: search } });
+    const matrix = within(screen.getByRole("table"));
+    expect(matrix.getByRole("columnheader", { name: "Copy All Details" })).toBeInTheDocument();
+    await waitFor(() => expect(matrix.getByText("Effective access: Denied")).toBeInTheDocument());
+    expect(matrix.getByRole("combobox", { name: "Copy All Details override for Test Operator" })).toHaveTextContent("Deny");
+  });
+  it("saves a matrix override through the copy RPC and keeps the separate panel in sync", async () => {
+    state.fetch.mockResolvedValue({ roles: [{ role: "opr", allowed: false }], users: [] });
+    renderSettings(true);
+    const matrix = within(screen.getByRole("table"));
+    const control = matrix.getByRole("combobox", { name: "Copy All Details override for Test Operator" });
+    await waitFor(() => expect(control).not.toBeDisabled());
+    expect(matrix.getByText("Effective access: Denied")).toBeInTheDocument();
+    state.fetch.mockResolvedValue({ roles: [{ role: "opr", allowed: false }], users: [{ user_id: "operator", allowed: true }] });
+    fireEvent.keyDown(control, { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "Allow" }));
+    await waitFor(() => expect(state.save).toHaveBeenCalledWith(null, "operator", true));
+    await waitFor(() => expect(matrix.getByText("Effective access: Allowed")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /User overrides/ }));
+    expect(screen.getByRole("combobox", { name: "Copy override for Test Operator" })).toHaveTextContent("Allow");
+    expect(screen.getByText("Operator · Effective access: Allowed")).toBeInTheDocument();
+  });
+  it("does not change matrix access or report success after a rejected save", async () => {
+    state.save.mockRejectedValue(new Error("Copy permission denied"));
+    renderSettings(true);
+    const matrix = within(screen.getByRole("table"));
+    const control = matrix.getByRole("combobox", { name: "Copy All Details override for Test Operator" });
+    await waitFor(() => expect(control).not.toBeDisabled());
+    fireEvent.keyDown(control, { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "Deny" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Copy permission denied"));
+    expect(control).toHaveTextContent("Inherit role default");
+    expect(matrix.getByText("Effective access: Allowed")).toBeInTheDocument();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+  it("disables matrix overrides and shows unverified access after a loading failure", async () => {
+    state.fetch.mockRejectedValue(new Error("Copy permissions unavailable"));
+    renderSettings(true);
+    await screen.findByRole("alert");
+    const matrix = within(screen.getByRole("table"));
+    expect(matrix.getByText("Effective access: Not verified")).toBeInTheDocument();
+    expect(matrix.getByRole("combobox", { name: "Copy All Details override for Test Operator" })).toBeDisabled();
+  });
+  it("does not expose the matrix copy editor to non-admin callers", () => {
+    state.role = "cs_admin";
+    renderSettings(true);
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(state.fetch).not.toHaveBeenCalled();
   });
 });
