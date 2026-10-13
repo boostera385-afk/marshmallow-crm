@@ -145,4 +145,33 @@ describe("authenticated Copilot handler", () => {
     expect(JSON.stringify(data)).not.toContain("PRIVATE TECH"); expect(JSON.stringify(data)).not.toContain("SECRET NUMBER");
     expect(data.cards[0].fields).toContainEqual({ label: "Address", value: "10 Main St Apt 2" });
   });
+  it("acknowledges persisted permission writes without a fallible post-save read", async () => {
+    const response = await handle(request({ action: "set_permission", role: "opr", userId: null, allowed: true }));
+    expect(await response.json()).toEqual({ saved: true });
+    expect(db.rpc.mock.calls.map((call) => call[0])).toEqual(["copilot_get_settings", "copilot_set_permission"]);
+  });
+  it("saves Admin AI configuration through the caller-authorized RPC", async () => {
+    const config = { enabled: true, ai_enabled: true, monthly_budget_cents: 425, daily_ai_limit: 3, timezone: "America/New_York" };
+    const response = await handle(request({ action: "configure", config }));
+    expect(response.status).toBe(200); expect(await response.json()).toEqual({ saved: true });
+    expect(db.rpc).toHaveBeenLastCalledWith("copilot_configure", { p_enabled: true, p_ai_enabled: true, p_monthly_budget_cents: 425, p_daily_ai_limit: 3, p_timezone: "America/New_York" });
+    expect(budget.rpc).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled();
+  });
+  it.each(["settings", "configure", "set_permission"])("rejects non-admin %s calls before administrative changes", async (action) => {
+    access.role = "customer_service";
+    db.rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "Only Admin may manage Copilot" } });
+    const response = await handle(request({ action, config: { enabled: true, ai_enabled: true, monthly_budget_cents: 1000, daily_ai_limit: 20, timezone: "America/New_York" }, role: "opr", userId: null, allowed: true }));
+    expect(response.status).toBe(403); expect(db.rpc.mock.calls.map((call) => call[0])).toEqual(["copilot_get_settings"]);
+    expect(generate).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled();
+  });
+  it.each([{ monthly_budget_cents: -1 }, { monthly_budget_cents: 100001 }, { monthly_budget_cents: 1.5 }, { daily_ai_limit: -1 }, { daily_ai_limit: 101 }, { daily_ai_limit: 1.5 }])("rejects invalid AI limits: %j", async (invalid) => {
+    const config = { enabled: true, ai_enabled: true, monthly_budget_cents: 1000, daily_ai_limit: 20, timezone: "America/New_York", ...invalid };
+    expect((await handle(request({ action: "configure", config }))).status).toBe(400);
+    expect(db.rpc.mock.calls.map((call) => call[0])).toEqual(["copilot_get_settings"]);
+  });
+  it("reports installation blockers, not empty successful search results", async () => {
+    db.rpc.mockResolvedValue({ data: null, error: { code: "42883", message: "function does not exist" } });
+    const response = await handle(ask("MM-101"));
+    expect(response.status).toBe(503); expect((await response.json()).error).toContain("not installed yet");
+  });
 });
