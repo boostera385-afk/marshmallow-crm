@@ -83,4 +83,25 @@ describe("Admin Copilot feature access", () => {
     expect(screen.getByRole("spinbutton", { name: "Monthly AI allowance (USD)" })).toHaveValue(5);
     expect(state.configure).not.toHaveBeenCalled();
   });
+  it.each([
+    ["Monthly AI allowance (USD)", "-1"], ["Monthly AI allowance (USD)", "1001"],
+    ["AI requests per user / day", "101"], ["AI requests per user / day", "1.5"],
+    ["AI requests per user / day", ""],
+  ])("prevents saving invalid %s: %s", async (name, value) => {
+    renderSettings(); await screen.findByRole("spinbutton", { name });
+    fireEvent.change(screen.getByRole("spinbutton", { name }), { target: { value } });
+    expect(screen.getByRole("button", { name: "Save Copilot configuration" })).toBeDisabled();
+    expect(state.configure).not.toHaveBeenCalled();
+  });
+  it("allows zero limits to pause AI and retains edits if configuration save fails", async () => {
+    state.configure.mockRejectedValue(new Error("Configuration save denied")); renderSettings();
+    const ai = await screen.findByRole("switch", { name: "Enable Copilot AI" }); await waitFor(() => expect(ai).toBeEnabled());
+    fireEvent.click(ai);
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Monthly AI allowance (USD)" }), { target: { value: "0" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "AI requests per user / day" }), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Copilot configuration" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Configuration save denied"));
+    expect(ai).toBeChecked(); expect(settings.config.ai_enabled).toBe(false);
+    expect(state.configure).toHaveBeenCalledWith(expect.objectContaining({ monthly_budget_cents: 0, daily_ai_limit: 0 }));
+  });
 });
