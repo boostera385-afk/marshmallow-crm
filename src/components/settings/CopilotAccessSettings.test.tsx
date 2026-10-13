@@ -61,4 +61,26 @@ describe("Admin Copilot feature access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save Copilot configuration" }));
     await waitFor(() => expect(state.configure).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, ai_enabled: false })));
   });
+  it("enables AI and saves the shared allowance and daily cap only on explicit Save", async () => {
+    renderSettings(); const ai = await screen.findByRole("switch", { name: "Enable Copilot AI" });
+    await waitFor(() => expect(ai).toBeEnabled());
+    fireEvent.click(ai);
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Monthly AI allowance (USD)" }), { target: { value: "4.25" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "AI requests per user / day" }), { target: { value: "3" } });
+    expect(state.configure).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save Copilot configuration" }));
+    await waitFor(() => expect(state.configure).toHaveBeenCalledWith({ enabled: true, ai_enabled: true, monthly_budget_cents: 425, daily_ai_limit: 3, timezone: "America/New_York" }));
+    expect(screen.getByRole("switch", { name: "Enable Marshmallow Copilot globally" })).toBeChecked();
+    expect(screen.getByText(/There is no separate per-user AI permission/)).toBeInTheDocument();
+  });
+  it("preserves unsaved AI and budget edits when a role permission refreshes settings", async () => {
+    renderSettings(); const ai = await screen.findByRole("switch", { name: "Enable Copilot AI" });
+    await waitFor(() => expect(ai).toBeEnabled()); fireEvent.click(ai);
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Monthly AI allowance (USD)" }), { target: { value: "5" } });
+    const permission = screen.getByRole("switch", { name: "Allow Copilot for Operator" }); fireEvent.click(permission);
+    await waitFor(() => expect(permission).toBeChecked());
+    expect(ai).toBeChecked();
+    expect(screen.getByRole("spinbutton", { name: "Monthly AI allowance (USD)" })).toHaveValue(5);
+    expect(state.configure).not.toHaveBeenCalled();
+  });
 });
