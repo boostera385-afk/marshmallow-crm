@@ -114,7 +114,7 @@ export const ALL_LEAD_STATUSES: LeadStatus[] = [
   "quote_updated",
 ];
 
-export const ALL_NAV_ITEMS = ["leads", "quo_monitor", "ai_assistance", "cancellation_requests", "payment_requests", "quote_approval_requests", "quote_pending_requests", "technician_change_requests", "urgent_review_requests", "analytics", "settings", "activity_logs", "schedule", "areas", "map_view", "technicians", "optimization", "quick_chat", "tech_quick_chat"] as const;
+export const ALL_NAV_ITEMS = ["leads", "quo_monitor", "ai_assistance", "cancellation_requests", "payment_requests", "quote_approval_requests", "quote_pending_requests", "technician_change_requests", "urgent_review_requests", "cx_updates", "analytics", "settings", "activity_logs", "schedule", "areas", "map_view", "technicians", "optimization", "quick_chat", "tech_quick_chat"] as const;
 export type NavItem = (typeof ALL_NAV_ITEMS)[number];
 
 const LEAD_PRIORITY_RANK: Partial<Record<LeadStatus, number>> = {

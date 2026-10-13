@@ -3,8 +3,8 @@ import { ALL_LEAD_STATUSES, ALL_NAV_ITEMS, type NavItem } from "@/lib/constants"
 
 const DEFAULT_NAV_ACCESS: Record<AppRole, Set<NavItem>> = {
   admin: new Set(ALL_NAV_ITEMS),
-  processor: new Set(["leads", "schedule", "cancellation_requests", "map_view", "technicians"]),
-  customer_service: new Set(["leads", "schedule", "quote_approval_requests", "ai_assistance"]),
+  processor: new Set(["leads", "schedule", "cancellation_requests", "map_view", "technicians", "cx_updates"]),
+  customer_service: new Set(["leads", "schedule", "quote_approval_requests", "ai_assistance", "cx_updates"]),
   opr: new Set(["leads"]),
   // The urgent review queue is the CS Admin side of the AI check. customer_service
     // is left out on purpose: they raise requests, they do not clear them, and a
@@ -13,11 +13,23 @@ const DEFAULT_NAV_ACCESS: Record<AppRole, Set<NavItem>> = {
     // ai_assistance (the CS Missed-Lead Tracker) is a shared CS shift-start
     // worklist — admin, cs_admin and customer_service. See the gate in
     // canAccessNavItem below; it is not grantable to processor/opr.
-    cs_admin: new Set(["leads", "schedule", "quote_approval_requests", "urgent_review_requests", "ai_assistance"]),
+    cs_admin: new Set(["leads", "schedule", "quote_approval_requests", "urgent_review_requests", "ai_assistance", "cx_updates"]),
   // opr_admin mirrors opr's default access; the Technicians tab is granted per
   // user via navigation permissions, and unlocks add/import for this role.
   opr_admin: new Set(["leads"]),
 };
+
+export function canRequestCxUpdate(role: AppRole | null | undefined): boolean {
+  return role === "admin" || role === "processor";
+}
+
+export function canAccessCxUpdates(role: AppRole | null | undefined): boolean {
+  return canRequestCxUpdate(role) || role === "cs_admin" || role === "customer_service";
+}
+
+export function canCompleteCxUpdate(role: AppRole | null | undefined): boolean {
+  return role === "cs_admin" || role === "customer_service";
+}
 
 /** Roles that may add a technician when they have the Technicians tab. */
 export function canAddTechnicians(role: AppRole | null | undefined): boolean {
@@ -137,6 +149,8 @@ export function canAccessNavItem(
     // Admin-only page
     return false;
   }
+
+  if (navItem === "cx_updates") return canAccessCxUpdates(role);
 
   if (navItem === "ai_assistance") {
     // CS Missed-Lead Tracker — a shared CS worklist. Admin is handled above;

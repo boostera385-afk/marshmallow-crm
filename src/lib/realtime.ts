@@ -27,6 +27,9 @@ export function setupGlobalRealtime() {
     .on("postgres_changes", { event: "*", schema: "public", table: "lead_hold_alerts" }, (payload) => {
       realtimeBus.dispatchEvent(new CustomEvent("lead_hold_alerts", { detail: payload }));
     })
+    .on("postgres_changes", { event: "*", schema: "public", table: "lead_cx_update_requests" }, () => {
+      realtimeBus.dispatchEvent(new Event("lead_cx_update_requests"));
+    })
     .on("postgres_changes", { event: "*", schema: "public", table: "lead_copy_role_permissions" }, () => {
       realtimeBus.dispatchEvent(new Event("lead_copy_role_permissions"));
     })

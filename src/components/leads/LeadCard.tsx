@@ -70,6 +70,7 @@ import { adminApi } from "@/lib/admin-api";
 import { logActivity } from "@/lib/activity";
 import LeadPhotoActions from "./LeadPhotoActions";
 import CompleteLeadCopyButton from "./CompleteLeadCopyButton";
+import CxUpdateRequestButton from "./CxUpdateRequestButton";
 import {
   canCreateCancellationRequest,
   createCancellationRequest,
@@ -2016,6 +2017,7 @@ function LeadCard({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
+              <CxUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />
               {!isOpr && (
                 <Button
                   variant="outline"
