@@ -128,3 +128,34 @@ test("Command menu opens Copilot without replacing Ctrl+K navigation", async ({ 
   await page.keyboard.press("Control+k"); await page.getByRole("option", { name: "Ask Marshmallow Copilot" }).click();
   await expect(page.getByRole("dialog", { name: "Marshmallow Copilot" })).toBeVisible();
 });
+test("OPR search retains hidden quote and exposes no technician search mode", async ({ page }) => {
+  await isolatedCopilot(page, "opr"); await page.goto("/leads");
+  await page.getByRole("button", { name: "Ask Marshmallow Copilot" }).click();
+  const panel = page.getByRole("dialog", { name: "Marshmallow Copilot" });
+  await panel.getByRole("textbox", { name: "Ask Marshmallow Copilot" }).fill("find lead MM-101");
+  await panel.getByRole("button", { name: "Send Copilot question" }).click();
+  await expect(panel.getByText(/MM-101 · Synthetic Customer/)).toBeVisible();
+  await expect(panel.getByText("PRIVATE QUOTE")).toHaveCount(0);
+  await expect(panel.getByRole("option", { name: "Find technicians" })).toHaveCount(0);
+});
+test("Technician result deep-links to a scoped saved ID", async ({ page }) => {
+  await isolatedCopilot(page); await page.goto("/leads");
+  await page.getByRole("button", { name: "Ask Marshmallow Copilot" }).click();
+  const panel = page.getByRole("dialog", { name: "Marshmallow Copilot" });
+  await panel.getByRole("button", { name: "Find a technician" }).click();
+  await panel.getByRole("textbox", { name: "Ask Marshmallow Copilot" }).fill("Synthetic Tech");
+  await panel.getByRole("button", { name: "Send Copilot question" }).click();
+  const selected = page.waitForRequest((req) => { const url = new URL(req.url()); return url.pathname.endsWith("/technicians") && url.searchParams.get("id") === `eq.${RECORD}`; });
+  await panel.getByRole("button", { name: "Open technician", exact: true }).click();
+  await selected; await expect(page).toHaveURL(new RegExp(`/technicians\\?copilot=${RECORD}`));
+  await expect(page.getByText("Showing the technician selected in Copilot.", { exact: false })).toBeVisible();
+});
+test("Backend failure produces an error, not invented results or automatic retries", async ({ page }) => {
+  const fixture = await isolatedCopilot(page, "admin", { failedAsk: true }); await page.goto("/leads");
+  await page.getByRole("button", { name: "Ask Marshmallow Copilot" }).click();
+  const panel = page.getByRole("dialog", { name: "Marshmallow Copilot" });
+  await panel.getByRole("textbox", { name: "Ask Marshmallow Copilot" }).fill("find lead MM-101");
+  await panel.getByRole("button", { name: "Send Copilot question" }).click();
+  await expect(panel.getByRole("alert")).toContainText("could not be completed"); expect(fixture.questions).toHaveLength(1);
+  await expect(panel.getByRole("button", { name: "Open lead", exact: true })).toHaveCount(0);
+});
