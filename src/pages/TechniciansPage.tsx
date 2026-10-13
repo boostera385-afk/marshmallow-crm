@@ -287,7 +287,9 @@ export default function TechniciansPage() {
   // every lead in the database and is admin-only at the database level, so the
   // tab is not offered to anyone else - including the per-user tech report grant.
   const canPerformance = isAdmin;
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const copilotIdRaw = searchParams.get("copilot");
+  const copilotTechnicianId = copilotIdRaw && /^[0-9a-f-]{36}$/i.test(copilotIdRaw) ? copilotIdRaw : undefined;
   const [activeView, setActiveView] = useState<"directory" | "report" | "performance" | "workflow">("directory");
   const canWorkflow = role === "admin" || role === "processor";
   const workflowTechnicianIds = useMemo(
@@ -359,7 +361,7 @@ export default function TechniciansPage() {
   // Reset to page 1 whenever search, page size, code filter, sort, or a column filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, pageSize, codeFilter, sortBy, columnFiltersKey]);
+  }, [debouncedSearch, pageSize, codeFilter, sortBy, columnFiltersKey, copilotTechnicianId]);
 
   // Persist page size
   useEffect(() => {
@@ -420,13 +422,14 @@ export default function TechniciansPage() {
     queryKey: [
       ...TECHNICIANS_ROOT_KEY,
       "paginated",
-      { page: currentPage, pageSize, search: debouncedSearch, codeFilter, sortBy, columnFilters: columnFiltersKey, visibility: visibilityKey },
+      { page: currentPage, pageSize, search: debouncedSearch, codeFilter, sortBy, columnFilters: columnFiltersKey, visibility: visibilityKey, copilotTechnicianId },
     ] as const,
     queryFn: () =>
       fetchTechniciansPage({
         page: currentPage,
         pageSize,
         search: debouncedSearch,
+        technicianId: copilotTechnicianId,
         codeFilter,
         sortBy,
         columnFilters: debouncedColumnFilters,
@@ -762,6 +765,7 @@ export default function TechniciansPage() {
 
   return (
     <div className={`space-y-4 ${selectedCount > 0 ? "pb-28" : ""}`}>
+      {copilotTechnicianId && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-primary/5 p-3 text-sm"><p>Showing the technician selected in Copilot. Existing access and editing rules apply.</p><Button variant="outline" size="sm" onClick={() => { const params = new URLSearchParams(searchParams); params.delete("copilot"); setSearchParams(params); }}>Show all accessible technicians</Button></div>}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-2xl bg-primary/10 flex items-center justify-center">

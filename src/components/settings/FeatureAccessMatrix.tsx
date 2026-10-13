@@ -55,7 +55,7 @@ export default function FeatureAccessMatrix<T extends AccessUser>({ users, featu
             <div>
               <h3 className="text-sm font-semibold">Feature & Navigation Access</h3>
               <p className="mt-1 text-sm text-muted-foreground">Find a teammate or feature. Use the arrows to browse without dragging a scrollbar.</p>
-              <p className="mt-1 text-xs text-muted-foreground">Copy All Details shows each user's effective access. Choose Inherit, Allow or Deny here; role defaults are managed above. Fixed permissions cannot be changed here.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Copy All Details shows each user's effective access. Choose Inherit, Allow or Deny here; role defaults and detailed Copilot controls are managed above. Fixed permissions cannot be changed here.</p>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
