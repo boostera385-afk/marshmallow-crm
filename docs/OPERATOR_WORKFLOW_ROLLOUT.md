@@ -16,7 +16,10 @@
   navigation writes do not show save success or change the displayed grant.
 - The same permission gates lead cards, Operator cards, tables, both detail views,
   and the hold snapshot's copy action. Quote visibility remains independent.
-- The existing list card already contained this button; both detail views did not.
+- The latest `main` moved the list copy button into an action row hidden from both
+  Operator roles. This branch retains its new position/short label, exposes only
+  the permission-gated copy action, and preserves edit/delete/assignment restrictions.
+  Both detail views now also include complete-details copy.
   The local browser suite confirms the list card works for both Operator roles.
   A missing button in an older published CRM still requires publishing/reloading
   the current build; local source alone cannot establish what version a tab runs.
@@ -48,6 +51,32 @@
 
 ## Manual deployment order
 
+**Applied with user approval on 2026-10-12 via Supabase MCP** to project
+`kxiqholnmhkwhdkhtopp` (Marshmallow). The exact reviewed SQL below was recorded
+remotely as version `20261012054907`, name
+`lead_copy_permissions_and_operator_hold_alerts`. Do not reapply it just because
+the MCP-generated version differs from the source filename. No historical lead
+updates or backfill were performed. The original rollback section remains valid;
+export any new alerts/settings before using it.
+
+Types were regenerated with the command below and reviewed: only the three new
+public tables and five RPCs were added. Read-only MCP checks verified RLS,
+authenticated-only RPC grants, fixed search paths, default-enabled roles, the
+trigger and all four publication entries. Copy access returned true for Admin,
+OPR, OPR Admin and CS sample callers, and false without a caller. The inbox had no
+historical rows. This does not verify real status transitions or production UI.
+The write-based harness has **not** been run against the shared project.
+
+Post-application advisors were inspected. The private cancellation-origin table
+intentionally has RLS with no browser policies/grants
+([informational advisory](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)).
+The two small permission tables have overlapping Admin/manage and read SELECT
+policies ([performance warning](https://supabase.com/docs/guides/database/database-linter?lint=0006_multiple_permissive_policies));
+this does not widen non-admin write access. The new lead foreign-key index is
+currently unused ([informational advisory](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index));
+retain it for alert cleanup rather than removing it before traffic exists.
+Pre-existing security/performance warnings remain outside this task's scope.
+
 1. Review and manually apply the exact contents of
    `supabase/migrations/20261012041715_lead_copy_permissions_and_operator_hold_alerts.sql`
    in the Marshmallow Supabase SQL Editor. It is idempotent and includes rollback
@@ -61,8 +90,8 @@
    `npx supabase gen types --project-id kxiqholnmhkwhdkhtopp --schema public --lang typescript`.
    Save the generator output as UTF-8 to `src/integrations/supabase/types.ts`, review
    the diff, and rerun typecheck/tests. Never hand-edit this generated file.
-   Until the manual SQL is applied, `src/lib/operator-workflow.ts` uses a narrow,
-   runtime-validated RPC adapter; generated types for these new objects are pending.
+   `src/lib/operator-workflow.ts` retains runtime JSON validation and explicit
+   nullable arguments, now checked against the regenerated client without a cast.
 4. Run `supabase/tests/100_copy_permissions_operator_hold.sql` first on isolated
    test data. It is write-based, synthetic, and rolls back; obtain explicit approval
    before running it on the shared project. Read every PASS/FAIL row. Existing paid,
@@ -114,7 +143,7 @@ Never apply the minimal fixture to an existing Supabase project.
 
 ## Changed-file map
 
-- Copy controls: `src/components/leads/CompleteLeadCopyButton.tsx`,
+- Copy controls: `src/components/leads/CompleteLeadCopyButton.tsx`, `src/components/leads/LeadCard.tsx`,
   `src/components/leads/LeadDetailPanel.tsx`, `src/pages/LeadDetailPage.tsx`,
   and the small copy-input interface in `src/lib/lead-copy.ts`.
 - Admin settings: `src/components/settings/LeadCopyAccessSettings.tsx` and
@@ -134,7 +163,7 @@ Never apply the minimal fixture to an existing Supabase project.
   `scripts/test-operator-workflow-db.mjs` described above.
 - Parity record: `docs/CRM_EXTENSION_PARITY.md` and this rollout guide.
 
-## Local verification result
+## Desktop branch verification before main integration
 
 - `npm run lint`: no errors; 29 existing warnings.
 - `npm run typecheck`: passed.
@@ -150,6 +179,83 @@ Never apply the minimal fixture to an existing Supabase project.
   1440/1024/768/390/320px map filter geometry, menu selection and keyboard focus.
 - Disposable Postgres: all 30 behavioral checks passed; exact migration applied
   twice. This fixture does not contain the full deployed lead approval/RLS triggers.
-- No remote schema/data mutations, CRM publication, or live workflow QA performed.
-  Generated types for the unapplied SQL remain pending. Source publication is a
-  separate step from database application, CRM Publish, and live verification.
+- No remote schema/data mutations, CRM publication, or live workflow QA performed
+  during desktop branch verification. The subsequent integration retains `main`'s
+  regenerated types and the earlier approved SQL application record above.
+
+## Earlier operator-workflow verification
+
+- `npm run lint` on the latest-main base: 111 pre-existing errors and 29 warnings.
+  Changed-file lint also reports the three inherited `any` errors in
+  `src/pages/Settings.tsx`; no feature-added lint errors. The earlier zero-error
+  result used a local branch with unrelated lint fixes; those fixes are deliberately
+  excluded from this feature branch.
+- Typecheck: both app/node `tsc --noEmit` checks passed (the main-base package has
+  no `typecheck` script, and unrelated local package-script edits are excluded).
+- `npm test`: 60 files, 458 tests passed.
+- `npm run build`: passed, including the unchanged Donut v1.7.0 integrity check;
+  existing bundle-size, mixed-import and Browserslist warnings remain.
+- Browser coverage: all 12 scenarios passed across suite and targeted runs,
+  including both Operator roles, Admin role/user control, hidden quotes,
+  acknowledgement/history, and 1440/1024/768/390/320px map filter geometry, menu
+  selection and keyboard focus. The integrated run reached 11 passes before a
+  harness timeout at the final 320px test; its isolated rerun passed. Concurrent
+  test/typecheck attempts also encountered process interruptions in this environment.
+- Disposable Postgres: all 30 behavioral checks passed; exact migration applied
+  twice. This fixture does not contain the full deployed lead approval/RLS triggers.
+- The initial branch verification above preceded migration application. The
+  approved MCP application and type regeneration are recorded in the deployment
+  section. CRM publication and live workflow QA still remain separate pending steps.
+
+## Saved-photo View action follow-up
+
+- `src/components/leads/LeadPhotoActions.tsx` now exposes View N photos alongside
+  the existing copy/handoff actions wherever this shared component is rendered.
+  It signs saved paths on demand, retains original ordering, handles request/load
+  failures, and ignores stale responses when the lead's photos change.
+- `src/components/leads/ImageLightbox.tsx` remains the shared previous/next/close
+  viewer, now with an accessible dialog name and no signed URL logged on failure.
+- Regression coverage is in `LeadPhotoActions.test.tsx` and the network-isolated
+  browser suite. Donut already previews its intake thumbnails; no extension source
+  changes, version bump or ZIP installation are required for this CRM fix.
+- Follow-up verification: changed-file lint passed; full lint remains at the same
+  111 pre-existing errors / 29 warnings. Both app/node typechecks passed.
+  `npm test`: 60 files / 463 tests passed. Browser suite: all 14 scenarios passed
+  in one run, including photo navigation, Escape and focus restoration on desktop
+  and 390px mobile layouts. Build/unchanged Donut v1.7.0 integrity check passed.
+  Disposable PostgreSQL: all 30 checks passed with the migration applied twice.
+  No production write-based workflow harness, customer-record edits, Quo sending,
+  CRM Publish, or live browser QA was performed. Committing/pushing this follow-up
+  does not publish the CRM; publication and live verification remain pending.
+
+## GitHub / Lovable sync check (2026-10-12)
+
+- Verified PR #123 is merged into `main` at `1dae7cd`, including the saved-photo
+  View action and regenerated database types. This check changes documentation only.
+- If Lovable still previews #122, return to the latest version and confirm its
+  GitHub connection uses `pastry-marketing/Marshmallow`, branch `main`.
+- Merging this check provides a fresh push notification on `main`. Lovable's
+  [sync troubleshooting](https://docs.lovable.dev/integrations/github) recommends
+  a new push when a previous GitHub notification was missed. Check for edits held
+  only in Lovable before merging; a new sync can replace unsynced editor changes.
+- Lovable sync and CRM publication remain unverified. Do not revert to #122 or
+  reapply the database migration; publish only after checking the latest preview.
+- Fresh push trigger sent to sync repository updates with Lovable.
+
+## PR #126 main integration (2026-10-13)
+
+- Resolved all seven conflicts against `main` at `63e6376`. Retained the desktop
+  Feature Access matrix, searchable/collapsible Copy Details overrides, and both
+  branches' behavioral tests. Also retained `main`'s saved-photo preview, secure
+  role-update API, regenerated database types and cast-free workflow RPC boundary.
+- The approved migration application record above is preserved. No migration or
+  extension source changed; do not reapply SQL just to resolve this PR.
+- Verification of the combined source: lint passed with 29 existing warnings;
+  `npm run typecheck` passed; `npm test -- --maxWorkers=2` passed all 471 tests in
+  61 files; all 22 network-isolated browser scenarios passed; build and unchanged
+  Donut v1.7.0 integrity check passed. All 30 disposable PostgreSQL checks passed,
+  including applying the exact migration twice.
+- Resolution/testing used an isolated worktree to preserve uncommitted local
+  configuration. No production writes, backend deployment, CRM Publish or live
+  workflow verification were performed. Updating the PR branch does not merge
+  it into `main` or publish the CRM.

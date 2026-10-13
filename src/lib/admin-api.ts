@@ -109,6 +109,9 @@ export const adminApi = {
   deleteUser: (user_id: string) =>
     callAdminFunction({ action: 'delete_user', user_id }),
 
+  updateUserRole: (user_id: string, role: string) =>
+    callAdminFunction({ action: 'update_user_role', user_id, role }),
+
   deleteLead: async (lead_id: string, job_id?: string) => {
     // 1. Try the atomic Postgres function first (bypasses RLS edge function flakiness)
     const { data: rpcData, error: rpcError } = await supabase.rpc('delete_lead_by_admin', { target_lead_id: lead_id });
