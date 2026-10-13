@@ -147,6 +147,56 @@ async function mockSettingsUsers(page: Page) {
   ] }));
 }
 
+for (const width of [1366, 390]) {
+  test(`Copy All Details search shows and updates saved user access at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 768 });
+    await mockSettingsUsers(page);
+    await page.goto("/settings");
+    await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+    await page.getByLabel("Find feature", { exact: true }).fill("copy all details");
+    const control = page.getByRole("combobox", { name: "Copy All Details override for Synthetic Operator With A Long Display Name", exact: true }).filter({ visible: true });
+    await expect(control).toContainText("Inherit role default");
+    const target = width >= 1024
+      ? page.getByRole("table").getByRole("row").filter({ hasText: "Synthetic Operator With A Long Display Name" })
+      : page.getByRole("region", { name: "Feature access for Synthetic Operator With A Long Display Name" });
+    await expect(target).toContainText("Effective access: Allowed");
+    const request = page.waitForRequest((request) => request.url().endsWith("/rpc/set_lead_copy_permission"));
+    await control.click();
+    await page.getByRole("option", { name: "Deny", exact: true }).click();
+    expect((await request).postDataJSON()).toEqual({ p_role: null, p_user_id: JOB_ID, p_allowed: false });
+    await expect(control).toContainText("Deny");
+    await expect(target).toContainText("Effective access: Denied");
+    await page.getByRole("button", { name: /User overrides/ }).click();
+    await expect(page.getByRole("combobox", { name: "Copy override for Synthetic Operator With A Long Display Name", exact: true })).toContainText("Deny");
+    await page.reload();
+    await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+    await page.getByLabel("Find feature", { exact: true }).fill("Copy Complete Details");
+    await expect(control).toContainText("Deny");
+    await expect(target).toContainText("Effective access: Denied");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  });
+}
+
+test("Copy All Details matrix preserves saved access after a backend rejection", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await mockSettingsUsers(page);
+  await page.route("**/rest/v1/rpc/set_lead_copy_permission", (route) => route.fulfill({
+    status: 403, json: { message: "Synthetic copy permission denied", code: "42501" },
+  }));
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  await page.getByLabel("Find feature", { exact: true }).fill("copy all details");
+  const target = page.getByRole("table").getByRole("row").filter({ hasText: "Synthetic Operator With A Long Display Name" });
+  const control = target.getByRole("combobox");
+  await expect(control).toBeEnabled();
+  await control.click();
+  await page.getByRole("option", { name: "Deny", exact: true }).click();
+  await expect(page.getByText("Synthetic copy permission denied", { exact: true }).first()).toBeVisible();
+  await expect(control).toContainText("Inherit role default");
+  await expect(target).toContainText("Effective access: Allowed");
+  await expect(page.getByText("Copy Complete Details access updated", { exact: true })).toHaveCount(0);
+});
+
 for (const width of [1920, 1440, 1366, 1024, 390]) {
   test(`Feature Access is usable without horizontal scrolling at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 768 });
