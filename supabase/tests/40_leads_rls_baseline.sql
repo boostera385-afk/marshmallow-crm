@@ -218,12 +218,14 @@ RESET ROLE;
 -- ===========================================================================
 -- matrix - this grid is the baseline. Save it.
 -- ===========================================================================
-SELECT * FROM _matrix ORDER BY ord;
-
 -- Sanity: the three SELECT policies that are the subject of this baseline.
 SELECT policyname, cmd, array_to_string(roles, ',') AS roles
   FROM pg_policies
  WHERE schemaname = 'public' AND tablename = 'leads' AND cmd = 'SELECT'
- ORDER BY policyname;
+  ORDER BY policyname;
+
+-- Keep the matrix last: MCP exposes only the final result grid. This changes
+-- output ordering only; all existing role/count checks remain identical.
+SELECT * FROM _matrix ORDER BY ord;
 
 ROLLBACK;
