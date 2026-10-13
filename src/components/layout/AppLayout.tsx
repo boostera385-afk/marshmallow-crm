@@ -19,6 +19,8 @@ import { premiumEase, pageVariants } from "@/lib/motion";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalCommandMenu } from "@/components/layout/GlobalCommandMenu";
+import CopilotProvider from "@/components/copilot/CopilotProvider";
+import CopilotLauncher from "@/components/copilot/CopilotLauncher";
 
 function HeaderNotepadTrigger() {
   const { toggleNotepad, activeUserIds, isPickerOpen } = useNotepad();
@@ -72,7 +74,7 @@ export default function AppLayout() {
   const isQuoMonitor = location.pathname.startsWith("/quo-monitor") || location.pathname.startsWith("/quo-dashboard");
 
   return (
-    <NotepadProvider>
+    <CopilotProvider><NotepadProvider>
       <SidebarProvider>
         <GlobalCommandMenu />
         <OperatorWorkflowSync />
@@ -123,6 +125,7 @@ export default function AppLayout() {
                   </AnimatePresence>
                 </div>
                 <div className="flex items-center gap-2">
+                  <CopilotLauncher />
                   <ExtensionUpdateStatus />
                   <HeaderNotepadTrigger />
                   <ThemeToggle />
@@ -155,6 +158,6 @@ export default function AppLayout() {
           <FloatingNotepad />
         </SidebarInset>
       </SidebarProvider>
-    </NotepadProvider>
+    </NotepadProvider></CopilotProvider>
   );
 }
