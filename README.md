@@ -39,10 +39,11 @@ Everything is permission-driven at **five layers** — UI, frontend permission h
 database RLS, Edge Functions, and generated types. A role change is not done until all
 five agree.
 
-> **Note on "Quo AI"** — an earlier AI assistant layer existed in this project and was
-> **fully removed** from the database in migration `20260811082959`. There is no model
-> routing, job queue or budget logic in the codebase today. Quo is a webhook-driven chat
-> mirror only. See [Quo and OpenPhone integration](#quo-and-openphone-integration).
+> **Note on "Quo AI"** — the earlier Quo AI layer was removed in migration
+> `20260811082959`; Quo remains a webhook-driven chat mirror. Marshmallow Copilot is a
+> separate, read-only assistant with deterministic CRM tools and optional bounded AI,
+> not a restoration of that legacy layer. Its migration, deployment and pilot rollout
+> are separate approval steps: see [Copilot rollout](docs/COPILOT_ROLLOUT.md).
 
 ---
 
@@ -83,6 +84,7 @@ five agree.
 | **Map** | Leaflet map view, coverage areas, nearby-urgent clustering, and nearby technician multi-select for workflow reports |
 | **Chat** | Quo/OpenPhone conversation mirror with a triage status axis and per-lead chat |
 | **Admin** | User management, access codes, TOTP status, activity logs, in-app system documentation |
+| **Copilot** | Permission-aware header / Ctrl+K assistant, feature guides, scoped lead and technician searches, personal/team reports, measured health and optional budgeted AI; Admin-only and AI-off defaults |
 | **Realtime** | ~24 Supabase Realtime channels with React Query cache invalidation |
 | **Audit** | Activity log writes on mutations, with denormalised actor names |
 
