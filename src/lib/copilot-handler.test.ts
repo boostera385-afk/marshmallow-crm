@@ -111,4 +111,38 @@ describe("authenticated Copilot handler", () => {
     expect(generate).toHaveBeenCalledTimes(1);
     expect(budget.rpc).toHaveBeenLastCalledWith("copilot_finish_ai", { p_request_id: id, p_input: null, p_output: null, p_success: false });
   });
+  it("discards late results when access is revoked", async () => {
+    generate.mockImplementation(async () => { access.allowed = false; return { kind: "answer", query: "", text: "discard me", inputTokens: 100, outputTokens: 30 }; });
+    const response = await handle(ask("what is a heat pump?", { allowAi: true }));
+    expect(response.status).toBe(403); expect(JSON.stringify(await response.json())).not.toContain("discard me");
+  });
+  it("discards a paid answer if Admin disables AI while the call is in flight", async () => {
+    generate.mockImplementation(async () => { access.aiEnabled = false; return { kind: "answer", query: "", text: "discard AI answer", inputTokens: 100, outputTokens: 30 }; });
+    const response = await handle(ask("what is a heat pump?", { allowAi: true }));
+    expect(response.status).toBe(403); expect(JSON.stringify(await response.json())).not.toContain("discard AI answer");
+    expect(budget.rpc).toHaveBeenLastCalledWith("copilot_finish_ai", expect.objectContaining({ p_success: true }));
+  });
+  it("uses only aggregate metrics for report explanations, never saved customer fields", async () => {
+    db.rpc.mockImplementation(async (name) => ({ data: name === "copilot_get_access" ? access : name === "copilot_report" ? {
+      start: "2026-03-08", end: "2026-03-08", timezone: "America/New_York", metrics: { created: 2, latestEdits: 1, scheduled: null, urgent: 1, incomplete: 0, needTech: 0, followups: 0 },
+      unexpectedCustomer: "PRIVATE CUSTOMER DATA",
+    } : null, error: null }));
+    const response = await handle(ask("Explain my work report", { allowAi: true }));
+    expect(response.status).toBe(200);
+    expect(generate.mock.calls[0][1]).toContain("Leads created in range");
+    expect(generate.mock.calls[0][1]).not.toContain("PRIVATE CUSTOMER DATA");
+  });
+  it("does not send a rejected team report to the model", async () => {
+    db.rpc.mockImplementation(async (name) => name === "copilot_report" ? { data: null, error: { code: "42501", message: "Admin only" } } : { data: access, error: null });
+    expect((await handle(ask("Explain team work report", { allowAi: true }))).status).toBe(403);
+    expect(generate).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled();
+  });
+  it("redacts CS Admin technician fields defensively and limits cards to ten", async () => {
+    access.role = "cs_admin";
+    db.rpc.mockImplementation(async (name) => ({ data: name === "copilot_get_access" ? access : Array.from({ length: 11 }, (_, i) => ({ id, job_id: `MM-${i}`, customer_name: "Synthetic", quote: null, tech_name: "PRIVATE TECH", tech_number: "SECRET NUMBER", address: "10 Main St Apt 2" })), error: null }));
+    const response = await handle(ask("find leads")); const data = await response.json();
+    expect(data.cards).toHaveLength(10); expect(data.hasMore).toBe(true);
+    expect(JSON.stringify(data)).not.toContain("PRIVATE TECH"); expect(JSON.stringify(data)).not.toContain("SECRET NUMBER");
+    expect(data.cards[0].fields).toContainEqual({ label: "Address", value: "10 Main St Apt 2" });
+  });
 });
