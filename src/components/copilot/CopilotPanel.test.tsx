@@ -66,4 +66,22 @@ describe("Copilot panel", () => {
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+  it("uses the resolved search query for next page without another AI turn", async () => {
+    state.ask.mockResolvedValue({ ...emptyCopilotResult("leads"), aiUsed: true, searchQuery: "MM-101", hasMore: true, nextOffset: 10 }); panel();
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Marshmallow Copilot" }), { target: { value: "look up reference" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send Copilot question" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show more results" }));
+    await waitFor(() => expect(state.ask).toHaveBeenCalledTimes(2));
+    expect(state.ask.mock.calls[1][0]).toMatchObject({ query: "MM-101", offset: 10, allowAi: false });
+    expect(screen.getAllByText("CRM result · AI routing").length).toBeGreaterThan(0);
+  });
+  it("explains with a new explicit question, not the previous deterministic question", async () => {
+    state.ask.mockResolvedValue(emptyCopilotResult("report")); panel();
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Marshmallow Copilot" }), { target: { value: "My report about PRIVATE ORIGINAL QUESTION" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send Copilot question" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Explain with AI (uses allowance)" }));
+    await waitFor(() => expect(state.ask).toHaveBeenCalledTimes(2));
+    expect(state.ask.mock.calls[1][0]).toMatchObject({ message: "Explain my work report", intent: "explain_report", allowAi: true });
+    expect(state.ask.mock.calls[1][0].requestId).not.toBe(state.ask.mock.calls[0][0].requestId);
+  });
 });
