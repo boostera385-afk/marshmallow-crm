@@ -1,6 +1,8 @@
 import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/layout/AppSidebar";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import HoldJobPopup from "@/components/notifications/HoldJobPopup";
+import OperatorWorkflowSync from "@/components/notifications/OperatorWorkflowSync";
 import ExtensionUpdateStatus from "@/components/notifications/ExtensionUpdateStatus";
 import UrgentLeadPopup from "@/components/notifications/UrgentLeadPopup";
 import IncompleteDetailsPopup from "@/components/notifications/IncompleteDetailsPopup";
@@ -73,6 +75,7 @@ export default function AppLayout() {
     <NotepadProvider>
       <SidebarProvider>
         <GlobalCommandMenu />
+        <OperatorWorkflowSync />
         <AppSidebar />
         <SidebarInset className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden">
             <header className="sticky top-0 z-30 shrink-0 border-b border-border/70 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:px-6">
@@ -142,6 +145,7 @@ export default function AppLayout() {
               </AnimatePresence>
             </main>
           <NotificationPopupProvider>
+            <HoldJobPopup />
             {!isQuoMonitor && <UrgentLeadPopup />}
             {!isQuoMonitor && <JobInProgressPopup />}
             {!isQuoMonitor && <QuoteUpdatedPopup />}

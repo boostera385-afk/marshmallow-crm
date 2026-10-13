@@ -40,6 +40,7 @@ import PaymentDialog from "@/components/leads/PaymentDialog";
 import ImageLightbox from "@/components/leads/ImageLightbox";
 import LeadPhotoActions from "@/components/leads/LeadPhotoActions";
 import CopyLeadButton from "@/components/leads/CopyLeadButton";
+import CompleteLeadCopyButton from "@/components/leads/CompleteLeadCopyButton";
 import ReminderButton from "@/components/leads/ReminderButton";
 import NoteThread from "@/components/leads/NoteThread";
 import NearbyAreasList, { type NearbyAreasData } from "@/components/leads/NearbyAreasList";
@@ -1638,7 +1639,8 @@ export default function LeadDetailPage() {
                   </div>
 
                   {currentCopyLead && (
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <CompleteLeadCopyButton lead={currentCopyLead} />
                       <ReminderButton
                         lead={currentCopyLead}
                         className="h-9 rounded-xl px-2.5 text-[10px]"

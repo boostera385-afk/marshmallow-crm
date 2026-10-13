@@ -28,12 +28,14 @@ import { toast } from "sonner";
 import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy, RefreshCw, KeyRound, Lock, FileText, BookOpen, Megaphone, FileSpreadsheet, Hash } from "lucide-react";
 import { DocumentationTab } from "@/components/settings/DocumentationTab";
 import { GoogleSheetsTab } from "@/components/settings/GoogleSheetsTab";
+import LeadCopyAccessSettings from "@/components/settings/LeadCopyAccessSettings";
+import FeatureAccessMatrix, { type AccessFeature } from "@/components/settings/FeatureAccessMatrix";
 const CrmUpdates = lazy(() => import("@/pages/CrmUpdates"));
 import { cn } from "@/lib/utils";
 import { ALL_LEAD_STATUSES, STATUS_LABELS, ALL_NAV_ITEMS } from "@/lib/constants";
 import { adminApi } from "@/lib/admin-api";
 import { logActivity } from "@/lib/activity";
-import { canAccessCancellationRequests, getDefaultNavAccess, getDefaultVisibleStatuses } from "@/lib/access";
+import { canAccessCancellationRequests, canAccessNavItem, getDefaultNavAccess, getDefaultVisibleStatuses } from "@/lib/access";
 import type { AppRole, LeadStatus } from "@/types";
 import MFAEnroll from "@/components/auth/MFAEnroll";
 import { motion } from "framer-motion";
@@ -59,6 +61,7 @@ const NAV_SECTION_LABELS: Record<string, string> = {
   cancellation_requests: "Lead Cancellation Requests",
   payment_requests: "Payment Approvals",
   quote_approval_requests: "Quote Approval",
+  urgent_review_requests: "Urgent Review",
   quote_pending_requests: "Quotes to Send",
   map_view: "Map View",
   technicians: "Technicians",
@@ -347,10 +350,11 @@ const Settings = () => {
     }
   };
 
-  const { data: navPermissions = [] } = useQuery<NavPermissionRow[]>({
+  const { data: navPermissions = [], isPending: navPermissionsPending, error: navPermissionsError, refetch: refetchNavPermissions } = useQuery<NavPermissionRow[]>({
     queryKey: ["settings-nav-permissions"],
     queryFn: async () => {
-      const { data } = await supabase.from("navigation_permissions").select("id, user_id, nav_section, allowed");
+      const { data, error } = await supabase.from("navigation_permissions").select("id, user_id, nav_section, allowed");
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -522,12 +526,14 @@ const Settings = () => {
       const beforeAllowed = existing?.allowed ?? false;
 
       if (existing) {
-        await supabase
+        const { error } = await supabase
           .from("navigation_permissions")
           .update({ allowed })
           .eq("id", existing.id);
+        if (error) throw error;
       } else {
-        await supabase.from("navigation_permissions").insert({ user_id: userId, nav_section: section, allowed });
+        const { error } = await supabase.from("navigation_permissions").insert({ user_id: userId, nav_section: section, allowed });
+        if (error) throw error;
       }
 
       if (user) {
@@ -548,7 +554,7 @@ const Settings = () => {
       toast.success("Navigation permission updated");
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update navigation permission");
+      toast.error(error.message || "Failed to update navigation permission");
     },
   });
 
@@ -802,21 +808,50 @@ const Settings = () => {
   const getNavPermission = (userId: string, section: string) => {
     const targetUser = getUserById(userId);
     const override = navPermissionByUserAndSection.get(`${userId}:${section}`);
-
-    if (targetUser && section === "cancellation_requests" && canAccessCancellationRequests(targetUser.role)) {
-      return true;
-    }
-
-    if (typeof override === "boolean") {
-      return override;
-    }
-
-    if (!targetUser) {
-      return false;
-    }
-
-    return getDefaultNavAccess(targetUser.role).has(section as (typeof ALL_NAV_ITEMS)[number]);
+    if (!targetUser) return false;
+    if (section === "settings") return targetUser.role === "cs_admin" && targetUser.can_manage_users === true;
+    if (section === "quote_pending_requests") return targetUser.is_quotation_master === true;
+    return canAccessNavItem(targetUser.role, section, typeof override === "boolean"
+      ? [{ id: "", user_id: userId, nav_section: section, allowed: override }] : []);
   };
+
+  const featureColumns: AccessFeature<SettingsUser>[] = [
+    ...ALL_NAV_ITEMS.map((section) => ({
+      key: section,
+      label: NAV_SECTION_LABELS[section] || section,
+      renderControl: (target: SettingsUser) => {
+        const fixedReason = section === "optimization" || section === "payment_requests"
+          ? "Admin only"
+          : section === "ai_assistance" ? "Customer Service roles only"
+          : section === "settings" ? "Controlled by Manage CS in Users"
+          : section === "quote_pending_requests" ? "Controlled by Quotation Master"
+          : section === "cancellation_requests" && canAccessCancellationRequests(target.role) ? "Included with role" : null;
+        const allowed = getNavPermission(target.id, section);
+        if (fixedReason) return <span title={fixedReason} className="inline-block text-xs text-muted-foreground"><span className="block font-medium text-foreground">{allowed ? "Allowed" : "Not allowed"}</span>{fixedReason}</span>;
+        if (navPermissionsPending || navPermissionsError) return <span className="text-xs text-muted-foreground">{navPermissionsError ? "Unavailable" : "Loading…"}</span>;
+        return <Switch aria-label={`${NAV_SECTION_LABELS[section] || section} for ${target.full_name || "Unnamed user"}`} checked={allowed}
+          disabled={toggleNavPermission.isPending}
+          onCheckedChange={(checked) => toggleNavPermission.mutate({ userId: target.id, section, allowed: checked })} />;
+      },
+    })),
+    {
+      key: "tech_report", label: "Tech Report",
+      renderControl: (target) => <Switch aria-label={`Tech Report for ${target.full_name || "Unnamed user"}`} checked={target.can_view_tech_report || false} disabled={toggleCanViewTechReport.isPending}
+        onCheckedChange={(checked) => toggleCanViewTechReport.mutate({ userId: target.id, canView: checked })} />,
+    },
+    {
+      key: "quotation_master", label: "Quotation Master",
+      renderControl: (target) => <Switch aria-label={`Quotation Master for ${target.full_name || "Unnamed user"}`} checked={target.is_quotation_master || false} disabled={toggleQuotationMaster.isPending}
+        onCheckedChange={(checked) => toggleQuotationMaster.mutate({ userId: target.id, isMaster: checked })} />,
+    },
+    {
+      key: "manual_lead", label: "Manual Lead",
+      renderControl: (target) => target.role === "customer_service"
+        ? <Switch aria-label={`Manual Lead for ${target.full_name || "Unnamed user"}`} checked={target.can_add_manual_leads || false} disabled={toggleCanAddManualLead.isPending}
+            onCheckedChange={(checked) => toggleCanAddManualLead.mutate({ userId: target.id, allowed: checked })} />
+        : <span className="text-xs text-muted-foreground">{target.role === "cs_admin" ? "Included with role" : "Not available"}</span>,
+    },
+  ];
 
   const getRoleStatusVisibility = (managedRole: AppRole, status: string) => {
     const override = statusVisibilityByRoleAndStatus.get(`${managedRole}:${status}`);
@@ -1251,119 +1286,12 @@ const Settings = () => {
         </div>
       )}
 
-      {activeTab === "nav_permissions" && (
-        <Card className="overflow-hidden border-border/60 bg-card/95">
-          <CardContent className="p-0">
-            <div className="flex flex-col gap-2 border-b border-border/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/8 bg-primary/6">
-                  <Shield className="h-3.5 w-3.5 text-primary/70" />
-                </div>
-                <div>
-                  <span className="text-sm font-semibold text-foreground">Feature & Navigation Access</span>
-                  <p className="text-[12px] text-muted-foreground">Show only the tabs and features each teammate actually needs.</p>
-                </div>
-              </div>
-              <span className="text-[11px] font-medium text-muted-foreground">{ALL_NAV_ITEMS.length} controllable items</span>
-            </div>
-
-            <div className="max-h-[calc(100vh-14rem)] overflow-auto overscroll-contain">
-              <table className="w-full min-w-max text-sm">
-                <thead>
-                  <tr className="border-b border-border/30 bg-muted/20">
-                    <th className="sticky left-0 top-0 z-30 min-w-[220px] border-b border-r border-border/40 bg-card px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 shadow-[8px_0_14px_-12px_hsl(var(--foreground)/0.45)]">
-                      User
-                    </th>
-                    {ALL_NAV_ITEMS.map((section) => (
-                      <th
-                        key={section}
-                        className="sticky top-0 z-20 border-b border-border/40 bg-card px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60"
-                      >
-                        {NAV_SECTION_LABELS[section] || section}
-                      </th>
-                    ))}
-                    <th className="sticky top-0 z-20 border-b border-border/40 bg-card px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                      Tech Report
-                    </th>
-                    <th className="sticky top-0 z-20 border-b border-border/40 bg-card px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                      Quotation Master
-                    </th>
-                    <th className="sticky top-0 z-20 border-b border-border/40 bg-card px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                      Manual Lead
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {nonAdminUsers.map((u) => (
-                    <tr
-                      key={u.id}
-                      className="group border-b border-border/20 transition-colors last:border-b-0 hover:bg-muted/10"
-                    >
-                      <td className="sticky left-0 z-10 min-w-[220px] border-r border-border/30 bg-card px-4 py-3 shadow-[8px_0_14px_-12px_hsl(var(--foreground)/0.45)]">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar className="h-7 w-7">
-                            <AvatarFallback className="bg-muted text-muted-foreground text-[9px] font-bold">
-                              {getInitials(u.full_name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="text-[12px] font-medium">{u.full_name}</p>
-                            <p className="text-[10px] text-muted-foreground/50 capitalize">
-                              {u.role.replace("_", " ")}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-
-                      {ALL_NAV_ITEMS.map((section) => {
-                        return (
-                          <td key={section} className="px-3 py-3 text-center">
-                            <Switch
-                              checked={getNavPermission(u.id, section)}
-                              disabled={section === "cancellation_requests" && canAccessCancellationRequests(u.role)}
-                              onCheckedChange={(checked) =>
-                                toggleNavPermission.mutate({ userId: u.id, section, allowed: checked })
-                              }
-                            />
-                          </td>
-                        );
-                      })}
-                      <td className="px-3 py-3 text-center">
-                        <Switch
-                          checked={u.can_view_tech_report || false}
-                          onCheckedChange={(checked) =>
-                            toggleCanViewTechReport.mutate({ userId: u.id, canView: checked })
-                          }
-                        />
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        <Switch
-                          checked={u.is_quotation_master || false}
-                          onCheckedChange={(checked) =>
-                            toggleQuotationMaster.mutate({ userId: u.id, isMaster: checked })
-                          }
-                        />
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        {u.role === "customer_service" ? (
-                          <Switch
-                            checked={u.can_add_manual_leads || false}
-                            onCheckedChange={(checked) =>
-                              toggleCanAddManualLead.mutate({ userId: u.id, allowed: checked })
-                            }
-                          />
-                        ) : (
-                          <span className="text-[11px] text-muted-foreground/50">&mdash;</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+      {activeTab === "nav_permissions" && isAdmin && (
+        <div className="space-y-4">
+          <LeadCopyAccessSettings users={users} />
+          {navPermissionsError && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 p-4"><p role="alert" className="text-sm text-destructive">Navigation permissions could not be loaded: {navPermissionsError.message}</p><Button variant="outline" onClick={() => void refetchNavPermissions()}>Retry navigation permissions</Button></div>}
+          <FeatureAccessMatrix users={users} features={featureColumns} />
+        </div>
       )}
 
       {activeTab === "status_permissions" && (
