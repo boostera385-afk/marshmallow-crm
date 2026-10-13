@@ -159,3 +159,64 @@ test("Backend failure produces an error, not invented results or automatic retri
   await expect(panel.getByRole("alert")).toContainText("could not be completed"); expect(fixture.questions).toHaveLength(1);
   await expect(panel.getByRole("button", { name: "Open lead", exact: true })).toHaveCount(0);
 });
+test("AI failure is bounded, explicit and never automatically retried", async ({ page }) => {
+  const fixture = await isolatedCopilot(page, "admin", { aiFailure: true }); await page.goto("/leads");
+  await page.getByRole("button", { name: "Ask Marshmallow Copilot" }).click();
+  const panel = page.getByRole("dialog", { name: "Marshmallow Copilot" });
+  await panel.getByRole("switch", { name: "Allow optional AI fallback" }).click();
+  await panel.getByRole("textbox", { name: "Ask Marshmallow Copilot" }).fill("What is a heat pump?");
+  await panel.getByRole("button", { name: "Send Copilot question" }).click();
+  await expect(panel.getByRole("alert")).toContainText("AI is unavailable");
+  expect(fixture.calls.filter((c) => c.name === "copilot_reserve_ai")).toHaveLength(1); expect(fixture.questions).toHaveLength(1);
+});
+test("Admin manages role default, searchable override and explicit global switch", async ({ page }) => {
+  const fixture = await isolatedCopilot(page); await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  const control = page.getByRole("switch", { name: "Allow Copilot for Operator", exact: true });
+  await expect(control).not.toBeChecked(); await control.click(); await expect(control).toBeChecked();
+  await page.getByRole("button", { name: "Copilot user overrides" }).click();
+  await page.getByLabel("Find Copilot user", { exact: true }).fill("Synthetic Operator");
+  await page.getByRole("combobox", { name: "Copilot override for Synthetic Operator" }).click();
+  await page.getByRole("option", { name: "Deny", exact: true }).click();
+  await expect(page.getByText("Effective access: Denied", { exact: true })).toBeVisible();
+  await page.getByRole("switch", { name: "Enable Marshmallow Copilot globally" }).click();
+  expect(fixture.calls.some((c) => c.name === "copilot_configure")).toBe(false);
+  await page.getByRole("button", { name: "Save Copilot configuration" }).click();
+  await expect(page.getByRole("button", { name: "Ask Marshmallow Copilot" })).toHaveCount(0);
+});
+
+test("Admin AI edits survive permission refresh and apply only after Save", async ({ page }) => {
+  const fixture = await isolatedCopilot(page); await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  const ai = page.getByRole("switch", { name: "Enable Copilot AI", exact: true });
+  await ai.click();
+  await page.getByRole("spinbutton", { name: "Monthly AI allowance (USD)" }).fill("5.25");
+  await page.getByRole("spinbutton", { name: "AI requests per user / day" }).fill("4");
+  const role = page.getByRole("switch", { name: "Allow Copilot for Operator", exact: true });
+  await role.click(); await expect(role).toBeChecked(); await expect(role).toBeEnabled();
+  await expect(ai).toBeChecked(); await expect(page.getByRole("spinbutton", { name: "Monthly AI allowance (USD)" })).toHaveValue("5.25");
+  expect(fixture.calls.some((c) => c.name === "copilot_configure")).toBe(false);
+  await expect(page.getByText(/There is no separate per-user AI permission/)).toBeVisible();
+  await page.getByRole("button", { name: "Save Copilot configuration" }).click();
+  await expect.poll(() => fixture.calls.filter((c) => c.name === "copilot_configure")).toHaveLength(1);
+  expect(fixture.calls.find((c) => c.name === "copilot_configure")?.args).toEqual({ p_enabled: true, p_ai_enabled: true, p_monthly_budget_cents: 525, p_daily_ai_limit: 4, p_timezone: "America/New_York" });
+  await page.goto("/leads"); await page.getByRole("button", { name: "Ask Marshmallow Copilot" }).click();
+  const panel = page.getByRole("dialog", { name: "Marshmallow Copilot" });
+  await expect(panel.getByRole("switch", { name: "Allow optional AI fallback" })).not.toBeChecked();
+  await panel.getByRole("textbox", { name: "Ask Marshmallow Copilot" }).fill("find lead MM-101");
+  await panel.getByRole("button", { name: "Send Copilot question" }).click();
+  await expect(panel.getByText("CRM result · No AI")).toBeVisible();
+  expect(fixture.calls.some((c) => c.name === "copilot_reserve_ai")).toBe(false);
+});
+
+test("Failed Admin AI configuration does not enable AI or claim success", async ({ page }) => {
+  const fixture = await isolatedCopilot(page, "admin", { configureFailure: true }); await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  await page.getByRole("switch", { name: "Enable Copilot AI", exact: true }).click();
+  await page.getByRole("button", { name: "Save Copilot configuration" }).click();
+  await expect(page.getByText("You do not have access to this Copilot feature.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Marshmallow Copilot settings saved", { exact: true })).toHaveCount(0);
+  await page.goto("/leads"); await page.getByRole("button", { name: "Ask Marshmallow Copilot" }).click();
+  await expect(page.getByRole("dialog", { name: "Marshmallow Copilot" }).getByRole("switch", { name: "Allow optional AI fallback" })).toHaveCount(0);
+  expect(fixture.calls.some((c) => c.name === "copilot_reserve_ai")).toBe(false);
+});
