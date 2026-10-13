@@ -39,3 +39,25 @@ describe("Copilot permissions and deterministic routing", () => {
     for (const extra of [{ message: "a".repeat(1201) }, { offset: -1 }, { offset: 300 }, { intent: "execute_sql" }, { scope: "all" }, { date: "not a date" }]) expect(() => parseCopilotAsk({ ...ask, ...extra })).toThrow();
   });
 });
+describe("Copilot API boundary", () => {
+  it("validates access and fails closed on invalid server shapes", async () => {
+    invoke.mockResolvedValue({ data: { allowed: true, aiEnabled: false, role: "admin", timezone: "UTC", sections: ["leads"] }, error: null });
+    await expect(fetchCopilotAccess()).resolves.toMatchObject({ allowed: true });
+    invoke.mockResolvedValue({ data: { allowed: true }, error: null });
+    await expect(fetchCopilotAccess()).rejects.toThrow();
+  });
+  it("rejects unsafe links before UI rendering", async () => {
+    invoke.mockResolvedValue({ data: { ...emptyCopilotResult("help"), links: [{ label: "Click", href: "javascript:alert(1)" }] }, error: null });
+    await expect(askCopilot({ action: "ask", message: "help", requestId: id, allowAi: false })).rejects.toThrow();
+  });
+  it("propagates access denial without suggesting retries or using a privileged client", async () => {
+    invoke.mockResolvedValue({ data: null, error: { context: new Response(JSON.stringify({ error: "Access denied" }), { status: 403 }) } });
+    await expect(fetchCopilotAccess()).rejects.toMatchObject({ message: "Access denied", status: 403 });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+  it("accepts save acknowledgement independently of a settings refresh", async () => {
+    invoke.mockResolvedValue({ data: { saved: true }, error: null });
+    await expect(configureCopilot({ enabled: true, ai_enabled: false, monthly_budget_cents: 0, daily_ai_limit: 0, timezone: "UTC" })).resolves.toEqual({ saved: true });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+});
