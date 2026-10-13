@@ -29,4 +29,13 @@ describe("Copilot permissions and deterministic routing", () => {
     expect(reportRange("yesterday", "2026-03-08")).toEqual({ start: "2026-03-07", end: "2026-03-07" });
     expect(reportRange("last week", "2026-11-02")).toEqual({ start: "2026-10-27", end: "2026-11-02" });
   });
+  it("rejects executable and foreign destinations", () => {
+    expect(safeCopilotHref(`/leads/${id}`)).toBe(true);
+    expect(safeCopilotHref(`/technicians?copilot=${id}`)).toBe(true);
+    for (const href of ["javascript:alert(1)", "//evil.invalid", "/settings?admin=1", "/leads/not-an-id", "https://example.com"]) expect(safeCopilotHref(href)).toBe(false);
+  });
+  it("rejects oversized prompts, invalid pages and scope", () => {
+    const ask = { action: "ask", message: "hello", requestId: id, allowAi: false };
+    for (const extra of [{ message: "a".repeat(1201) }, { offset: -1 }, { offset: 300 }, { intent: "execute_sql" }, { scope: "all" }, { date: "not a date" }]) expect(() => parseCopilotAsk({ ...ask, ...extra })).toThrow();
+  });
 });
