@@ -64,6 +64,7 @@ const NAV_SECTION_LABELS: Record<string, string> = {
   payment_requests: "Payment Approvals",
   quote_approval_requests: "Quote Approval",
   urgent_review_requests: "Urgent Review",
+  cx_updates: "Get CX Update",
   quote_pending_requests: "Quotes to Send",
   map_view: "Map View",
   technicians: "Technicians",
@@ -821,6 +822,7 @@ const Settings = () => {
         const fixedReason = section === "optimization" || section === "payment_requests"
           ? "Admin only"
           : section === "ai_assistance" ? "Customer Service roles only"
+          : section === "cx_updates" ? "Processor and Customer Service roles only"
           : section === "settings" ? "Controlled by Manage CS in Users"
           : section === "quote_pending_requests" ? "Controlled by Quotation Master"
           : section === "cancellation_requests" && canAccessCancellationRequests(target.role) ? "Included with role" : null;

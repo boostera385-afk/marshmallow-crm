@@ -555,6 +555,98 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_cx_update_requests: {
+        Row: {
+          acknowledged_at: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          recipient_cs: string | null
+          request_text: string
+          requested_by: string | null
+          response_text: string | null
+          status: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id: string
+          lead_id: string
+          recipient_cs?: string | null
+          request_text: string
+          requested_by?: string | null
+          response_text?: string | null
+          status?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          recipient_cs?: string | null
+          request_text?: string
+          requested_by?: string | null
+          response_text?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_cx_update_requests_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_recipient_cs_fkey"
+            columns: ["recipient_cs"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_recipient_cs_fkey"
+            columns: ["recipient_cs"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_drafts: {
         Row: {
           draft_data: Json
@@ -2746,6 +2838,16 @@ export type Database = {
       cron_quo_sync_contacts: { Args: never; Returns: undefined }
       cron_refresh_urgent_ai_status: { Args: never; Returns: undefined }
       current_user_opr_code: { Args: never; Returns: string }
+      cx_update_requests: {
+        Args: {
+          p_action: string
+          p_lead_id?: string
+          p_offset?: number
+          p_request_id?: string
+          p_text?: string
+        }
+        Returns: Json
+      }
       default_org_id: { Args: never; Returns: string }
       delete_lead_by_admin: { Args: { target_lead_id: string }; Returns: Json }
       dispatch_lead_status_notification: {

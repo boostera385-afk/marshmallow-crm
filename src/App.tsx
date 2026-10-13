@@ -22,6 +22,7 @@ import QuotePendingRequests from "@/pages/QuotePendingRequests";
 import QuoteApprovalRequests from "@/pages/QuoteApprovalRequests";
 import TechnicianChangeApprovals from "@/pages/TechnicianChangeApprovals";
 import UrgentReviewRequests from "@/pages/UrgentReviewRequests";
+import CxUpdatesPage from "@/pages/CxUpdatesPage";
 import QuoMonitorPage from "@/pages/quo-monitor/QuoMonitorPage";
 import AiAssistancePage from "@/pages/ai-assistance/AiAssistancePage";
 import CrmUpdates from "@/pages/CrmUpdates";
@@ -140,6 +141,7 @@ const App = () => (
               <Route path="quote-pending" element={<PageRoute navItem="quote_pending_requests"><QuotePendingRequests /></PageRoute>} />
       <Route path="tech-approvals" element={<PageRoute navItem="technician_change_requests"><TechnicianChangeApprovals /></PageRoute>} />
       <Route path="urgent-review-requests" element={<PageRoute navItem="urgent_review_requests"><UrgentReviewRequests /></PageRoute>} />
+              <Route path="get-cx-update" element={<PageRoute navItem="cx_updates"><CxUpdatesPage /></PageRoute>} />
               <Route path="crm-updates" element={<PageRoute navItem="crm_updates"><CrmUpdates /></PageRoute>} />
               <Route path="settings" element={<PageRoute navItem="settings"><Settings /></PageRoute>} />
             </Route>
