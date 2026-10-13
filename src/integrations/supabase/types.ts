@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.4"
   }
   public: {
     Tables: {
@@ -128,6 +128,63 @@ export type Database = {
           notes?: string | null
           number_name?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      copilot_config: {
+        Row: {
+          ai_enabled: boolean
+          daily_ai_limit: number
+          enabled: boolean
+          id: boolean
+          monthly_budget_cents: number
+          timezone: string
+        }
+        Insert: {
+          ai_enabled?: boolean
+          daily_ai_limit?: number
+          enabled?: boolean
+          id?: boolean
+          monthly_budget_cents?: number
+          timezone?: string
+        }
+        Update: {
+          ai_enabled?: boolean
+          daily_ai_limit?: number
+          enabled?: boolean
+          id?: boolean
+          monthly_budget_cents?: number
+          timezone?: string
+        }
+        Relationships: []
+      }
+      copilot_role_permissions: {
+        Row: {
+          allowed: boolean
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          allowed?: boolean
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          allowed?: boolean
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      copilot_user_permissions: {
+        Row: {
+          allowed: boolean
+          user_id: string
+        }
+        Insert: {
+          allowed: boolean
+          user_id: string
+        }
+        Update: {
+          allowed?: boolean
+          user_id?: string
         }
         Relationships: []
       }
@@ -2621,6 +2678,69 @@ export type Database = {
           unlocated: number
         }[]
       }
+      copilot_caller_role: { Args: never; Returns: string }
+      copilot_configure: {
+        Args: {
+          p_ai_enabled: boolean
+          p_daily_ai_limit: number
+          p_enabled: boolean
+          p_monthly_budget_cents: number
+          p_timezone: string
+        }
+        Returns: undefined
+      }
+      copilot_finish_ai: {
+        Args: {
+          p_input: number
+          p_output: number
+          p_request_id: string
+          p_success: boolean
+        }
+        Returns: undefined
+      }
+      copilot_get_access: { Args: never; Returns: Json }
+      copilot_get_settings: { Args: never; Returns: Json }
+      copilot_health: { Args: never; Returns: Json }
+      copilot_nav_allowed: { Args: { p_section: string }; Returns: boolean }
+      copilot_report: {
+        Args: { p_end: string; p_scope?: string; p_start: string }
+        Returns: Json
+      }
+      copilot_require_access: {
+        Args: { p_section?: string }
+        Returns: undefined
+      }
+      copilot_reserve_ai: {
+        Args: { p_request_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      copilot_search: {
+        Args: {
+          p_active?: boolean
+          p_area?: string
+          p_date?: string
+          p_kind: string
+          p_offset?: number
+          p_query?: string
+          p_service?: string
+          p_status?: string
+        }
+        Returns: Json
+      }
+      copilot_set_permission: {
+        Args: {
+          p_allowed: boolean
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      copilot_status_visible: {
+        Args: { p_status: string; p_tag: string }
+        Returns: boolean
+      }
+      copilot_usage_summary: { Args: never; Returns: Json }
+      copilot_visible_statuses: { Args: never; Returns: string[] }
       cron_google_sheets_sync_worker: { Args: never; Returns: undefined }
       cron_quo_reconcile_sync: { Args: never; Returns: undefined }
       cron_quo_sync_contacts: { Args: never; Returns: undefined }
