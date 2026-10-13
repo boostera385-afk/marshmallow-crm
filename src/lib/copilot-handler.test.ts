@@ -78,4 +78,37 @@ describe("authenticated Copilot handler", () => {
     expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ source: "ai", aiUsed: true });
     expect(budget.rpc.mock.calls.map((call) => call[0])).toEqual(["copilot_reserve_ai", "copilot_finish_ai"]);
   });
+  it("reserves before a single model call and records usage", async () => {
+    const response = await handle(ask("what is a heat pump?", { allowAi: true }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ source: "ai", aiUsed: true });
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledWith("what is a heat pump?", undefined);
+    expect(budget.rpc).toHaveBeenNthCalledWith(1, "copilot_reserve_ai", { p_user_id: id, p_request_id: id });
+    expect(budget.rpc).toHaveBeenNthCalledWith(2, "copilot_finish_ai", { p_request_id: id, p_input: 100, p_output: 40, p_success: true });
+  });
+  it("labels AI routing honestly and still queries the caller's RLS-scoped client", async () => {
+    generate.mockResolvedValue({ kind: "leads", query: "MM-101", text: "", inputTokens: 100, outputTokens: 40 });
+    const response = await handle(ask("lookup this reference please", { allowAi: true }));
+    expect(await response.json()).toMatchObject({ source: "crm", aiUsed: true, searchQuery: "MM-101" });
+    expect(db.rpc).toHaveBeenCalledWith("copilot_search", expect.objectContaining({ p_query: "MM-101" }));
+    expect(budget.rpc.mock.calls.some((call) => call[0] === "copilot_search")).toBe(false);
+  });
+  it("does not call OpenAI when reservation fails", async () => {
+    budget.rpc.mockResolvedValue({ data: null, error: { message: "Monthly AI budget reached; CRM tools remain available" } });
+    expect((await handle(ask("what is a heat pump?", { allowAi: true }))).status).toBe(429);
+    expect(generate).not.toHaveBeenCalled();
+  });
+  it("enforces daily-cap rejection before calling the provider", async () => {
+    budget.rpc.mockResolvedValue({ data: null, error: { message: "Daily AI limit reached; CRM tools remain available" } });
+    expect((await handle(ask("what is a heat pump?", { allowAi: true }))).status).toBe(429);
+    expect(generate).not.toHaveBeenCalled();
+  });
+  it("records unknown failures without retries or invented zero-token outcomes", async () => {
+    generate.mockRejectedValue(new Error("network failed"));
+    const response = await handle(ask("what is a heat pump?", { allowAi: true }));
+    expect(response.status).toBe(503);
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(budget.rpc).toHaveBeenLastCalledWith("copilot_finish_ai", { p_request_id: id, p_input: null, p_output: null, p_success: false });
+  });
 });
