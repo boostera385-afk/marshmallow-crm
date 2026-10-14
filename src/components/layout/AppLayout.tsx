@@ -155,8 +155,8 @@ export default function AppLayout() {
             {!isQuoMonitor && <JobInProgressPopup />}
             {!isQuoMonitor && <QuoteUpdatedPopup />}
             {!isQuoMonitor && <IncompleteDetailsPopup />}
+            <CrmUpdatePopup />
           </NotificationPopupProvider>
-          <CrmUpdatePopup />
           <FloatingNotepad />
         </SidebarInset>
       </SidebarProvider>

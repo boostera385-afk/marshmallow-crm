@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Megaphone, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useNotificationPopupSlot } from "./popup-slot";
 
 const SECTION_LABEL: Record<string, string> = {
   general: "General / Entire CRM",
@@ -106,6 +107,7 @@ export default function CrmUpdatePopup() {
   }, [user, role, fullyAuthenticated, loadUnreadUpdates]);
 
   const current = queue[0];
+  const visible = useNotificationPopupSlot("crmUpdate", Boolean(current));
 
   const handleAck = async () => {
     if (!current || !user) return;
@@ -126,7 +128,7 @@ export default function CrmUpdatePopup() {
     window.location.reload();
   };
 
-  if (!current) return null;
+  if (!current || !visible) return null;
 
   const isImportant = current.priority === "important";
 

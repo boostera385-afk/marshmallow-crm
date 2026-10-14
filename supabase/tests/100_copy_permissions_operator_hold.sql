@@ -96,7 +96,15 @@ SELECT pg_temp.hold_check('Obsolete OPR urgent alert cleared', NOT EXISTS(
   AND title='[Alert] Urgent Job' AND user_id=(SELECT opr_id FROM hold_test_context) AND read=false));
 INSERT INTO hold_test_versions SELECT id,revision,clock_timestamp() FROM public.lead_hold_alerts
 WHERE user_id=(SELECT opr_id FROM hold_test_context) AND lead_id=(SELECT lead_id FROM hold_test_context);
-UPDATE public.leads SET cs_tag='ready_to_schedule',service_details='Unrelated edit' WHERE id=(SELECT lead_id FROM hold_test_context);
+UPDATE public.leads SET cs_tag='waiting_schedule_confirmation' WHERE id=(SELECT lead_id FROM hold_test_context);
+SELECT pg_temp.hold_check('Waiting for CX schedule confirmation refreshes the hold card', EXISTS(
+  SELECT 1 FROM public.lead_hold_alerts
+  WHERE id=(SELECT id FROM hold_test_versions)
+    AND reason='waiting_schedule_confirmation'
+    AND revision<>(SELECT revision FROM hold_test_versions)));
+UPDATE hold_test_versions v SET revision=a.revision, observed_at=clock_timestamp()
+FROM public.lead_hold_alerts a WHERE a.id=v.id;
+UPDATE public.leads SET cs_tag='waiting_schedule_confirmation',service_details='Unrelated edit' WHERE id=(SELECT lead_id FROM hold_test_context);
 SELECT pg_temp.hold_check('Repeated tag and unrelated edits do not alert',
   (SELECT revision FROM public.lead_hold_alerts WHERE id=(SELECT id FROM hold_test_versions)) = (SELECT revision FROM hold_test_versions));
 UPDATE public.leads SET cs_tag='booked' WHERE id=(SELECT lead_id FROM hold_test_context);

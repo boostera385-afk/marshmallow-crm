@@ -15,7 +15,11 @@ export const alertFixture: HoldAlert = {
     scheduled_time_end: "15:00:00", tech_name: "Test Tech", tech_number: "5550100001", status: "scheduled", cs_tag: null, quote: null,
   },
 };
-describe("grey read-only hold card", () => {
+describe("Marshmallow read-only hold card", () => {
+  it("labels the CX schedule-confirmation hold reason", () => {
+    render(<HoldJobCard alert={{ ...alertFixture, reason: "waiting_schedule_confirmation" }} onAcknowledge={vi.fn()} />);
+    expect(screen.getByText("Urgent Job → Waiting for CX for Schedule Confirmation")).toBeInTheDocument();
+  });
   it("expands complete saved details without allowing job edits or leaking hidden quote", () => {
     render(<HoldJobCard alert={alertFixture} onAcknowledge={vi.fn()} />);
     expect(screen.queryByText("10 Main St Apt 2")).toBeNull();

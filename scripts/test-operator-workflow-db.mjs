@@ -15,6 +15,9 @@ try {
   const migration = await readFile(path.join(root, "supabase/migrations/20261012041715_lead_copy_permissions_and_operator_hold_alerts.sql"), "utf8");
   await db.exec(migration);
   await db.exec(migration); // Idempotence, including publication membership and defaults.
+  const scheduleConfirmationMigration = await readFile(path.join(root, "supabase/migrations/20261121000000_operator_hold_waiting_schedule_confirmation.sql"), "utf8");
+  await db.exec(scheduleConfirmationMigration);
+  await db.exec(scheduleConfirmationMigration); // The follow-up migration is independently idempotent.
   const results = await db.exec(await readFile(path.join(root, "supabase/tests/100_copy_permissions_operator_hold.sql"), "utf8"));
   const checks = results.flatMap((result) => result.rows).filter((row) => typeof row.name === "string" && typeof row.result === "string");
   console.table(checks);

@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
  */
 
 export const POPUP_PRIORITY = {
+  crmUpdate: 1,
   holdJob: 5,
   urgent: 10,
   jobInProgress: 20,
@@ -19,7 +20,7 @@ export const POPUP_PRIORITY = {
   quoteUpdated: 30,
 } as const;
 
-type PopupId = keyof typeof POPUP_PRIORITY;
+export type PopupId = keyof typeof POPUP_PRIORITY;
 
 interface PopupSlotContextValue {
   claim: (id: PopupId) => void;

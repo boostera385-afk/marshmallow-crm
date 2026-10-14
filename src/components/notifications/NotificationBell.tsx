@@ -317,7 +317,7 @@ export default function NotificationBell() {
           ) : (
             <div className="divide-y divide-border/20">
               {holdAlerts.map((alert) => (
-                <button key={alert.id} className="w-full bg-slate-100 px-4 py-3 text-left text-slate-900 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                <button key={alert.id} className="w-full bg-primary/[0.04] px-4 py-3 text-left text-foreground transition-colors hover:bg-primary/[0.08]"
                   onClick={() => { setOpen(false); setSelectedHoldId(alert.id); }}>
                   <p className={`text-[13px] ${!alert.read ? 'font-semibold' : 'font-medium'}`}>{!alert.read && '● '}Hold This Job</p>
                   <p className="break-words text-xs">{alert.snapshot.job_id} · {HOLD_REASON_LABELS[alert.reason]}</p>

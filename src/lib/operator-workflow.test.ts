@@ -46,4 +46,24 @@ describe("authenticated workflow RPC boundary", () => {
     mocks.rpc.mockResolvedValue({ data: { alerts: [{ reason: "any_status" }] }, error: null });
     await expect(fetchHoldInbox()).rejects.toThrow();
   });
+  it("accepts the Waiting for CX schedule-confirmation hold reason", async () => {
+    mocks.rpc.mockResolvedValue({ data: {
+      observed_at: "2026-10-14T00:00:00Z", unread_count: 1,
+      alerts: [{
+        id: "00000000-0000-4000-8000-000000000001",
+        lead_id: "00000000-0000-4000-8000-000000000002",
+        revision: "00000000-0000-4000-8000-000000000003",
+        reason: "waiting_schedule_confirmation",
+        snapshot: {
+          job_id: "MM-123", customer_name: "Customer", customer_phone: null, customer_landline: null,
+          service_type: null, service_details: null, address: null, city: null, state: null, zip_code: null,
+          customer_schedule_requirements: null, scheduled_date: null, scheduled_time_start: null,
+          scheduled_time_end: null, tech_name: null, tech_number: null, status: "urgent_job",
+          cs_tag: "waiting_schedule_confirmation", quote: null,
+        },
+        read: false, created_at: "2026-10-14T00:00:00Z",
+      }],
+    }, error: null });
+    await expect(fetchHoldInbox()).resolves.toMatchObject({ alerts: [{ reason: "waiting_schedule_confirmation" }] });
+  });
 });

@@ -1,6 +1,6 @@
 -- MANUAL BEHAVIOR HARNESS. WRITES synthetic fixtures; LOCAL/ISOLATED DB ONLY.
 -- Never execute on shared production without explicit approval. Apply migrations
--- 20261120000000, 20261120001000 and 20261120002000 first, run this exact file as postgres,
+-- 20261120000000, 20261120001000, 20261120002000 and 20261121001000 first, run this exact file as postgres,
 -- inspect every PASS/FAIL row, and note that the whole transaction rolls back.
 BEGIN;
 

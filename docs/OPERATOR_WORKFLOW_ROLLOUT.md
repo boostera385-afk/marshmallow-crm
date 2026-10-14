@@ -30,13 +30,18 @@
 - Hold This Job alerts go to **all** users with an Operator role, not just assigned
   Operators. The trigger uses actual database transitions:
   - `urgent_job` → `urgent_job` with a newly applied `ready_to_schedule` tag;
+  - `urgent_job` → `urgent_job` with a newly applied `waiting_schedule_confirmation` tag;
   - `urgent_job` → `scheduled` or `cancelled`;
   - an urgent job entering `cancellation_requested`, then finally `cancelled`.
 - Booked is a separate tag and does not count as Scheduled. Non-urgent jobs,
   unchanged tags/statuses, and cancellation requests alone do not generate holds.
 - A rejected/abandoned cancellation clears its urgent-origin marker. This is not
   a replacement for the existing cancellation approval workflow.
-- The grey card offers Complete card / Hide details and Acknowledge. It does not
+- The Marshmallow-themed card offers Complete card / Hide details and Acknowledge. Up to
+  three unread hold cards stack in the top-right notification rail, newest first,
+  while the full history remains available from Notifications. CRM announcements
+  participate in the shared popup priority slot so they cannot cover hold alerts.
+  The card does not
   edit the job, change its status, assign technicians, or alter the agreed schedule.
 - One unread card per recipient/job is refreshed with a new revision when needed.
   Acknowledgement matches the displayed revision so a new event cannot be lost.
@@ -103,6 +108,17 @@ Pre-existing security/performance warnings remain outside this task's scope.
 No Edge Function changed and no native Donut counterpart exists for these controls;
 no Edge Function deployment or Donut version/ZIP change is required. Any qualifying
 lead update from Donut still passes through the same database trigger/approval gates.
+
+### Waiting-for-CX follow-up migration
+
+Apply `supabase/migrations/20261121000000_operator_hold_waiting_schedule_confirmation.sql`
+manually in the Supabase SQL Editor after the original Operator workflow migration.
+It extends only the server-owned alert reason constraint and trigger; it does not
+rewrite leads or customer schedules. Run the updated
+`supabase/tests/100_copy_permissions_operator_hold.sql` only on isolated/test data
+unless shared-project write approval is separately granted. Publish/reload the CRM
+afterward for the stacked Marshmallow notification cards. No Edge Function or Donut
+release is required.
 
 There is no historical alert backfill. Urgent-origin tracking for pending
 cancellations starts when the migration is applied; requests already pending at that

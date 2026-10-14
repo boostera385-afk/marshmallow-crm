@@ -188,7 +188,7 @@ async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", opti
         data = null;
       } else if (endpoint === "get_operator_hold_alerts") data = {
         observed_at: "2026-10-12T05:01:00Z", unread_count: options.hold && !holdRead ? 1 : 0,
-        alerts: options.hold ? [{ id: ALERT_ID, lead_id: JOB_ID, revision: REVISION_ID, reason: "scheduled", snapshot, read: holdRead, created_at: "2026-10-12T05:00:00Z" }] : [],
+        alerts: options.hold ? [{ id: ALERT_ID, lead_id: JOB_ID, revision: REVISION_ID, reason: "waiting_schedule_confirmation", snapshot: { ...snapshot, cs_tag: "waiting_schedule_confirmation" }, read: holdRead, created_at: "2026-10-12T05:00:00Z" }] : [],
       };
       else if (endpoint === "acknowledge_operator_hold_alert") { holdRead = true; data = 1; }
       else if (endpoint === "get_lead_status_counts") data = [{ status: "urgent_job", count: 1 }];
@@ -264,11 +264,12 @@ for (const role of ["opr", "opr_admin"] as const) {
     await expect(page.getByRole("button", { name: "Copy Complete Details" })).toHaveCount(0);
   });
 
-  test(`${role}: grey complete hold card, acknowledgement and bell history`, async ({ page }) => {
+  test(`${role}: Marshmallow hold card, CX confirmation reason, acknowledgement and bell history`, async ({ page }) => {
     await mockSession(page, role, { hold: true });
     await page.goto("/leads");
-    const popup = page.getByRole("complementary", { name: "Operator job hold notification" });
+    const popup = page.getByRole("complementary", { name: "Operator job hold notifications" });
     await expect(popup).toBeVisible();
+    await expect(popup).toContainText("Waiting for CX for Schedule Confirmation");
     await popup.getByRole("button", { name: "Complete card" }).click();
     await expect(popup.getByText("10 Main St Apt 2")).toBeVisible();
     await expect(popup.getByText("Friday afternoon")).toBeVisible();

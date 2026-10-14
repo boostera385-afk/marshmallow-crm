@@ -1,13 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { NotificationPopupProvider, useNotificationPopupSlot } from "./popup-slot";
+import { NotificationPopupProvider, useNotificationPopupSlot, type PopupId } from "./popup-slot";
 
 function Popup({
   id,
   wantsToShow,
 }: {
-  id: "holdJob" | "urgent" | "jobInProgress" | "incompleteDetails" | "quoteUpdated";
+  id: PopupId;
   wantsToShow: boolean;
 }) {
   const isVisible = useNotificationPopupSlot(id, wantsToShow);
@@ -16,6 +16,11 @@ function Popup({
 }
 
 describe("notification popup slot", () => {
+  it("keeps a mandatory CRM announcement from overlapping operational popups", () => {
+    render(<NotificationPopupProvider><Popup id="holdJob" wantsToShow /><Popup id="crmUpdate" wantsToShow /></NotificationPopupProvider>);
+    expect(screen.getByTestId("crmUpdate")).toBeInTheDocument();
+    expect(screen.queryByTestId("holdJob")).not.toBeInTheDocument();
+  });
   it("gives a stop-work hold instruction priority over urgent work alerts", () => {
     render(<NotificationPopupProvider><Popup id="urgent" wantsToShow /><Popup id="holdJob" wantsToShow /></NotificationPopupProvider>);
     expect(screen.getByTestId("holdJob")).toBeInTheDocument();

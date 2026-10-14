@@ -29,7 +29,7 @@ export const holdSnapshotSchema = z.object({
 });
 export const holdAlertSchema = z.object({
   id: z.string().uuid(), lead_id: z.string().uuid(), revision: z.string().uuid(),
-  reason: z.enum(["ready_to_schedule", "scheduled", "cancelled"]),
+  reason: z.enum(["ready_to_schedule", "waiting_schedule_confirmation", "scheduled", "cancelled"]),
   snapshot: holdSnapshotSchema, read: z.boolean(), created_at: z.string().datetime({ offset: true }),
 });
 export const holdInboxSchema = z.object({
@@ -39,7 +39,10 @@ export const holdInboxSchema = z.object({
 export type HoldAlert = z.infer<typeof holdAlertSchema>;
 export type HoldSnapshot = z.infer<typeof holdSnapshotSchema>;
 export const HOLD_REASON_LABELS: Record<HoldAlert["reason"], string> = {
-  ready_to_schedule: "Ready to Schedule", scheduled: "Scheduled", cancelled: "Cancelled",
+  ready_to_schedule: "Ready to Schedule",
+  waiting_schedule_confirmation: "Waiting for CX for Schedule Confirmation",
+  scheduled: "Scheduled",
+  cancelled: "Cancelled",
 };
 
 // Keep explicit nullable SQL arguments and validate JSON responses at runtime.
