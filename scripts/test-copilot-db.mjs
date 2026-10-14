@@ -24,8 +24,14 @@ try {
   const policies = await sql("supabase/migrations/20261013062924_copilot_rls_policy_efficiency.sql");
   await db.exec(policies);
   await db.exec(policies);
+  const pilot = await sql("supabase/migrations/20261014034546_copilot_pilot_readiness_and_briefs.sql");
+  await db.exec(pilot);
+  await db.exec(pilot);
   const after = matrix(await db.exec(baseline));
   if (before.length !== 6 || JSON.stringify(before) !== JSON.stringify(after)) throw new Error("Existing lead visibility matrix changed");
+  // Reproduce shared-production schema USAGE for the CX-update workflow. This
+  // must not grant table access to the Copilot ledger or invalidate its smoke test.
+  await db.exec("GRANT USAGE ON SCHEMA marshmallow_private TO authenticated;");
   const smoke = (await db.exec(await sql("supabase/tests/111_copilot_readonly_smoke.sql"))).flatMap((r) => r.rows).filter((r) => typeof r.name === "string" && typeof r.result === "string");
   console.table(smoke);
   if (!smoke.length || smoke.some((r) => r.result !== "PASS")) throw new Error("Read-only Copilot deployment smoke failed");
@@ -33,6 +39,12 @@ try {
   const checks = results.flatMap((r) => r.rows).filter((r) => typeof r.name === "string" && typeof r.result === "string");
   console.table(checks);
   if (!checks.length || checks.some((r) => r.result !== "PASS")) throw new Error("Copilot SQL harness failed");
-  console.log(`${checks.length} behavioral checks and ${smoke.length} read-only smoke checks passed; migration applied twice; exact six-role baseline unchanged. Shared project untouched.`);
+  const pilotChecks = (await db.exec(await sql("supabase/tests/112_copilot_pilot.sql"))).flatMap((r) => r.rows).filter((r) => typeof r.name === "string" && typeof r.result === "string");
+  console.table(pilotChecks);
+  if (!pilotChecks.length || pilotChecks.some((r) => r.result !== "PASS")) throw new Error("Copilot pilot SQL harness failed");
+  const pilotSmoke = (await db.exec(await sql("supabase/tests/113_copilot_pilot_readonly_smoke.sql"))).flatMap((r) => r.rows).filter((r) => typeof r.name === "string" && typeof r.result === "string");
+  console.table(pilotSmoke);
+  if (!pilotSmoke.length || pilotSmoke.some((r) => r.result !== "PASS")) throw new Error("Copilot pilot read-only smoke failed");
+  console.log(`${checks.length + pilotChecks.length} behavioral checks and ${smoke.length + pilotSmoke.length} read-only smoke checks passed; migrations applied twice; exact six-role baseline unchanged. Shared project untouched.`);
 } catch (error) { console.error(error.message); process.exitCode = 1; }
 finally { await db.close(); }

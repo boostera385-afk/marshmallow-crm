@@ -39,6 +39,12 @@ Everything is permission-driven at **five layers** — UI, frontend permission h
 database RLS, Edge Functions, and generated types. A role change is not done until all
 five agree.
 
+**Copilot pilot:** the `pilot` branch adds a read-only operational workspace, saved
+lead/daily work briefs, conversational filters and explicitly consented AI drafting,
+with Admin readiness and stale-setting protection. Its backend is installed and
+types regenerated; CRM publication and real signed-in/provider QA remain separate; see
+[Copilot rollout](docs/COPILOT_ROLLOUT.md). No AI action approves or sends anything.
+
 > **Note on "Quo AI"** — the earlier Quo AI layer was removed in migration
 > `20260811082959`; Quo remains a webhook-driven chat mirror. Marshmallow Copilot is a
 > separate, read-only assistant with deterministic CRM tools and optional bounded AI,

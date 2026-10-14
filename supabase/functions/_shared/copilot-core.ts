@@ -26,12 +26,24 @@ export const COPILOT_FEATURES: CopilotFeature[] = [
 export interface CopilotAccess { allowed: boolean; aiEnabled: boolean; role: CopilotRole | null; timezone: string; sections: string[] }
 export interface CopilotConfig { enabled: boolean; ai_enabled: boolean; monthly_budget_cents: number; daily_ai_limit: number; timezone: string }
 export interface CopilotUsage { requests: number; reservedCents: number; inputTokens: number; outputTokens: number; unavailable: number }
-export interface CopilotSettings { config: CopilotConfig; roles: { role: CopilotRole; allowed: boolean }[]; users: { user_id: string; allowed: boolean }[]; usage: CopilotUsage }
-export type CopilotIntent = "features" | "help" | "leads" | "technicians" | "attention" | "report" | "health" | "ai" | "explain_report" | "blocked";
+export interface CopilotDiagnostics {
+  configChangedAt: string | null; lastSuccessAt: string | null; remainingCents: number;
+  remainingToday: number; completedThisMonth: number; keyConfigured: boolean;
+  backendVersion: string; model: string; promptVersion: string;
+}
+export interface CopilotSettings { config: CopilotConfig; roles: { role: CopilotRole; allowed: boolean }[]; users: { user_id: string; allowed: boolean }[]; usage: CopilotUsage; diagnostics?: CopilotDiagnostics }
+export type CopilotIntent = "features" | "help" | "leads" | "technicians" | "attention" | "report" | "health" | "ai" | "explain_report" | "blocked" | "brief" | "daily_brief" | "clarify";
+export interface CopilotSearchContext {
+  intent: "leads" | "technicians" | "report"; query?: string; status?: string;
+  service?: string; area?: string; active?: boolean | null; date?: string;
+  start?: string; end?: string; scope?: "mine" | "team";
+}
 export interface CopilotAsk {
   action: "ask"; message: string; requestId: string; allowAi: boolean; intent?: CopilotIntent;
   query?: string; status?: string; offset?: number; start?: string; end?: string; scope?: "mine" | "team";
   service?: string; area?: string; active?: boolean | null; date?: string;
+  selectedLeadId?: string; previous?: CopilotSearchContext;
+  conversation?: { question: string; answer: string }[];
 }
 export interface CopilotCard { id: string; title: string; subtitle: string; href: string; fields: { label: string; value: string }[] }
 export interface CopilotResult {
@@ -40,6 +52,9 @@ export interface CopilotResult {
   hasMore: boolean; nextOffset: number; resolvedIntent: CopilotIntent; refreshedAt: string;
   searchQuery?: string;
   aiUsed?: boolean;
+  filters?: { label: string; value: string }[];
+  requestId?: string; noticeCode?: string;
+  followup?: CopilotSearchContext;
 }
 export function resolveCopilotAccess(role: CopilotRole | null, enabled: boolean, roleDefault = false, override?: boolean | null) {
   return Boolean(role && enabled && (role === "admin" || (override ?? roleDefault)));
@@ -67,13 +82,15 @@ export function reportRange(message: string, today: string) {
 }
 export function routeCopilotMessage(message: string): { intent: CopilotIntent; query: string; status?: string; dayOffset?: number } {
   const text = message.trim(); const lower = text.toLowerCase();
+  if (/^(draft|write|compose)\b/i.test(text)) return { intent: "ai", query: text };
   if (/\b(delete|approve|cancel|reassign|send|update|change|mark|pay)\b/i.test(text) && !/\b(how|where|help|open|find|show|explain|features)\b/i.test(text)) return { intent: "blocked", query: text };
+  if (/\b(daily brief|work brief|start my day|morning work)\b/i.test(text)) return { intent: "daily_brief", query: "" };
+  if (/\b(this lead|selected lead|lead brief)\b/i.test(text)) return { intent: "brief", query: "" };
   if (/\b(explain|summari[sz]e)\b.*\b(report|work|day)\b/i.test(text)) return { intent: "explain_report", query: text };
   if (/\b(report|daily work|my work|team work)\b/i.test(text)) return { intent: "report", query: text };
   if (/\b(health|sync status|system status)\b/i.test(text)) return { intent: "health", query: "" };
   if (/attention|overdue|incomplete|needs attention/i.test(text)) return { intent: "attention", query: "" };
   if (/^(hi|hello|hey|help)[!. ]*$/i.test(text) || /\b(features|what can you do|what can i access)\b/i.test(text)) return { intent: "features", query: "" };
-  if (/^(draft|write)\b/i.test(text)) return { intent: "ai", query: text };
   if (/^(open|go to|navigate|where|how)\b/i.test(text)) return { intent: "help", query: text };
   if (/\b(jobs|leads)\b/i.test(text) && /today|tomorrow|yesterday|scheduled|urgent|need tech/i.test(text)) {
     return { intent: "leads", query: "", status: /urgent/i.test(text) ? "urgent_job" : /need tech/i.test(text) ? "need_tech" : /scheduled/i.test(text) ? "scheduled" : undefined,
@@ -93,6 +110,9 @@ export function emptyCopilotResult(intent: CopilotIntent): CopilotResult {
   return { source: "crm", title: "Marshmallow Copilot", text: "", cards: [], links: [], metrics: [], hasMore: false, nextOffset: 0, resolvedIntent: intent, refreshedAt: new Date().toISOString() };
 }
 export function isObject(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
+export function isCopilotDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(`${value}T12:00:00Z`).toISOString().slice(0, 10) === value;
+}
 export function parseCopilotAccess(value: unknown): CopilotAccess {
   if (!isObject(value) || typeof value.allowed !== "boolean" || typeof value.aiEnabled !== "boolean" || typeof value.timezone !== "string" ||
       !Array.isArray(value.sections) || !value.sections.every((s) => typeof s === "string") ||
@@ -102,15 +122,30 @@ export function parseCopilotAccess(value: unknown): CopilotAccess {
 export function parseCopilotAsk(value: unknown): CopilotAsk {
   if (!isObject(value) || value.action !== "ask" || typeof value.message !== "string" || value.message.length > 1200 || !value.message.trim() ||
     typeof value.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.requestId) || typeof value.allowAi !== "boolean") throw new Error("Invalid request");
-  const intents: CopilotIntent[] = ["features", "help", "leads", "technicians", "attention", "report", "health", "ai", "explain_report", "blocked"];
+  const intents: CopilotIntent[] = ["features", "help", "leads", "technicians", "attention", "report", "health", "ai", "explain_report", "blocked", "brief", "daily_brief", "clarify"];
   if (value.intent !== undefined && !intents.includes(value.intent as CopilotIntent)) throw new Error("Invalid intent");
   for (const key of ["query", "service", "area", "status"]) if (value[key] !== undefined && (typeof value[key] !== "string" || value[key].length > 200)) throw new Error("Invalid search filter");
-  for (const key of ["start", "end", "date"]) if (value[key] !== undefined && (typeof value[key] !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value[key]) || !Number.isFinite(Date.parse(value[key])))) throw new Error("Invalid date");
+  for (const key of ["start", "end", "date"]) if (value[key] !== undefined && (typeof value[key] !== "string" || !isCopilotDate(value[key]))) throw new Error("Invalid date");
   if (value.scope !== undefined && value.scope !== "mine" && value.scope !== "team") throw new Error("Invalid scope");
   if (value.offset !== undefined && (!Number.isInteger(value.offset) || Number(value.offset) < 0 || Number(value.offset) > 200)) throw new Error("Invalid page");
   if (value.active !== undefined && value.active !== null && typeof value.active !== "boolean") throw new Error("Invalid active filter");
+  if (value.selectedLeadId !== undefined && (typeof value.selectedLeadId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.selectedLeadId))) throw new Error("Invalid selected lead");
+  let previous: CopilotSearchContext | undefined;
+  if (value.previous !== undefined) {
+    if (!isObject(value.previous) || !["leads", "technicians", "report"].includes(String(value.previous.intent))) throw new Error("Invalid previous search");
+    // Reuse validation and copy only known fields; client context is never authority.
+    const parsed = parseCopilotAsk({ ...value.previous, previous: undefined, conversation: undefined, selectedLeadId: undefined, action: "ask", message: "previous", requestId: value.requestId, allowAi: false });
+    previous = { intent: parsed.intent as CopilotSearchContext["intent"], query: parsed.query, status: parsed.status,
+      service: parsed.service, area: parsed.area, active: parsed.active, date: parsed.date, start: parsed.start, end: parsed.end, scope: parsed.scope };
+  }
+  let conversation: CopilotAsk["conversation"];
+  if (value.conversation !== undefined) {
+    if (!Array.isArray(value.conversation) || value.conversation.length > 3 || !value.conversation.every((t) => isObject(t) && typeof t.question === "string" && t.question.length <= 500 && typeof t.answer === "string" && t.answer.length <= 1000)) throw new Error("Invalid conversation");
+    conversation = value.conversation.map((t) => ({ question: t.question, answer: t.answer }));
+  }
   return { action: "ask", message: value.message.trim(), requestId: value.requestId, allowAi: value.allowAi,
     intent: value.intent as CopilotIntent | undefined, query: value.query as string | undefined, status: value.status as string | undefined,
     offset: value.offset as number | undefined, start: value.start as string | undefined, end: value.end as string | undefined, scope: value.scope as "mine" | "team" | undefined,
-    service: value.service as string | undefined, area: value.area as string | undefined, active: value.active as boolean | null | undefined, date: value.date as string | undefined };
+    service: value.service as string | undefined, area: value.area as string | undefined, active: value.active as boolean | null | undefined, date: value.date as string | undefined,
+    selectedLeadId: value.selectedLeadId as string | undefined, previous, conversation };
 }

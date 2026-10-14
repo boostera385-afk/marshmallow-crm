@@ -3,7 +3,7 @@
 -- Unlike 110_copilot.sql, this file does not require/load the synthetic fixture.
 BEGIN;
 CREATE TEMP TABLE _copilot_smoke(name text PRIMARY KEY,result text NOT NULL) ON COMMIT DROP;
-GRANT SELECT,INSERT ON _copilot_smoke TO authenticated;
+GRANT SELECT,INSERT ON _copilot_smoke TO authenticated,anon;
 CREATE TEMP TABLE _copilot_principals AS
 SELECT DISTINCT ON (role) role::text AS role,user_id FROM public.user_roles ORDER BY role,user_id;
 GRANT SELECT ON _copilot_principals TO authenticated;
@@ -29,14 +29,22 @@ INSERT INTO _copilot_smoke
 SELECT 'All Copilot functions fix search_path',CASE WHEN bool_and(proconfig @> ARRAY['search_path=""']) THEN 'PASS' ELSE 'FAIL' END
 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname LIKE 'copilot\_%' ESCAPE '\';
 INSERT INTO _copilot_smoke VALUES ('Private AI ledger is inaccessible to browser roles',
- CASE WHEN NOT has_schema_privilege('anon','marshmallow_private','USAGE') AND NOT has_schema_privilege('authenticated','marshmallow_private','USAGE')
- AND NOT has_table_privilege('anon','marshmallow_private.copilot_usage','SELECT') AND NOT has_table_privilege('authenticated','marshmallow_private.copilot_usage','SELECT') THEN 'PASS' ELSE 'FAIL' END);
+ -- Schema USAGE is intentionally shared with the authenticated CX-update RPC.
+ -- It is not table authorization. Test the ledger itself, including write grants,
+ -- and actual denied SELECT actions below rather than revoking shared schema access.
+ CASE WHEN NOT has_table_privilege('anon','marshmallow_private.copilot_usage','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+ AND NOT has_table_privilege('authenticated','marshmallow_private.copilot_usage','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN 'PASS' ELSE 'FAIL' END);
 INSERT INTO _copilot_smoke VALUES ('Installed defaults are Admin-only and AI off',CASE WHEN
  (SELECT enabled AND NOT ai_enabled AND timezone='America/New_York' AND monthly_budget_cents=1000 AND daily_ai_limit=20 FROM public.copilot_config WHERE id)
  AND (SELECT count(*)=6 AND bool_and(allowed=(role::text='admin')) FROM public.copilot_role_permissions)
  AND NOT EXISTS(SELECT 1 FROM public.copilot_user_permissions) THEN 'PASS' ELSE 'FAIL' END);
 
 SET LOCAL ROLE authenticated;
+DO $$ DECLARE denied boolean:=false; BEGIN
+ BEGIN PERFORM count(*) FROM marshmallow_private.copilot_usage;
+ EXCEPTION WHEN insufficient_privilege THEN denied:=true; END;
+ INSERT INTO _copilot_smoke VALUES('Authenticated ledger read action is denied',CASE WHEN denied THEN 'PASS' ELSE 'FAIL' END);
+END; $$;
 DO $$ DECLARE principal record; access_value jsonb; denied boolean; d date; report jsonb; BEGIN
  FOR principal IN SELECT * FROM _copilot_principals LOOP
   PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',principal.user_id,'role','authenticated')::text,true);
@@ -63,6 +71,13 @@ DO $$ DECLARE principal record; access_value jsonb; denied boolean; d date; repo
    INSERT INTO _copilot_smoke VALUES(principal.role||': Admin settings are denied',CASE WHEN denied THEN 'PASS' ELSE 'FAIL' END);
   END IF;
  END LOOP;
+END; $$;
+RESET ROLE;
+SET LOCAL ROLE anon;
+DO $$ DECLARE denied boolean:=false; BEGIN
+ BEGIN PERFORM count(*) FROM marshmallow_private.copilot_usage;
+ EXCEPTION WHEN insufficient_privilege THEN denied:=true; END;
+ INSERT INTO _copilot_smoke VALUES('Anonymous ledger read action is denied',CASE WHEN denied THEN 'PASS' ELSE 'FAIL' END);
 END; $$;
 RESET ROLE;
 SELECT * FROM _copilot_smoke ORDER BY name;

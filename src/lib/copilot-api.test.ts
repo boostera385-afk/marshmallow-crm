@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { askCopilot, configureCopilot, fetchCopilotAccess, safeCopilotHref } from "./copilot-api";
+import { askCopilot, configureCopilot, fetchCopilotAccess, fetchCopilotDiagnostics, testCopilotAi, safeCopilotHref } from "./copilot-api";
 import { accessibleFeatures, businessDate, emptyCopilotResult, parseCopilotAsk, reportRange, resolveCopilotAccess, routeCopilotMessage } from "../../supabase/functions/_shared/copilot-core";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke } } }));
@@ -59,5 +59,20 @@ describe("Copilot API boundary", () => {
     invoke.mockResolvedValue({ data: { saved: true }, error: null });
     await expect(configureCopilot({ enabled: true, ai_enabled: false, monthly_budget_cents: 0, daily_ai_limit: 0, timezone: "UTC" })).resolves.toEqual({ saved: true });
     expect(invoke).toHaveBeenCalledTimes(1);
+  });
+  it("includes the exact previously saved configuration to reject stale overwrites", async () => {
+    invoke.mockResolvedValue({ data: { saved: true }, error: null });
+    const expected = { enabled: true, ai_enabled: false, monthly_budget_cents: 1000, daily_ai_limit: 20, timezone: "UTC" };
+    await configureCopilot({ ...expected, ai_enabled: true }, expected);
+    expect(invoke).toHaveBeenCalledWith("marshmallow-copilot", expect.objectContaining({ body: { action: "configure", config: { ...expected, ai_enabled: true }, expected } }));
+  });
+  it("propagates safe provider category and request ID for diagnostics", async () => {
+    invoke.mockResolvedValue({ data: null, error: { context: new Response(JSON.stringify({ error: "Provider quota blocked", code: "provider_billing", requestId: id }), { status: 429 }) } });
+    await expect(askCopilot({ action: "ask", message: "hello", requestId: id, allowAi: true })).rejects.toMatchObject({ status: 429, code: "provider_billing", requestId: id });
+  });
+  it("rejects malformed diagnostics and gives confirmed tests fresh IDs", async () => {
+    invoke.mockResolvedValue({ data: { keyConfigured: true }, error: null }); await expect(fetchCopilotDiagnostics()).rejects.toThrow();
+    invoke.mockResolvedValue({ data: { ...emptyCopilotResult("ai"), aiUsed: true }, error: null }); await testCopilotAi();
+    expect(invoke).toHaveBeenLastCalledWith("marshmallow-copilot", expect.objectContaining({ body: { action: "test_ai", confirmed: true, requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) } }));
   });
 });

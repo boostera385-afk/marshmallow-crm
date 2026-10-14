@@ -59,7 +59,7 @@ describe("Admin Copilot feature access", () => {
     renderSettings(); const control = await screen.findByRole("switch", { name: "Enable Marshmallow Copilot globally" });
     fireEvent.click(control); expect(state.configure).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Save Copilot configuration" }));
-    await waitFor(() => expect(state.configure).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, ai_enabled: false })));
+    await waitFor(() => expect(state.configure).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, ai_enabled: false }), expect.objectContaining({ enabled: true, ai_enabled: false })));
   });
   it("enables AI and saves the shared allowance and daily cap only on explicit Save", async () => {
     renderSettings(); const ai = await screen.findByRole("switch", { name: "Enable Copilot AI" });
@@ -69,7 +69,7 @@ describe("Admin Copilot feature access", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: "AI requests per user / day" }), { target: { value: "3" } });
     expect(state.configure).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Save Copilot configuration" }));
-    await waitFor(() => expect(state.configure).toHaveBeenCalledWith({ enabled: true, ai_enabled: true, monthly_budget_cents: 425, daily_ai_limit: 3, timezone: "America/New_York" }));
+    await waitFor(() => expect(state.configure).toHaveBeenCalledWith({ enabled: true, ai_enabled: true, monthly_budget_cents: 425, daily_ai_limit: 3, timezone: "America/New_York" }, expect.objectContaining({ ai_enabled: false })));
     expect(screen.getByRole("switch", { name: "Enable Marshmallow Copilot globally" })).toBeChecked();
     expect(screen.getByText(/There is no separate per-user AI permission/)).toBeInTheDocument();
   });
@@ -102,6 +102,20 @@ describe("Admin Copilot feature access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save Copilot configuration" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Configuration save denied"));
     expect(ai).toBeChecked(); expect(settings.config.ai_enabled).toBe(false);
-    expect(state.configure).toHaveBeenCalledWith(expect.objectContaining({ monthly_budget_cents: 0, daily_ai_limit: 0 }));
+    expect(state.configure).toHaveBeenCalledWith(expect.objectContaining({ monthly_budget_cents: 0, daily_ai_limit: 0 }), settings.config);
+  });
+  it("shows saved AI separately from an unsaved switch and discard restores saved values", async () => {
+    renderSettings(); const ai = await screen.findByRole("switch", { name: "Enable Copilot AI" }); await waitFor(() => expect(ai).toBeEnabled());
+    fireEvent.click(ai); expect(screen.getByText(/Saved: Copilot enabled · AI disabled · Unsaved changes/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft edits" })); expect(ai).not.toBeChecked(); expect(state.configure).not.toHaveBeenCalled();
+  });
+  it("preserves dirty drafts and blocks silent overwrites after another session changes config", async () => {
+    renderSettings(); const ai = await screen.findByRole("switch", { name: "Enable Copilot AI" }); await waitFor(() => expect(ai).toBeEnabled()); fireEvent.click(ai);
+    settings = { ...settings, config: { ...settings.config, daily_ai_limit: 3 } };
+    await client.invalidateQueries({ queryKey: ["copilot-settings"] });
+    expect(await screen.findByRole("alert")).toHaveTextContent("changed in another session"); expect(ai).toBeChecked();
+    expect(screen.getByRole("button", { name: "Save Copilot configuration" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Reload saved configuration" }));
+    expect(ai).not.toBeChecked(); expect(screen.getByRole("spinbutton", { name: "AI requests per user / day" })).toHaveValue(3); expect(state.configure).not.toHaveBeenCalled();
   });
 });

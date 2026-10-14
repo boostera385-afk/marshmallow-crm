@@ -2781,6 +2781,18 @@ export type Database = {
         }
         Returns: undefined
       }
+      copilot_configure_checked: {
+        Args: {
+          p_ai_enabled: boolean
+          p_daily_ai_limit: number
+          p_enabled: boolean
+          p_expected: Json
+          p_monthly_budget_cents: number
+          p_timezone: string
+        }
+        Returns: undefined
+      }
+      copilot_diagnostics: { Args: never; Returns: Json }
       copilot_finish_ai: {
         Args: {
           p_input: number
@@ -2793,6 +2805,7 @@ export type Database = {
       copilot_get_access: { Args: never; Returns: Json }
       copilot_get_settings: { Args: never; Returns: Json }
       copilot_health: { Args: never; Returns: Json }
+      copilot_lead_brief: { Args: { p_lead_id: string }; Returns: Json }
       copilot_nav_allowed: { Args: { p_section: string }; Returns: boolean }
       copilot_report: {
         Args: { p_end: string; p_scope?: string; p_start: string }

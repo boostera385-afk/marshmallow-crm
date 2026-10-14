@@ -1,5 +1,260 @@
 # Marshmallow Copilot rollout
 
+## Authorized pilot backend rollout — 2026-10-14
+
+With explicit user approval, the pilot backend was installed via Supabase MCP on
+the existing **Marshmallow** project `kxiqholnmhkwhdkhtopp` (`ACTIVE_HEALTHY`).
+This audit supersedes the pending backend/type-generation statements in the
+implementation record below. **CRM publication and a real signed-in end-to-end
+provider test remain pending.** No push/publication was requested or performed.
+
+- Applied the exact committed file
+  `supabase/migrations/20261014034546_copilot_pilot_readiness_and_briefs.sql`.
+  MCP recorded version **`20261014050703`**, name
+  `copilot_pilot_readiness_and_briefs`. Do not rerun it, rename applied local
+  history, use `db push`, or replay the already installed Copilot migrations.
+- Deployed **`marshmallow-copilot` version 2**, ACTIVE, with **JWT verification
+  enabled**. Read-back matched all five committed files exactly: entrypoint,
+  core, handler, conversation and provider. Backend/prompt remain `pilot-2` /
+  `2026-10-14.1`; model remains pinned to `gpt-4o-mini`.
+- Regenerated `src/integrations/supabase/types.ts` via MCP from the actual migrated
+  public schema. The reviewed artifact adds the three pilot RPCs and already
+  installed CX-update types; nothing was hand-edited, removed or cast around.
+- Executed exact `40_leads_rls_baseline.sql` before and after application. All
+  six role matrices match cell-for-cell. No lead policy, approval trigger or
+  customer record was changed by this rollout.
+- Live read-only smoke: **31/31 PASS** in `111_copilot_readonly_smoke.sql` and
+  **11/11 PASS** in `113_copilot_pilot_readonly_smoke.sql`. Admin saved-lead data
+  matches its source, missing IDs are unavailable, non-Admin diagnostics/config
+  calls are denied, excluded callers cannot request briefs, stale expected config
+  is rejected before any save, and browser roles cannot read the private AI ledger.
+  The positive configuration-save/permission/AI-ledger write harnesses were run
+  **only in isolated embedded Postgres**, never on this shared project.
+- The older smoke initially assumed no authenticated USAGE on the entire private
+  schema. The installed CX-update workflow legitimately uses that shared schema;
+  all Copilot ledger table grants still deny browser roles. The corrected smoke
+  asserts no table privileges, including writes, plus actual denied anonymous and
+  authenticated SELECT actions. Local regression reproduces shared schema USAGE.
+  No remote grant was altered to obtain a passing result.
+- Live function checks: CORS OPTIONS returned 200, missing auth was rejected by
+  the gateway with 401, and a valid legacy anonymous key reached the deployed
+  handler and returned **401, “Sign in to use Copilot.”** Runtime logs show version
+  2 and the expected denied invocation, without recorded errors in the inspected
+  post-deployment window. This verifies boot/auth rejection, **not** an authenticated
+  CRM workflow or successful paid provider call.
+- Saved configuration is unchanged: Copilot on, **AI off**, $10 monthly allowance,
+  20 requests/user/day, `America/New_York`. The last configuration audit remains
+  `2026-10-13 08:56:26.81426+00`; the private ledger still contains one request.
+  No secrets, AI enablement, ingestion controls, external messages or user grants
+  were changed, and no new paid provider request was made.
+
+### Advisor review
+
+Security/performance advisors were inspected before and after. The only new
+security finding is the expected authenticated-executable `SECURITY DEFINER`
+diagnostics RPC. It is intentionally callable but checks `auth.uid()` and the
+Admin role before reading aggregate usage; anonymous execute is revoked and
+non-Admin denial passed. The existing private-ledger “RLS without policies” INFO
+is intentional deny-by-default, with direct read denial verified. Do not grant
+ledger access or disable RLS to silence these notices.
+
+Other pre-existing findings remain out of scope and are **not** claimed fixed:
+
+| Notice | Review/remediation |
+| --- | --- |
+| Mutable search paths (7) | [Function search paths](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable) |
+| `pg_net` in public (1) | [Extension schema](https://supabase.com/docs/guides/database/database-linter?lint=0014_extension_in_public) |
+| Anonymous-definer execution (4), authenticated-definer execution (65 including the reviewed diagnostics RPC) | [Anonymous execution](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable), [authenticated execution](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable) |
+| Leaked-password protection disabled | [Password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) |
+| Unindexed foreign keys (3), RLS initplans (24), multiple permissive policies (16), duplicate index (1) | [Foreign keys](https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys), [initplans](https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan), [policies](https://supabase.com/docs/guides/database/database-linter?lint=0006_multiple_permissive_policies), [indexes](https://supabase.com/docs/guides/database/database-linter?lint=0009_duplicate_index) |
+| RLS without policies (4 INFO), unused indexes (25 INFO), absolute Auth connection allocation (1 INFO) | [Deny-by-default RLS](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), [unused indexes](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index), [production checks](https://supabase.com/docs/guides/deployment/going-into-prod) |
+
+### Post-deployment local frontend verification
+
+All checks were rerun after replacing generated types:
+
+| Check | Result |
+| --- | --- |
+| `npm run lint` | Passed: no errors; 29 pre-existing warnings. |
+| `npm run typecheck` | Passed for app and node configurations. |
+| `npm test -- --maxWorkers=2` | 615 tests passed across 71 files. |
+| `npx playwright test --config playwright.operator-workflow.config.ts` | 45 isolated browser tests passed, including 20 Copilot cases and desktop/mobile minimize/restore. |
+| `npm run build` | Passed, including unchanged Donut v1.7.0 source/ZIP verification. Existing build notices remain. |
+| `npx deno check --no-lock supabase/functions/marshmallow-copilot/index.ts scripts/benchmark-copilot.ts` | Passed. |
+| `node scripts/test-copilot-db.mjs <PGlite installation directory>` | 73 behavioral and 42 read-only smoke checks passed with shared-schema USAGE reproduced; migrations applied twice; all six role matrices unchanged. |
+| `git diff --check` | Passed. |
+
+Frontend browser traffic remains completely intercepted with synthetic records;
+the separate live SQL and HTTP checks above are the deployed-backend evidence.
+The revised smoke files and this rollout record are committed with the exact
+MCP-generated database types. Donut source/artifacts and shared AI endpoints are
+unchanged; no manual Donut reinstall is required for this CRM-only feature.
+
+### Remaining release checks
+
+Publish the reviewed `pilot` frontend separately, refresh CRM tabs, then verify
+a real signed-in permitted Admin and excluded user through the deployed function.
+Check minimize/restore while using another work page. AI remains deliberately off;
+enable/save it and confirm the allowance-consuming Admin provider test only with
+separate approval. No real signed-in browser session was available to this task,
+and network-isolated browser tests do not replace that final check.
+
+Rollback remains the migration's documented sequence: disable Copilot, restore
+the prior frontend/function, and optionally remove only the three pilot RPCs after
+review. Retain configuration, audit history and the ledger. The previous deployed
+function source was retained locally for recovery; no rollback was executed.
+
+## Pilot enhancement — 2026-10-14 (implementation record)
+
+Implemented on `pilot`, based on `copilot` commit `61560f2`. This section supersedes
+the older UI/provider descriptions below, not their historical deployment record.
+**No production settings, secrets, migrations, Edge Functions or CRM publication
+were changed during the pilot implementation. No paid provider calls were made.**
+
+### What changed
+
+- Admin shows verified saved AI/Copilot state separately from draft switches,
+  marks unsaved edits, offers discard/reload, and preserves dirty edits when another
+  session changes configuration. New UI saves include the exact previously saved
+  config; the checked RPC locks and compares it before saving or returns a conflict.
+  The old configure RPC remains for existing clients; refresh all Admin tabs after
+  publication. This protection is not a claim that the reported disable was caused
+  by a race: the read-only audit showed AI enabled, one success, then a later disable.
+- Readiness checks are Admin-only, explicit and zero-spend: credential presence,
+  remaining shared allowance, the current Admin's daily attempts remaining, last
+  configuration change, last successful request and backend/model/prompt versions.
+  Presence is not provider validation. A separate confirmation discloses $0.02 and
+  daily quota consumption before one nonsensitive provider test. It cannot enable AI.
+- Provider adapter uses Responses API with strict structured output, `store:false`,
+  600 output tokens, 20-second timeout and no retries/fallback. Auth/access, billing,
+  rate limiting, model/request config, timeout, network, refusal, incomplete and
+  invalid outputs have safe distinct categories; raw provider bodies are not logged.
+  Unknown usage remains NULL. A failed accounting follow-up keeps the successful
+  answer and the conservative reservation instead of claiming the AI call failed.
+- Validated, bounded search context supports area/service/status/active/date
+  refinements and exact ISO report ranges. Unknown refinements request clarification
+  without spending. Explain preserves the original range and personal/team scope;
+  the existing caller-scoped RPC still rejects non-Admin team reports.
+- AI-assisted consent is off on each newly opened panel. When consent is on, up to
+  three prior AI-only question/answer pairs (500/1,000 characters each) may be sent
+  as untrusted context. CRM cards, phones, addresses, quotes and transcripts are
+  never automatically included. Explain excludes conversation history and forwards
+  only fresh scoped aggregates. User-entered sensitive content is not redacted by
+  magic: do not put it in questions, and review provider processing/retention terms.
+- Exact saved-lead brief rechecks ID, record RLS, status visibility and field gates;
+  inaccessible/missing IDs are indistinguishable. It flags missing saved service
+  details/address/schedule requirements, not a passed urgent check. A draft action
+  prepares editable text and requires AI-assisted consent; only fresh saved
+  service/status are forwarded, with placeholders for unknown schedule or price.
+  There is no customer message sending, direct status write or approval action.
+- Daily work brief combines scoped current work metrics with the attention worklist.
+  Historical transitions/revenue remain unsupported. Technician cards deep-link to
+  the existing directory/workflow, not a duplicate assessment prompt or AI endpoint.
+  The curated feature guide uses reviewed descriptions and permitted workflow links.
+- Compact panel plus expanded workspace with a role-filtered workflow sidebar,
+  multiline Enter/Shift+Enter composer, editable interpreted filters, expandable
+  saved details, timestamps, AI/report copying and explicitly session-only feedback.
+  Failed questions stay editable; retry is manual with a new ID. Stop waiting
+  discards late results but explicitly does not promise to cancel provider spending.
+  Permission-scope changes clear session results; close clears all session context.
+- Minimize (`−`) hides the panel so the CRM work page stays usable, with a small
+  restore/close bar. Restore or the normal header launcher brings back the same
+  session, unsent draft, filters and expanded mode, including across route navigation.
+  In-flight requests continue while minimized; restore never resubmits them. Close
+  remains distinct and clears the session. Access polling continues while minimized,
+  and revoked access removes the session/restore bar through the existing provider.
+- Metadata-only `copilot_request` logs contain request UUID, duration, safe result
+  code, AI-attempt flag, model and prompt version. Never question/answer text,
+  customer fields, user IDs, keys or transcripts. Ledger accounting remains private.
+
+### Original rollout checklist (backend/type steps now completed above)
+
+1. Review and manually apply **only the new migration**:
+   `supabase/migrations/20261014034546_copilot_pilot_readiness_and_briefs.sql`.
+   It adds three RPCs and no tables or customer writes. Do not rerun the two already
+   installed Copilot migrations or use `db push` to reconcile MCP timestamps.
+2. On an isolated test target, run exact `40_leads_rls_baseline.sql` before/after
+   the migration and compare all six role matrices. Run `110_copilot.sql` and
+   `112_copilot_pilot.sql` only with the disposable synthetic fixture. They write
+   config/permissions/usage and are **not production smoke queries**. The local
+   embedded PostgreSQL runner verifies these exact files and applies migrations twice.
+3. Regenerate `src/integrations/supabase/types.ts` from the intended **complete**
+   migrated schema, using Supabase CLI or MCP, review and rerun gates. Docker/local
+   Supabase is unavailable here, and production is deliberately unmigrated, so type
+   regeneration is blocked. No generated types were hand-edited; new frontend
+   requests use the validated Edge envelope, not invented typed RPC casts.
+4. With separate approval, deploy `marshmallow-copilot` plus all its `_shared`
+   imports, keeping JWT verification. The new backend is **awaiting deployment**.
+   Readiness should then report `pilot-2` and prompt `2026-10-14.1`. Existing old
+   deterministic requests remain compatible; new pilot RPC actions fail closed when
+   missing. Verify deployed source, caller authorization and advisor findings.
+5. Publish CRM separately, refresh every Admin/user tab, then inspect the **saved**
+   AI switch and explicitly enable/save it if approved. Never silently enable it
+   during deployment. Start Admin-only; verify mobile/desktop, denied roles and
+   out-of-scope IDs, hidden fields, source navigation and real sign-in sessions.
+6. After approving provider spend, confirm one Admin connection test, then pilot
+   nonsensitive drafting and report explanations. Confirm latency, output quality,
+   real failure categories and multi-connection quota/concurrency behavior. Embedded
+   PostgreSQL cannot prove concurrent requests against deployed Postgres.
+
+Rollback: disable Copilot via Admin, restore the previous frontend/function, then
+optionally remove only the three pilot RPCs listed in the migration's rollback
+section after dependency review. Keep config, audit history and the usage ledger.
+No lead policy, agreed schedule, paid-terminal rule or approval trigger is changed.
+
+### Model quality and cost gate
+
+The live model stays pinned to `gpt-4o-mini`; a newer/more expensive model is not
+automatically better for this workflow. Compare models with the optional synthetic
+benchmark, only after verifying current availability/prices and obtaining spend
+approval. It makes at most five requests, outside CRM allowance accounting, and
+stops on the first failure without retries. It never connects to Supabase or Quo.
+
+```sh
+# Safe dry run: no environment key or network permission, and no provider call
+npx deno run scripts/benchmark-copilot.ts
+
+# Live benchmark ONLY after explicit approval; set a server-side environment key
+# securely, never in source, a VITE_ variable or a command argument.
+npx deno run --allow-env=OPENAI_API_KEY --allow-net=api.openai.com scripts/benchmark-copilot.ts --confirm-provider-spend --model=<reviewed-model-id>
+```
+
+Review every scenario for factuality, correct routing, draft-only behavior, prompt
+injection resistance, unavailable-vs-zero and date/scope fidelity; compare latency
+and actual token counts using current provider prices. Kind matches alone are not
+a quality score. Record evidence before changing the production model, token ceiling
+or reservation accounting. Live comparison, production QA and provider success-rate
+measurements remain approval-gated, not simulated by local test results.
+
+### Pilot local verification
+
+Final local checks on 2026-10-14:
+
+| Check | Result |
+| --- | --- |
+| `npm run lint` | Passed: 0 errors, 29 warnings outside changed Copilot files. |
+| ESLint on all changed/new supported TypeScript files | Passed: no warnings or errors. |
+| `npm run typecheck` | Passed for app and node configurations. |
+| `npm test -- --maxWorkers=2` | 615 tests passed across 71 files. |
+| `npm run build` | Passed, including unchanged Donut v1.7.0 integrity check; existing Browserslist, mixed-import and large-chunk notices remain. |
+| `npx playwright test --config playwright.operator-workflow.config.ts` | 45 tests passed, including 20 Copilot browser tests with synthetic records and all external requests intercepted. |
+| `node scripts/test-copilot-db.mjs <PGlite installation directory>` | 73 behavioral and 29 read-only smoke checks passed; migrations applied twice; exact six-role `40_leads_rls_baseline.sql` matrices unchanged. |
+| `npx deno check --no-lock supabase/functions/marshmallow-copilot/index.ts scripts/benchmark-copilot.ts` | Passed. |
+| `npx deno run scripts/benchmark-copilot.ts` | Safe dry run refused live calls without explicit spend confirmation. |
+| `git diff --check` | Passed. |
+
+Browser checks cover compact/expanded layouts, desktop/mobile minimize/restore,
+usable underlying CRM controls, session preservation across work pages, close/clear,
+focus restoration, denied callers, hidden OPR quotes, drafting consent, readiness
+confirmation and no automatic provider retry. Provider behavior is network-mocked;
+these checks are not real provider availability, deployed RLS, concurrent production
+requests or CRM publication evidence. Live QA and complete-schema type regeneration
+remain blocked/approval-gated as described above.
+
+Donut has no native Copilot counterpart; its sources, ZIP and v1.7.0 artifacts are
+unchanged. Existing shared urgent checks and technician assessment endpoints are
+not modified or redeployed.
+
 ## State and safe defaults
 
 Implemented on `copilot`, based on merged main `f99142a`. With explicit user
