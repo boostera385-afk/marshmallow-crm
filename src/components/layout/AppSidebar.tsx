@@ -93,7 +93,7 @@ export default function AppSidebar() {
   const queryClient = useQueryClient();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const cxCount = useUpdateCount("cx");
-  const techCount = useUpdateCount("tech", role === "admin" || role === "processor");
+  const techCount = useUpdateCount("tech");
   // Leads already announced as Pending to Send, so one status change alerts exactly once.
   const announcedQuotePendingIds = useRef<Set<string>>(new Set());
 
@@ -430,7 +430,7 @@ export default function AppSidebar() {
       ...visibleItems.filter((item) => item.group === label),
       ...(label === "Review" && needAttentionItem ? [needAttentionItem] : []),
       ...(label === "Review" && canAccess("cx_updates") ? [{ title: "Get CX Update", url: "/get-cx-update", icon: MessageSquare, navKey: "cx_updates", group: "Review" }] : []),
-      ...(label === "Review" && canAccess("cx_updates") && (role === "admin" || role === "processor") ? [{ title: "Get Tech Update", url: "/get-tech-update", icon: Wrench, navKey: "tech_updates", group: "Review" }] : []),
+      ...(label === "Review" && canAccess("cx_updates") ? [{ title: "Get Tech Update", url: "/get-tech-update", icon: Wrench, navKey: "tech_updates", group: "Review" }] : []),
     ],
   })).filter((group) => group.items.length > 0);
   const visibleStatuses = ALL_LEAD_STATUSES.filter((status) => allowedStatuses.has(status));
