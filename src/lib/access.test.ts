@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessNavItem, canAddLeadViaExtension, canAddManualLead, canDeleteTechnicians, canSeeTechDetails, canViewLeadCoverageAnalytics, getDefaultNavAccess } from "@/lib/access";
+import { canAccessNavItem, canAddLeadViaExtension, canAddManualLead, canDeleteTechnicians, canRequestTechUpdate, canSeeTechDetails, canViewLeadCoverageAnalytics, getDefaultNavAccess } from "@/lib/access";
 import type { NavigationPermission } from "@/types";
 
 describe("cancellation request navigation access", () => {
@@ -56,6 +56,16 @@ describe("technician details", () => {
     for (const role of ["admin", "processor", "customer_service", "opr"] as const) {
       expect(canSeeTechDetails(role)).toBe(true);
     }
+  });
+});
+
+describe("Tech Updated navigation audience", () => {
+  it.each(["customer_service", "cs_admin"] as const)("shows returned Processor answers to %s", (role) => {
+    expect(canRequestTechUpdate(role)).toBe(true);
+  });
+
+  it.each(["admin", "processor", "opr", "opr_admin"] as const)("does not show the requester-only answer shortcut to %s", (role) => {
+    expect(canRequestTechUpdate(role)).toBe(false);
   });
 });
 
