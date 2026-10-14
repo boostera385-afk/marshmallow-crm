@@ -31,6 +31,15 @@ export function canCompleteCxUpdate(role: AppRole | null | undefined): boolean {
   return role === "cs_admin" || role === "customer_service";
 }
 
+export function canRequestTechUpdate(role: AppRole | null | undefined): boolean {
+  return role === "cs_admin" || role === "customer_service";
+}
+
+/** Admin can monitor the queue; Processor is the role that records the reply. */
+export function canCompleteTechUpdate(role: AppRole | null | undefined): boolean {
+  return role === "processor";
+}
+
 /** Roles that may add a technician when they have the Technicians tab. */
 export function canAddTechnicians(role: AppRole | null | undefined): boolean {
   return role === "admin" || role === "processor" || role === "opr" || role === "opr_admin";

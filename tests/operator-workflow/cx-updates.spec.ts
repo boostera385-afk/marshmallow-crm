@@ -72,7 +72,7 @@ for (const role of ["customer_service", "cs_admin"]) for (const width of [1366, 
   await page.getByRole("button", { name: "Save CS Updated" }).click();
   await expect(page.getByRole("dialog", { name: "Mark CS Updated" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Synthetic Hidden Customer" })).toHaveCount(0);
-  expect(actions.filter((action) => action.action === "complete")).toEqual([{ action: "complete", requestId: REQUEST, text: "Friday confirmed" }]);
+  expect(actions.filter((action) => action.action === "complete")).toEqual([{ kind: "cx", action: "complete", requestId: REQUEST, text: "Friday confirmed" }]);
 });
 test("CS failure retains pending request and typed response without false success", async ({ page }) => {
   await isolatedCx(page, "customer_service", { failure: true }); await page.goto("/get-cx-update");
@@ -88,7 +88,7 @@ test("CS failure retains pending request and typed response without false succes
   await expect(page.getByText("CS Updated — returned to Processor/Admin")).toHaveCount(0);
 });
 test("Processor reviews and acknowledges returned update without changing the job", async ({ page }) => {
-  const actions = await isolatedCx(page, "processor", { updated: true }); await page.goto("/get-cx-update?tab=cs_updated");
+  const actions = await isolatedCx(page, "processor", { updated: true }); await page.goto("/get-cx-update?tab=updated");
   await expect(page.getByText("Friday confirmed", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open lead" })).toHaveAttribute("href", `/leads/${LEAD}`);
   await expect(page.getByRole("button", { name: "Mark CS Updated" })).toHaveCount(0);
@@ -102,7 +102,7 @@ test("Processor can request customer follow-up from a saved paid lead card", asy
   await page.getByRole("textbox", { name: "Required customer update" }).fill("Confirm Friday availability");
   await page.getByRole("button", { name: "Send request" }).click();
   await expect(page.getByRole("dialog", { name: "Get CX Update" })).toHaveCount(0);
-  expect(actions.filter((action) => action.action === "create")).toEqual([{ action: "create", leadId: LEAD, requestId: expect.any(String), text: "Confirm Friday availability" }]);
+  expect(actions.filter((action) => action.action === "create")).toEqual([{ kind: "cx", action: "create", leadId: LEAD, requestId: expect.any(String), text: "Confirm Friday availability" }]);
 });
 for (const role of ["opr", "opr_admin"]) test(`${role} cannot access queue route or sidebar`, async ({ page }) => {
   const actions = await isolatedCx(page, role); await page.goto("/get-cx-update");

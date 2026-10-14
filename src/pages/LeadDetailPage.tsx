@@ -42,6 +42,7 @@ import LeadPhotoActions from "@/components/leads/LeadPhotoActions";
 import CopyLeadButton from "@/components/leads/CopyLeadButton";
 import CompleteLeadCopyButton from "@/components/leads/CompleteLeadCopyButton";
 import CxUpdateRequestButton from "@/components/leads/CxUpdateRequestButton";
+import TechUpdateRequestButton from "@/components/leads/TechUpdateRequestButton";
 import ReminderButton from "@/components/leads/ReminderButton";
 import NoteThread from "@/components/leads/NoteThread";
 import NearbyAreasList, { type NearbyAreasData } from "@/components/leads/NearbyAreasList";
@@ -1643,6 +1644,7 @@ export default function LeadDetailPage() {
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <CompleteLeadCopyButton lead={currentCopyLead} />
                       {!isNew && leadId && <CxUpdateRequestButton leadId={leadId} customerName={originalLead?.customer_name || form.customer_name} />}
+                      {!isNew && leadId && <TechUpdateRequestButton leadId={leadId} customerName={originalLead?.customer_name || form.customer_name} />}
                       <ReminderButton
                         lead={currentCopyLead}
                         className="h-9 rounded-xl px-2.5 text-[10px]"

@@ -71,6 +71,7 @@ import { logActivity } from "@/lib/activity";
 import LeadPhotoActions from "./LeadPhotoActions";
 import CompleteLeadCopyButton from "./CompleteLeadCopyButton";
 import CxUpdateRequestButton from "./CxUpdateRequestButton";
+import TechUpdateRequestButton from "./TechUpdateRequestButton";
 import {
   canCreateCancellationRequest,
   createCancellationRequest,
@@ -2017,7 +2018,8 @@ function LeadCard({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <CxUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />
+              <CxUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} className="crm-lead-card-inner h-11 min-w-[132px] flex-1 rounded-[14px] px-3 text-[11px] font-semibold" />
+              <TechUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} className="crm-lead-card-inner h-11 min-w-[132px] flex-1 rounded-[14px] px-3 text-[11px] font-semibold" />
               {!isOpr && (
                 <Button
                   variant="outline"

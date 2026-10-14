@@ -45,6 +45,7 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
     return query;
   },
   rpc: () => Promise.resolve({ data: 0, error: null }),
+  functions: { invoke: () => Promise.resolve({ data: { count: 0 }, error: null }) },
   channel: (name: string) => {
     state.channels.push(name);
     const channel = {

@@ -1,0 +1,20 @@
+-- Purpose: allow the requested urgent-lead AI vocabulary plus a tightly bounded
+-- two/three-word label when the conversation is genuinely about another topic.
+-- This changes only the derived lead_ai_statuses table; it never updates leads.
+-- Apply manually after reviewing the paired refresh-urgent-statuses deployment.
+
+ALTER TABLE public.lead_ai_statuses
+  DROP CONSTRAINT IF EXISTS lead_ai_status_label;
+
+ALTER TABLE public.lead_ai_statuses
+  ADD CONSTRAINT lead_ai_status_label CHECK (
+    length(status) BETWEEN 3 AND 48
+    AND status ~ '^[A-Za-z][A-Za-z/-]*( [A-Za-z][A-Za-z/-]*){1,2}$'
+  );
+
+COMMENT ON COLUMN public.lead_ai_statuses.status IS
+  'Preferred operational label or a validated two/three-word AI fallback.';
+
+-- Rollback: redeploy the previous enum-only classifier first. Review/remap any
+-- non-legacy labels in lead_ai_statuses, then replace this constraint with the
+-- enum CHECK from 20261107000000_ai_urgent_features.sql. Do not delete leads.

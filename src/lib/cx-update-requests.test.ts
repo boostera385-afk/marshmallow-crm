@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { canAccessCxUpdates, canAccessNavItem, canCompleteCxUpdate, canRequestCxUpdate } from "./access";
-import { createCxRequest, completeCxRequest, fetchCxQueue, fetchCxCount, cxNotificationHref } from "./cx-update-requests";
+import { canAccessCxUpdates, canAccessNavItem, canCompleteCxUpdate, canCompleteTechUpdate, canRequestCxUpdate, canRequestTechUpdate } from "./access";
+import { createCxRequest, completeCxRequest, fetchCxQueue, fetchCxCount, cxNotificationHref, createUpdateRequest, questionMoreUpdateRequest } from "./cx-update-requests";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke } } }));
 const id = "00000000-0000-4000-8000-000000000001";
 export const syntheticCxRequest = {
   id, lead_id: "00000000-0000-4000-8000-000000000002", requested_by: "processor", requester_name: "Synthetic Processor",
-  recipient_cs: "cs", recipient_name: "Synthetic CS", request_text: "Confirm Friday availability", status: "pending",
+  request_kind: "cx", recipient_cs: "cs", recipient_name: "Synthetic CS", request_text: "Confirm Friday availability", status: "pending", thread: [],
   response_text: null, completed_at: null, completed_by_name: null, created_at: "2026-10-13T00:00:00Z",
   customer: { job_id: "LD-CX-TEST", customer_name: "Synthetic Customer", customer_phone: "5550100000", customer_landline: null, customer_email: null,
     service_type: "Plumbing", service_details: "Synthetic repair", address: "10 Test St Apt 2", city: "Miami", state: "FL", zip_code: "33101",
@@ -19,11 +19,15 @@ describe("CX update role permissions", () => {
     expect(canAccessNavItem(role, "cx_updates", [{ id: "", user_id: "", nav_section: "cx_updates", allowed: false }])).toBe(true);
     expect(canRequestCxUpdate(role)).toBe(role === "admin" || role === "processor");
     expect(canCompleteCxUpdate(role)).toBe(role === "cs_admin" || role === "customer_service");
+    expect(canRequestTechUpdate(role)).toBe(role === "cs_admin" || role === "customer_service");
+    expect(canCompleteTechUpdate(role)).toBe(role === "processor");
   });
   it.each(["opr", "opr_admin", null, undefined] as const)("denies %s even with a navigation grant", (role) => {
     expect(canAccessNavItem(role, "cx_updates", [{ id: "", user_id: "", nav_section: "cx_updates", allowed: true }])).toBe(false);
     expect(canRequestCxUpdate(role)).toBe(false);
     expect(canCompleteCxUpdate(role)).toBe(false);
+    expect(canRequestTechUpdate(role)).toBe(false);
+    expect(canCompleteTechUpdate(role)).toBe(false);
   });
 });
 describe("CX customer-only API contract", () => {
@@ -32,7 +36,7 @@ describe("CX customer-only API contract", () => {
     const queue = await fetchCxQueue("pending", 20);
     expect(queue.rows[0].customer.address).toBe("10 Test St Apt 2");
     expect(JSON.stringify(queue)).not.toContain("PRIVATE");
-    expect(invoke).toHaveBeenCalledWith("cx-update-requests", { body: { action: "list_pending", offset: 20 } });
+    expect(invoke).toHaveBeenCalledWith("cx-update-requests", { body: { kind: "cx", action: "list_pending", offset: 20 } });
   });
   it("rejects malformed responses rather than showing an empty or successful queue", async () => {
     invoke.mockResolvedValue({ error: null, data: { rows: [{}], total: 1 } });
@@ -44,9 +48,13 @@ describe("CX customer-only API contract", () => {
     invoke.mockResolvedValue({ error: null, data: { saved: true, id } });
     await createCxRequest(syntheticCxRequest.lead_id, id, " Confirm Friday ");
     await completeCxRequest(id, " Friday confirmed ");
+    await createUpdateRequest("tech", syntheticCxRequest.lead_id, id, " Check technician ");
+    await questionMoreUpdateRequest("tech", id, " What time? ");
     expect(invoke.mock.calls.map((call) => call[1].body)).toEqual([
-      { action: "create", leadId: syntheticCxRequest.lead_id, requestId: id, text: "Confirm Friday" },
-      { action: "complete", requestId: id, text: "Friday confirmed" },
+      { kind: "cx", action: "create", leadId: syntheticCxRequest.lead_id, requestId: id, text: "Confirm Friday" },
+      { kind: "cx", action: "complete", requestId: id, text: "Friday confirmed" },
+      { kind: "tech", action: "create", leadId: syntheticCxRequest.lead_id, requestId: id, text: "Check technician" },
+      { kind: "tech", action: "question_more", requestId: id, text: "What time?" },
     ]);
   });
   it("preserves backend denial and failure without pretending save success", async () => {
@@ -57,7 +65,9 @@ describe("CX customer-only API contract", () => {
   });
   it("links notifications to the queue rather than an inaccessible full lead", () => {
     expect(cxNotificationHref("Get CX Update")).toBe("/get-cx-update");
-    expect(cxNotificationHref("CS Updated")).toBe("/get-cx-update?tab=cs_updated");
+    expect(cxNotificationHref("CS Updated")).toBe("/get-cx-update?tab=updated");
+    expect(cxNotificationHref("Get Tech Update")).toBe("/get-tech-update");
+    expect(cxNotificationHref("Tech Updated")).toBe("/get-tech-update?tab=updated");
     expect(cxNotificationHref("Lead Assigned")).toBeNull();
   });
 });

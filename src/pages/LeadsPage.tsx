@@ -49,6 +49,7 @@ import { canAddLeadViaExtension, canAddManualLead, isOperatorRole } from "@/lib/
 import { motion } from "framer-motion";
 import { heroTitle, premiumEase, cardGridContainer, cardGridItem } from "@/lib/motion";
 import { formatDistanceToNow } from "date-fns";
+import { urgentAiStatusClass } from "@/lib/urgent-ai-status";
 
 const PAGE_SIZES = [20, 40, 60, 100];
 
@@ -1531,7 +1532,7 @@ export default function LeadsPage() {
                       <CopyableCell text={l.service_type || "—"} defaultWidth={false} className="text-muted-foreground" />
                       <td className="px-2 py-2 text-[11px] font-medium whitespace-nowrap">
                         {l.lead_ai_statuses?.status ? (
-                          <span className="inline-flex items-center rounded-full border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-sky-700 dark:text-sky-400">
+                          <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 ${urgentAiStatusClass(l.lead_ai_statuses.status)}`}>
                             {l.lead_ai_statuses.status}
                           </span>
                         ) : (

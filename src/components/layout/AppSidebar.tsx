@@ -22,6 +22,7 @@ ShieldCheck,
   ShieldAlert,
   AlertTriangle,
   TrendingUp,
+  Wrench,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
@@ -56,7 +57,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import marshmallowLogo from "@/assets/marshmallow-logo.png.asset.json";
 import ChangePasswordDialog from "@/components/auth/ChangePasswordDialog";
-import { useCxCount } from "@/hooks/useCxUpdates";
+import { useUpdateCount } from "@/hooks/useCxUpdates";
 
 const getNavItems = (role: string) => [
   { title: "All Leads", url: "/leads", icon: Users, navKey: "leads", group: "Work" },
@@ -91,7 +92,8 @@ export default function AppSidebar() {
   const { allowedStatuses } = useAllowedStatuses();
   const queryClient = useQueryClient();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const cxCount = useCxCount();
+  const cxCount = useUpdateCount("cx");
+  const techCount = useUpdateCount("tech", role === "admin" || role === "processor");
   // Leads already announced as Pending to Send, so one status change alerts exactly once.
   const announcedQuotePendingIds = useRef<Set<string>>(new Set());
 
@@ -428,6 +430,7 @@ export default function AppSidebar() {
       ...visibleItems.filter((item) => item.group === label),
       ...(label === "Review" && needAttentionItem ? [needAttentionItem] : []),
       ...(label === "Review" && canAccess("cx_updates") ? [{ title: "Get CX Update", url: "/get-cx-update", icon: MessageSquare, navKey: "cx_updates", group: "Review" }] : []),
+      ...(label === "Review" && canAccess("cx_updates") && (role === "admin" || role === "processor") ? [{ title: "Get Tech Update", url: "/get-tech-update", icon: Wrench, navKey: "tech_updates", group: "Review" }] : []),
     ],
   })).filter((group) => group.items.length > 0);
   const visibleStatuses = ALL_LEAD_STATUSES.filter((status) => allowedStatuses.has(status));
@@ -558,6 +561,7 @@ export default function AppSidebar() {
                                 }`}
                               />
                               {item.navKey === "cx_updates" && collapsed && (cxCount.data ?? 0) > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary" />}
+                              {item.navKey === "tech_updates" && collapsed && (techCount.data ?? 0) > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" />}
                               {item.navKey === "cancellation_requests" && pendingCancellationCount > 0 && collapsed && (
                                 <span className="absolute -top-1.5 -right-1.5 flex h-2 w-2 z-20">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -649,6 +653,7 @@ export default function AppSidebar() {
                                   )}
                                   <span className="truncate">{item.title}</span>
                                   {item.navKey === "cx_updates" && <span title={cxCount.isError ? "CX update count unavailable" : "Unresolved CX requests"} className="ml-auto shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary">{cxCount.isError ? "!" : cxCount.data ?? 0}</span>}
+                                  {item.navKey === "tech_updates" && <span title={techCount.isError ? "Tech update count unavailable" : "Unresolved Tech requests"} className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">{techCount.isError ? "!" : techCount.data ?? 0}</span>}
                                   {isNeedAttention && needAttentionCount > 0 && (
                                     <span className="ml-auto shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold leading-none text-rose-600 dark:text-rose-300">
                                       {needAttentionCount}

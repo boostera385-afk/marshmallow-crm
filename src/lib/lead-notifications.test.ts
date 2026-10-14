@@ -77,3 +77,15 @@ describe("deliverLeadNotification", () => {
     expect(insert).not.toHaveBeenCalled();
   });
 });
+
+describe("urgent Customer Service ownership", () => {
+  it("notifies the assigned CS instead of the previous creator", async () => {
+    const { primaryCsNotificationRecipient } = await import("@/lib/lead-notifications");
+    expect(primaryCsNotificationRecipient({ created_by: "old-cs", assigned_cs: "assigned-cs" })).toBe("assigned-cs");
+  });
+
+  it("falls back to the creator only while the lead is unassigned", async () => {
+    const { primaryCsNotificationRecipient } = await import("@/lib/lead-notifications");
+    expect(primaryCsNotificationRecipient({ created_by: "creator", assigned_cs: null })).toBe("creator");
+  });
+});

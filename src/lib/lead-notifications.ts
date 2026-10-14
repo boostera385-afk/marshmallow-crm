@@ -35,6 +35,10 @@ interface DispatchParams {
   isNewLead?: boolean;
 }
 
+export function primaryCsNotificationRecipient(lead: { created_by: string | null; assigned_cs: string | null }): string | null {
+  return lead.assigned_cs ?? lead.created_by;
+}
+
 function isNotificationStatus(status: string): status is LeadNotificationStatus {
   return (
     status === "urgent_job" ||
@@ -93,8 +97,11 @@ async function usersAttachedToLead(leadId: string): Promise<string[]> {
   ]);
 
   const lead = leadRes.data as { created_by: string | null; assigned_cs: string | null } | null;
-  if (lead?.created_by) attached.push(lead.created_by);
-  if (lead?.assigned_cs) attached.push(lead.assigned_cs);
+  // For Customer Service ownership, assignment wins. The creator is the
+  // fallback only while the lead is unassigned, so reassignment cannot keep
+  // alerting the previous CS user about somebody else's urgent lead.
+  const primaryCs = lead ? primaryCsNotificationRecipient(lead) : null;
+  if (primaryCs) attached.push(primaryCs);
 
   ((sharesRes.data ?? []) as { shared_with_user_id: string }[]).forEach((s) => {
     if (s.shared_with_user_id) attached.push(s.shared_with_user_id);

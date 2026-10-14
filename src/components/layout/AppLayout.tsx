@@ -55,6 +55,7 @@ export default function AppLayout() {
     "/quote-approval": { title: "Quote Approval", subtitle: "Review quote requests before they move to the sending queue." },
     "/quote-pending": { title: "Quotes to send", subtitle: "Prioritize and complete customer quotations." },
     "/get-cx-update": { title: "Get CX Update", subtitle: "Request customer follow-ups and review returned CS updates." },
+    "/get-tech-update": { title: "Get Tech Update", subtitle: "Request technician details and review Processor replies." },
     "/tech-approvals": { title: "Tech Approvals", subtitle: "Review processor requests to change technician Good Tech or active status." },
     "/lead-cancellation-requests": { title: "Cancellation Requests", subtitle: "Review cancellation reasons and approve or decline requests." },
     "/schedule": { title: "Schedule", subtitle: "Review jobs by day, week, and date range." },

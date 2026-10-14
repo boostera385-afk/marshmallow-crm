@@ -42,6 +42,7 @@ import PaymentDialog from "./PaymentDialog";
 import CopyLeadButton from "./CopyLeadButton";
 import CompleteLeadCopyButton from "./CompleteLeadCopyButton";
 import CxUpdateRequestButton from "./CxUpdateRequestButton";
+import TechUpdateRequestButton from "./TechUpdateRequestButton";
 import NoteThread from "./NoteThread";
 import NearbyAreasList, { type NearbyAreasData } from "./NearbyAreasList";
 import CancellationRequestSheet from "./CancellationRequestSheet";
@@ -831,6 +832,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                 <CopyLeadButton lead={lead} />
                 <CompleteLeadCopyButton lead={lead} />
                 <CxUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />
+                <TechUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />
 
                 {!isOpr && (
                   <Button
