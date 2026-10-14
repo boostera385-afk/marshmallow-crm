@@ -16,6 +16,41 @@ const savedLead = {
 };
 const snapshot = { ...savedLead, status: "scheduled", quote: null };
 
+test("Request optimization: hidden Operator badges make no reads or polls", async ({ page }) => {
+  await mockSession(page, "opr");
+  await page.clock.install();
+  const badgeReads: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() !== "HEAD") return;
+    if (["/rest/v1/lead_cancellation_requests", "/rest/v1/lead_payment_requests"].includes(url.pathname)
+      || (url.pathname === "/rest/v1/leads" && url.searchParams.get("status") === "eq.pending_to_send")) {
+      badgeReads.push(url.pathname);
+    }
+  });
+  await page.goto("/leads");
+  await expect(page.getByText("Synthetic Customer").first()).toBeVisible();
+  await page.clock.runFor(60_000);
+  expect(badgeReads).toEqual([]);
+  await expect(page.getByRole("link", { name: /Cancellation requests/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Payment approvals/ })).toHaveCount(0);
+});
+
+test("Request optimization: Admin cancellation badges retain 15-second polling", async ({ page }) => {
+  await mockSession(page, "admin");
+  await page.clock.install();
+  let cancellationReads = 0;
+  page.on("request", (request) => {
+    if (request.method() === "HEAD" && new URL(request.url()).pathname === "/rest/v1/lead_cancellation_requests") cancellationReads++;
+  });
+  await page.goto("/leads");
+  await expect(page.getByRole("link", { name: /Cancellation requests/ })).toBeVisible();
+  await expect.poll(() => cancellationReads).toBeGreaterThan(0);
+  const before = cancellationReads;
+  await page.clock.runFor(15_100);
+  await expect.poll(() => cancellationReads).toBeGreaterThan(before);
+});
+
 async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", options: { copyAllowed?: boolean; hold?: boolean } = {}) {
   let holdRead = false;
   let permission = options.copyAllowed ?? true;
