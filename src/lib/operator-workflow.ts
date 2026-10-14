@@ -42,8 +42,8 @@ export const HOLD_REASON_LABELS: Record<HoldAlert["reason"], string> = {
   ready_to_schedule: "Ready to Schedule", scheduled: "Scheduled", cancelled: "Cancelled",
 };
 
-// Narrow, runtime-validated RPC boundary while the manual migration awaits application.
-// Do not modify generated Database types by hand. Regenerate after applying the SQL.
+// Keep explicit nullable SQL arguments and validate JSON responses at runtime.
+// This boundary is checked against the regenerated Supabase client, without a cast.
 type WorkflowArgs = {
   get_lead_copy_access: undefined;
   get_lead_copy_settings: undefined;
@@ -56,7 +56,7 @@ interface WorkflowRpcClient {
     data: unknown; error: { message: string; code?: string } | null;
   }>;
 }
-const workflowDb = supabase as unknown as WorkflowRpcClient;
+const workflowDb: WorkflowRpcClient = supabase;
 async function call<K extends keyof WorkflowArgs>(name: K, args?: WorkflowArgs[K]) {
   const { data, error } = await workflowDb.rpc(name, args);
   if (error) throw new Error(error.code === "PGRST202" || error.code === "42883"

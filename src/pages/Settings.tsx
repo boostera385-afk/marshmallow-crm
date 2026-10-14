@@ -29,6 +29,8 @@ import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy
 import { DocumentationTab } from "@/components/settings/DocumentationTab";
 import { GoogleSheetsTab } from "@/components/settings/GoogleSheetsTab";
 import LeadCopyAccessSettings from "@/components/settings/LeadCopyAccessSettings";
+import CopilotAccessSettings from "@/components/settings/CopilotAccessSettings";
+import CopilotPermissionSwitch from "@/components/settings/CopilotPermissionSwitch";
 import { type AccessFeature } from "@/components/settings/FeatureAccessMatrix";
 const CrmUpdates = lazy(() => import("@/pages/CrmUpdates"));
 import { cn } from "@/lib/utils";
@@ -62,6 +64,7 @@ const NAV_SECTION_LABELS: Record<string, string> = {
   payment_requests: "Payment Approvals",
   quote_approval_requests: "Quote Approval",
   urgent_review_requests: "Urgent Review",
+  cx_updates: "Get CX Update",
   quote_pending_requests: "Quotes to Send",
   map_view: "Map View",
   technicians: "Technicians",
@@ -485,13 +488,8 @@ const Settings = () => {
       const existingUser = getUserById(userId);
       const previousRole = existingUser?.role ?? null;
 
-      const { data: existing } = await supabase.from("user_roles").select("id").eq("user_id", userId).single();
-
-      if (existing) {
-        await supabase.from("user_roles").update({ role }).eq("user_id", userId);
-      } else {
-        await supabase.from("user_roles").insert({ user_id: userId, role });
-      }
+      // Use the secure edge function to bypass RLS and update the role safely
+      await adminApi.updateUserRole(userId, role);
 
       // Operators and OPR admins each get a permanent, unique OPR code. The RPC
       // is a no-op if they already have one.
@@ -816,6 +814,7 @@ const Settings = () => {
   };
 
   const featureColumns: AccessFeature<SettingsUser>[] = [
+    { key: "marshmallow_copilot", label: "Marshmallow Copilot", renderControl: (target) => <CopilotPermissionSwitch user={target} /> },
     ...ALL_NAV_ITEMS.map((section) => ({
       key: section,
       label: NAV_SECTION_LABELS[section] || section,
@@ -823,6 +822,7 @@ const Settings = () => {
         const fixedReason = section === "optimization" || section === "payment_requests"
           ? "Admin only"
           : section === "ai_assistance" ? "Customer Service roles only"
+          : section === "cx_updates" ? "Processor and Customer Service roles only"
           : section === "settings" ? "Controlled by Manage CS in Users"
           : section === "quote_pending_requests" ? "Controlled by Quotation Master"
           : section === "cancellation_requests" && canAccessCancellationRequests(target.role) ? "Included with role" : null;
@@ -1288,6 +1288,7 @@ const Settings = () => {
 
       {activeTab === "nav_permissions" && isAdmin && (
         <div className="space-y-4">
+<CopilotAccessSettings users={users} />
           <LeadCopyAccessSettings users={users} features={featureColumns} />
           {navPermissionsError && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 p-4"><p role="alert" className="text-sm text-destructive">Navigation permissions could not be loaded: {navPermissionsError.message}</p><Button variant="outline" onClick={() => void refetchNavPermissions()}>Retry navigation permissions</Button></div>}
         </div>

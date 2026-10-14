@@ -149,7 +149,7 @@ test("Request optimization: notes catch up when a hidden tab returns", async ({ 
   expect(reads).toBeGreaterThan(before);
 });
 
-async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", options: { copyAllowed?: boolean; hold?: boolean } = {}) {
+async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", options: { copyAllowed?: boolean; hold?: boolean; photos?: boolean } = {}) {
   let holdRead = false;
   let permission = options.copyAllowed ?? true;
   const roleDefaults = ["processor", "customer_service", "cs_admin", "opr", "opr_admin"].map((item) => ({ role: item, allowed: true }));
@@ -160,6 +160,16 @@ async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", opti
     if (url.hostname === "127.0.0.1") return route.continue();
     // No request can reach the shared DB, Edge Functions, storage, tile servers, or Quo.
     if (!url.hostname.endsWith("supabase.co")) return route.abort();
+    if (url.pathname.startsWith("/storage/v1/object/sign/lead-photos")) {
+      if (route.request().method() === "GET") return route.fulfill({
+        contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="grey"/></svg>',
+      });
+      const paths: string[] = route.request().postDataJSON()?.paths ?? [];
+      const signedURL = (path: string) => `/object/sign/lead-photos/${path}?token=synthetic`;
+      return route.fulfill({ json: paths.length
+        ? paths.map((path) => ({ path, signedURL: signedURL(path), error: null }))
+        : { signedURL: signedURL(url.pathname.split("/lead-photos/")[1]) } });
+    }
     const endpoint = url.pathname.split("/").pop();
     let data: unknown = [];
     if (url.pathname.startsWith("/auth/v1/")) data = { id: USER_ID, email: "synthetic@example.invalid" };
@@ -187,6 +197,10 @@ async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", opti
     ];
     else if (endpoint === "user_roles") data = [{ user_id: USER_ID, role }];
     else if (endpoint === "leads") data = [savedLead];
+    else if (endpoint === "lead_photos" && options.photos) data = [
+      { id: ALERT_ID, lead_id: JOB_ID, photo_url: "synthetic-one.svg" },
+      { id: REVISION_ID, lead_id: JOB_ID, photo_url: "synthetic-two.svg" },
+    ];
     else if (endpoint === "technicians") data = [{ id: JOB_ID, name: "Synthetic Tech", service: longService, area: "Miami, FL", phone_number: "5550100001", is_active: true, latitude: 25.76, longitude: -80.19 }];
     else if (endpoint === "quo_ai_settings") data = [];
     const singular = route.request().headers().accept?.includes("application/vnd.pgrst.object+json");
@@ -205,12 +219,36 @@ async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", opti
 }
 
 for (const role of ["opr", "opr_admin"] as const) {
+  test(`${role}: saved-photo View action opens, navigates and closes without sending`, async ({ page }) => {
+    await page.setViewportSize({ width: role === "opr" ? 1440 : 390, height: 900 });
+    await mockSession(page, role, { photos: true });
+    await page.goto("/leads");
+    const view = page.getByRole("button", { name: "View 2 photos", exact: true }).first();
+    await expect(view).toBeEnabled();
+    await view.click();
+    const dialog = page.getByRole("dialog", { name: "Photo preview" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByAltText("Image 1")).toBeVisible();
+    await expect(dialog.getByAltText("Image 1")).toHaveAttribute("src", /synthetic-one/);
+    await dialog.getByRole("button", { name: "Next image" }).click();
+    await expect(dialog.getByAltText("Image 2")).toBeVisible();
+    await expect(dialog.getByAltText("Image 2")).toHaveAttribute("src", /synthetic-two/);
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(view).toBeFocused();
+    await expect(page.getByRole("button", { name: "Copy all 2 photos" }).first()).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Send photos to tech" })).toHaveCount(0);
+  });
+
   test(`${role}: Copy Complete Details visible by default and respects hidden quote`, async ({ page, context }) => {
     await mockSession(page, role);
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/leads");
     const copy = page.getByRole("button", { name: "Copy Complete Details" }).first();
     await expect(copy).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Edit Lead", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Delete lead", exact: true })).toHaveCount(0);
+    await expect(page.getByTitle("Assign to Operator", { exact: true })).toHaveCount(0);
     await copy.click();
     await expect(page.getByRole("button", { name: "Copied", exact: true }).first()).toBeVisible();
     const text = await page.evaluate(() => navigator.clipboard.readText());

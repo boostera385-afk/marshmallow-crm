@@ -19,6 +19,8 @@ import { premiumEase, pageVariants } from "@/lib/motion";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalCommandMenu } from "@/components/layout/GlobalCommandMenu";
+import CopilotProvider from "@/components/copilot/CopilotProvider";
+import CopilotLauncher from "@/components/copilot/CopilotLauncher";
 
 function HeaderNotepadTrigger() {
   const { toggleNotepad, activeUserIds, isPickerOpen } = useNotepad();
@@ -52,6 +54,7 @@ export default function AppLayout() {
     "/lead-payment-requests": { title: "Payment approvals", subtitle: "Review payment evidence and resolve pending requests." },
     "/quote-approval": { title: "Quote Approval", subtitle: "Review quote requests before they move to the sending queue." },
     "/quote-pending": { title: "Quotes to send", subtitle: "Prioritize and complete customer quotations." },
+    "/get-cx-update": { title: "Get CX Update", subtitle: "Request customer follow-ups and review returned CS updates." },
     "/tech-approvals": { title: "Tech Approvals", subtitle: "Review processor requests to change technician Good Tech or active status." },
     "/lead-cancellation-requests": { title: "Cancellation Requests", subtitle: "Review cancellation reasons and approve or decline requests." },
     "/schedule": { title: "Schedule", subtitle: "Review jobs by day, week, and date range." },
@@ -72,7 +75,7 @@ export default function AppLayout() {
   const isQuoMonitor = location.pathname.startsWith("/quo-monitor") || location.pathname.startsWith("/quo-dashboard");
 
   return (
-    <NotepadProvider>
+    <CopilotProvider><NotepadProvider>
       <SidebarProvider>
         <GlobalCommandMenu />
         <OperatorWorkflowSync />
@@ -123,6 +126,7 @@ export default function AppLayout() {
                   </AnimatePresence>
                 </div>
                 <div className="flex items-center gap-2">
+                  <CopilotLauncher />
                   <ExtensionUpdateStatus />
                   <HeaderNotepadTrigger />
                   <ThemeToggle />
@@ -155,6 +159,6 @@ export default function AppLayout() {
           <FloatingNotepad />
         </SidebarInset>
       </SidebarProvider>
-    </NotepadProvider>
+    </NotepadProvider></CopilotProvider>
   );
 }

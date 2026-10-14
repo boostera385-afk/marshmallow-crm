@@ -40,13 +40,14 @@ export default function CompleteLeadCopyButton({ lead, className }: CompleteLead
       type="button"
       variant="outline"
       size="sm"
+      aria-label={copied ? "Copied" : "Copy Complete Details"}
       className={cn("h-auto min-h-10 min-w-0 max-w-full gap-2 whitespace-normal rounded-xl px-3 py-2 text-[12px] font-semibold", className)}
       onClick={handleCopy}
       disabled={!allowed}
       title={error ? "Copy access unavailable. Ask Admin to check the permission migration." : loading ? "Checking copy permission" : "Copy service details, address, schedule requirement and visible quote"}
     >
       {copied ? <Check className="h-3.5 w-3.5 shrink-0" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
-      <span>{copied ? "Copied" : "Copy Complete Details"}</span>
+      <span>{copied ? "Copied" : "Copy Details"}</span>
     </Button>
   );
 }

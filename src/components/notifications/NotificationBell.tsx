@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import HoldJobCard from './HoldJobCard';
 import { subscribeToNotifications } from '@/lib/realtime';
 import { useCoalescedRefresh } from '@/hooks/useCoalescedRefresh';
+import { cxNotificationHref } from '@/lib/cx-update-requests';
 
 const NOTIFICATION_POLL_INTERVAL_MS = 15 * 1000;
 const MAX_REMEMBERED_CANCELLATION_POPUPS = 200;
@@ -271,7 +272,9 @@ export default function NotificationBell() {
       setUnreadCount((prev) => Math.max(0, prev - 1));
     }
     setOpen(false);
-    if (n.lead_id) navigate(`/leads/${n.lead_id}`);
+    const cxHref = cxNotificationHref(n.title);
+    if (cxHref) navigate(cxHref);
+    else if (n.lead_id) navigate(`/leads/${n.lead_id}`);
     void fetchNotifications();
   };
 

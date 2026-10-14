@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.4"
   }
   public: {
     Tables: {
@@ -128,6 +128,63 @@ export type Database = {
           notes?: string | null
           number_name?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      copilot_config: {
+        Row: {
+          ai_enabled: boolean
+          daily_ai_limit: number
+          enabled: boolean
+          id: boolean
+          monthly_budget_cents: number
+          timezone: string
+        }
+        Insert: {
+          ai_enabled?: boolean
+          daily_ai_limit?: number
+          enabled?: boolean
+          id?: boolean
+          monthly_budget_cents?: number
+          timezone?: string
+        }
+        Update: {
+          ai_enabled?: boolean
+          daily_ai_limit?: number
+          enabled?: boolean
+          id?: boolean
+          monthly_budget_cents?: number
+          timezone?: string
+        }
+        Relationships: []
+      }
+      copilot_role_permissions: {
+        Row: {
+          allowed: boolean
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          allowed?: boolean
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          allowed?: boolean
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      copilot_user_permissions: {
+        Row: {
+          allowed: boolean
+          user_id: string
+        }
+        Insert: {
+          allowed: boolean
+          user_id: string
+        }
+        Update: {
+          allowed?: boolean
+          user_id?: string
         }
         Relationships: []
       }
@@ -468,6 +525,128 @@ export type Database = {
           },
         ]
       }
+      lead_copy_role_permissions: {
+        Row: {
+          allowed: boolean
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          allowed?: boolean
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          allowed?: boolean
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      lead_copy_user_permissions: {
+        Row: {
+          allowed: boolean
+          user_id: string
+        }
+        Insert: {
+          allowed: boolean
+          user_id: string
+        }
+        Update: {
+          allowed?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
+      lead_cx_update_requests: {
+        Row: {
+          acknowledged_at: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          recipient_cs: string | null
+          request_text: string
+          requested_by: string | null
+          response_text: string | null
+          status: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id: string
+          lead_id: string
+          recipient_cs?: string | null
+          request_text: string
+          requested_by?: string | null
+          response_text?: string | null
+          status?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          recipient_cs?: string | null
+          request_text?: string
+          requested_by?: string | null
+          response_text?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_cx_update_requests_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_recipient_cs_fkey"
+            columns: ["recipient_cs"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_recipient_cs_fkey"
+            columns: ["recipient_cs"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_drafts: {
         Row: {
           draft_data: Json
@@ -493,6 +672,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "lead_drafts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_hold_alerts: {
+        Row: {
+          created_at: string
+          id: string
+          lead_id: string
+          read: boolean
+          reason: string
+          revision: string
+          snapshot: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lead_id: string
+          read?: boolean
+          reason: string
+          revision?: string
+          snapshot: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lead_id?: string
+          read?: boolean
+          reason?: string
+          revision?: string
+          snapshot?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_hold_alerts_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
@@ -2450,6 +2670,10 @@ export type Database = {
       }
     }
     Functions: {
+      acknowledge_operator_hold_alert: {
+        Args: { p_alerts: Json; p_id: string; p_revision: string }
+        Returns: number
+      }
       advance_sheets_sync_watermark: { Args: never; Returns: string }
       apply_urgent_form_fixes: {
         Args: { p_fixes: Json; p_lead_id: string }
@@ -2546,11 +2770,97 @@ export type Database = {
           unlocated: number
         }[]
       }
+      copilot_caller_role: { Args: never; Returns: string }
+      copilot_configure: {
+        Args: {
+          p_ai_enabled: boolean
+          p_daily_ai_limit: number
+          p_enabled: boolean
+          p_monthly_budget_cents: number
+          p_timezone: string
+        }
+        Returns: undefined
+      }
+      copilot_configure_checked: {
+        Args: {
+          p_ai_enabled: boolean
+          p_daily_ai_limit: number
+          p_enabled: boolean
+          p_expected: Json
+          p_monthly_budget_cents: number
+          p_timezone: string
+        }
+        Returns: undefined
+      }
+      copilot_diagnostics: { Args: never; Returns: Json }
+      copilot_finish_ai: {
+        Args: {
+          p_input: number
+          p_output: number
+          p_request_id: string
+          p_success: boolean
+        }
+        Returns: undefined
+      }
+      copilot_get_access: { Args: never; Returns: Json }
+      copilot_get_settings: { Args: never; Returns: Json }
+      copilot_health: { Args: never; Returns: Json }
+      copilot_lead_brief: { Args: { p_lead_id: string }; Returns: Json }
+      copilot_nav_allowed: { Args: { p_section: string }; Returns: boolean }
+      copilot_report: {
+        Args: { p_end: string; p_scope?: string; p_start: string }
+        Returns: Json
+      }
+      copilot_require_access: {
+        Args: { p_section?: string }
+        Returns: undefined
+      }
+      copilot_reserve_ai: {
+        Args: { p_request_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      copilot_search: {
+        Args: {
+          p_active?: boolean
+          p_area?: string
+          p_date?: string
+          p_kind: string
+          p_offset?: number
+          p_query?: string
+          p_service?: string
+          p_status?: string
+        }
+        Returns: Json
+      }
+      copilot_set_permission: {
+        Args: {
+          p_allowed: boolean
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      copilot_status_visible: {
+        Args: { p_status: string; p_tag: string }
+        Returns: boolean
+      }
+      copilot_usage_summary: { Args: never; Returns: Json }
+      copilot_visible_statuses: { Args: never; Returns: string[] }
       cron_google_sheets_sync_worker: { Args: never; Returns: undefined }
       cron_quo_reconcile_sync: { Args: never; Returns: undefined }
       cron_quo_sync_contacts: { Args: never; Returns: undefined }
       cron_refresh_urgent_ai_status: { Args: never; Returns: undefined }
       current_user_opr_code: { Args: never; Returns: string }
+      cx_update_requests: {
+        Args: {
+          p_action: string
+          p_lead_id?: string
+          p_offset?: number
+          p_request_id?: string
+          p_text?: string
+        }
+        Returns: Json
+      }
       default_org_id: { Args: never; Returns: string }
       delete_lead_by_admin: { Args: { target_lead_id: string }; Returns: Json }
       dispatch_lead_status_notification: {
@@ -2594,6 +2904,9 @@ export type Database = {
         Args: { p_number_ids?: string[]; p_since?: string; p_until?: string }
         Returns: number
       }
+      get_lead_copy_access: { Args: never; Returns: boolean }
+      get_lead_copy_settings: { Args: never; Returns: Json }
+      get_operator_hold_alerts: { Args: never; Returns: Json }
       get_opr_codes_summary: {
         Args: never
         Returns: {
@@ -2935,6 +3248,14 @@ export type Database = {
       }
       set_can_add_manual_leads: {
         Args: { allowed: boolean; target_user_id: string }
+        Returns: undefined
+      }
+      set_lead_copy_permission: {
+        Args: {
+          p_allowed: boolean
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_user_id: string
+        }
         Returns: undefined
       }
       sheets_sync_lag: {

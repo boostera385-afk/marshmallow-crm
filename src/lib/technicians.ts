@@ -101,6 +101,8 @@ export async function fetchTechniciansPage(params: {
   page: number;
   pageSize: number;
   search: string;
+  /** CRM-only deep link from a permitted Copilot search; RLS still applies. */
+  technicianId?: string;
   /** Filters on opr_code now: "all" | "none" | "has_code" | "<OPR code>". */
   codeFilter?: string;
   sortBy?: TechnicianSortOption;
@@ -132,7 +134,7 @@ export async function fetchTechniciansPage(params: {
 
   // The RPC search path can't express per-column filters or the OPR scope, so
   // fall through to the query builder whenever either is active.
-  if (search && !hasColumnFilters && !restrictByOpr) {
+  if (search && !hasColumnFilters && !restrictByOpr && !params.technicianId) {
     const { data, error } = await supabase.rpc("search_technicians", {
       _q: search,
       _limit: pageSize,
@@ -187,6 +189,7 @@ export async function fetchTechniciansPage(params: {
   }
 
   let query = supabase.from("technicians").select(TECHNICIAN_SELECT, { count: "exact" });
+  if (params.technicianId) query = query.eq("id", params.technicianId);
 
   if (visibility.mode === "own") query = query.eq("opr_code", visibility.oprCode as string);
   else if (visibility.mode === "coded") query = query.not("opr_code", "is", null);
