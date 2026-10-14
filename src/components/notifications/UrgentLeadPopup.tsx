@@ -5,6 +5,8 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
+import { subscribeToNotifications } from "@/lib/realtime";
+import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
 
 interface UrgentNotification {
   id: string;
@@ -49,19 +51,19 @@ export default function UrgentLeadPopup() {
   // Every role gets urgent popups
   const eligible = Boolean(role);
 
-  const fetchUrgent = useCallback(async () => {
+  const loadUrgent = useCallback(async (isCurrent: () => boolean) => {
     if (!user || !eligible) return;
 
     const { data } = await supabase
       .from("notifications")
-      .select("*")
+      .select("id, title, message, lead_id, created_at, read")
       .eq("user_id", user.id)
       .eq("read", false)
       .ilike("title", "%Urgent Job%")
       .order("created_at", { ascending: false })
       .limit(FETCH_LIMIT);
 
-    if (!data) return;
+    if (!data || !isCurrent()) return;
 
     const rows = (data as UrgentNotification[]).filter((n) => !dismissedIds.current.has(n.id));
     const hasNew = rows.some((n) => !seenIds.current.has(n.id));
@@ -69,12 +71,13 @@ export default function UrgentLeadPopup() {
 
     if (hasNew) {
       void import("@/lib/notification-sound").then(({ playUrgentAlertSound }) => {
-        playUrgentAlertSound();
+        if (isCurrent()) playUrgentAlertSound();
       });
     }
 
     setItems(rows);
   }, [user, eligible]);
+  const fetchUrgent = useCoalescedRefresh(loadUrgent);
 
   useEffect(() => {
     if (!eligible) return;
@@ -88,31 +91,12 @@ export default function UrgentLeadPopup() {
   useEffect(() => {
     if (!user || !eligible) return;
 
-    const channel = supabase
-      .channel(`urgent-lead-popup:${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const row = payload.new as { title?: string } | undefined;
-          if (row?.title?.toLowerCase().includes("urgent job")) {
-            void fetchUrgent();
-          }
-        },
-      )
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}`,
-      }, () => { void fetchUrgent(); })
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return subscribeToNotifications(user.id, (payload) => {
+      const row = payload.new as { title?: string };
+      if (payload.eventType === "UPDATE" || row.title?.toLowerCase().includes("urgent job")) {
+        void fetchUrgent();
+      }
+    });
   }, [user, eligible, fetchUrgent]);
 
   // Collapse per lead — the same lead flipped to Urgent twice is still one lead.

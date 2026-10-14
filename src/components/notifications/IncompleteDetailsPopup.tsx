@@ -5,6 +5,8 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ClipboardList, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
+import { subscribeToNotifications } from "@/lib/realtime";
+import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
 
 interface IncompleteDetailsNotification {
   id: string;
@@ -48,7 +50,7 @@ export default function IncompleteDetailsPopup() {
   const isEligible =
     (role === "customer_service" || role === "cs_admin") && Boolean(user) && fullyAuthenticated;
 
-  const fetchIncomplete = useCallback(async () => {
+  const loadIncomplete = useCallback(async (isCurrent: () => boolean) => {
     if (!user || !isEligible) return;
 
     const { data } = await supabase
@@ -60,7 +62,7 @@ export default function IncompleteDetailsPopup() {
       .order("created_at", { ascending: false })
       .limit(FETCH_LIMIT);
 
-    if (!data) return;
+    if (!data || !isCurrent()) return;
 
     const rows = (data as IncompleteDetailsNotification[]).filter(
       (n) => !dismissedIds.current.has(n.id),
@@ -70,12 +72,13 @@ export default function IncompleteDetailsPopup() {
 
     if (hasNew) {
       void import("@/lib/notification-sound").then(({ playAssignmentSound }) => {
-        playAssignmentSound();
+        if (isCurrent()) playAssignmentSound();
       });
     }
 
     setItems(rows);
   }, [user, isEligible]);
+  const fetchIncomplete = useCoalescedRefresh(loadIncomplete);
 
   useEffect(() => {
     if (!isEligible) return;
@@ -88,28 +91,12 @@ export default function IncompleteDetailsPopup() {
   useEffect(() => {
     if (!user || !isEligible) return;
 
-    const channel = supabase
-      .channel(`incomplete-details-popup:${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const row = payload.new as { title?: string } | undefined;
-          if (row?.title?.toLowerCase().includes("incomplete details")) {
-            void fetchIncomplete();
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return subscribeToNotifications(user.id, (payload) => {
+      const row = payload.new as { title?: string };
+      if (payload.eventType === "INSERT" && row.title?.toLowerCase().includes("incomplete details")) {
+        void fetchIncomplete();
+      }
+    });
   }, [user, isEligible, fetchIncomplete]);
 
   // Collapse per lead — the same lead flagged twice is still one lead to fix.

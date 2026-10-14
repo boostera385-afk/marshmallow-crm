@@ -13,6 +13,8 @@ import { useHoldInbox } from '@/hooks/useOperatorWorkflow';
 import { acknowledgeHoldAlert, acknowledgeHoldInbox, HOLD_REASON_LABELS, type HoldAlert } from '@/lib/operator-workflow';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import HoldJobCard from './HoldJobCard';
+import { subscribeToNotifications } from '@/lib/realtime';
+import { useCoalescedRefresh } from '@/hooks/useCoalescedRefresh';
 
 const NOTIFICATION_POLL_INTERVAL_MS = 15 * 1000;
 const MAX_REMEMBERED_CANCELLATION_POPUPS = 200;
@@ -108,15 +110,16 @@ export default function NotificationBell() {
       : query.is('lead_id', null);
   };
 
-  const fetchNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (isCurrent: () => boolean) => {
     if (!user) return;
 
     const assignedLeadIdList = await operatorLeadScope();
+    if (!isCurrent()) return;
 
     const listQuery = applyOperatorScope(
       supabase
         .from('notifications')
-        .select('*')
+        .select('id, title, message, lead_id, read, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(NOTIFICATION_LIMIT),
@@ -134,10 +137,12 @@ export default function NotificationBell() {
     );
 
     const [listResult, countResult] = await Promise.all([listQuery, countQuery]);
+    if (!isCurrent()) return;
 
     if (listResult.data) setNotifications(listResult.data as Notification[]);
     if (typeof countResult.count === 'number') setUnreadCount(countResult.count);
   }, [operatorLeadScope, user]);
+  const fetchNotifications = useCoalescedRefresh(loadNotifications);
 
   useEffect(() => {
     shownCancellationPopups.current = user ? loadShownPopupIds('cancellation', user.id) : new Set<string>();
@@ -196,41 +201,28 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase
-      .channel(`notifications:${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user.id}`,
-        },
-        async (payload) => {
-          void fetchNotifications();
+    let active = true;
+    const unsubscribe = subscribeToNotifications(user.id, async (payload) => {
+      void fetchNotifications();
 
-          // Play sound and show prominent toast for operator assignment notifications
-          if (isOperatorRole(role)) {
-            const newRow = payload.new as { title?: string; message?: string; lead_id?: string } | undefined;
-            if (newRow?.title?.includes('Lead Assigned') && await hasOperatorLeadAssignment(user.id, newRow.lead_id)) {
-              playAssignmentSound();
-              toast('🔔 New Lead Assigned!', {
-                description: newRow.message || 'A new lead has been assigned to you.',
-                duration: 8000,
-                closeButton: true,
-                position: 'top-center',
-              });
-            }
-          }
-        },
-      )
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}`,
-      }, () => { void fetchNotifications(); })
-      .subscribe();
+      // Play sound and show prominent toast for operator assignment notifications
+      if (payload.eventType === 'INSERT' && isOperatorRole(role)) {
+        const newRow = payload.new as { title?: string; message?: string; lead_id?: string } | undefined;
+        if (newRow?.title?.includes('Lead Assigned') && await hasOperatorLeadAssignment(user.id, newRow.lead_id) && active) {
+          playAssignmentSound();
+          toast('🔔 New Lead Assigned!', {
+            description: newRow.message || 'A new lead has been assigned to you.',
+            duration: 8000,
+            closeButton: true,
+            position: 'top-center',
+          });
+        }
+      }
+    });
 
     return () => {
-      void supabase.removeChannel(channel);
+      active = false;
+      unsubscribe();
     };
   }, [fetchNotifications, navigate, role, user]);
 
