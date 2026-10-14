@@ -564,10 +564,12 @@ export type Database = {
           id: string
           lead_id: string
           recipient_cs: string | null
+          request_kind: string
           request_text: string
           requested_by: string | null
           response_text: string | null
           status: string
+          thread: Json
         }
         Insert: {
           acknowledged_at?: string | null
@@ -577,10 +579,12 @@ export type Database = {
           id: string
           lead_id: string
           recipient_cs?: string | null
+          request_kind?: string
           request_text: string
           requested_by?: string | null
           response_text?: string | null
           status?: string
+          thread?: Json
         }
         Update: {
           acknowledged_at?: string | null
@@ -590,10 +594,12 @@ export type Database = {
           id?: string
           lead_id?: string
           recipient_cs?: string | null
+          request_kind?: string
           request_text?: string
           requested_by?: string | null
           response_text?: string | null
           status?: string
+          thread?: Json
         }
         Relationships: [
           {
@@ -3291,6 +3297,17 @@ export type Database = {
           longitude: number
           state_code: string
         }[]
+      }
+      update_requests: {
+        Args: {
+          p_action: string
+          p_kind: string
+          p_lead_id?: string
+          p_offset?: number
+          p_request_id?: string
+          p_text?: string
+        }
+        Returns: Json
       }
       urgent_required_missing: {
         Args: { p_lead_id: string }
