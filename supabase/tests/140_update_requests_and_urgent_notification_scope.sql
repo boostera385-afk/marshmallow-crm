@@ -1,6 +1,6 @@
 -- MANUAL BEHAVIOR HARNESS. WRITES synthetic fixtures; LOCAL/ISOLATED DB ONLY.
 -- Never execute on shared production without explicit approval. Apply migrations
--- 20261120001000 and 20261120002000 first, run this exact file as postgres,
+-- 20261120000000, 20261120001000 and 20261120002000 first, run this exact file as postgres,
 -- inspect every PASS/FAIL row, and note that the whole transaction rolls back.
 BEGIN;
 
@@ -122,5 +122,19 @@ SELECT pg_temp.update_check('Update workflow leaves every lead field unchanged',
  SELECT 1 FROM _update_original o JOIN public.leads l ON l.id=o.id WHERE to_jsonb(l) IS DISTINCT FROM o.record));
 SELECT pg_temp.update_check('Tech notifications link to queue instead of hidden lead', EXISTS(
  SELECT 1 FROM public.notifications WHERE title='Tech Updated' AND user_id='14000000-0000-4000-8000-000000000003' AND lead_id IS NULL));
+
+-- The urgent AI vocabulary accepts the requested labels and rejects the old
+-- one-word `Cancelled` value after the migration remaps existing derived rows.
+INSERT INTO public.lead_ai_statuses(lead_id, status, source)
+VALUES ('14000000-0000-4000-8000-000000000010', 'Need to Cancel', 'rule');
+SELECT pg_temp.update_check('Preferred urgent AI status is accepted', EXISTS(
+ SELECT 1 FROM public.lead_ai_statuses
+ WHERE lead_id='14000000-0000-4000-8000-000000000010' AND status='Need to Cancel'));
+SELECT pg_temp.update_error('Legacy one-word AI status is rejected',
+ $$update public.lead_ai_statuses set status='Cancelled' where lead_id='14000000-0000-4000-8000-000000000010'$$,
+ '23514');
+SELECT pg_temp.update_check('Migration leaves no legacy Cancelled AI statuses', NOT EXISTS(
+ SELECT 1 FROM public.lead_ai_statuses WHERE status='Cancelled'));
+
 SELECT * FROM _update_checks ORDER BY name;
 ROLLBACK;
