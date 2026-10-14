@@ -12,7 +12,7 @@ CREATE FUNCTION public.has_role(uuid,public.app_role) RETURNS boolean LANGUAGE s
 CREATE TABLE public.profiles(id uuid PRIMARY KEY,full_name text,can_manage_users boolean DEFAULT false,is_quotation_master boolean DEFAULT false,opr_code text);
 CREATE TABLE public.navigation_permissions(id uuid DEFAULT gen_random_uuid(),user_id uuid,nav_section text,allowed boolean,UNIQUE(user_id,nav_section));
 CREATE TABLE public.lead_status_visibility(user_id uuid,role text,status text,is_visible boolean);
-CREATE TABLE public.activity_logs(user_id uuid,user_name text,action text,target_type text,target_id text,details text);
+CREATE TABLE public.activity_logs(user_id uuid,user_name text,action text,target_type text,target_id text,details text,created_at timestamptz DEFAULT now());
 CREATE TABLE public.lead_shares(lead_id uuid,shared_with_user_id uuid);
 CREATE TABLE public.leads(
  id uuid PRIMARY KEY,job_id text,status text,customer_name text,customer_phone text,customer_landline text,

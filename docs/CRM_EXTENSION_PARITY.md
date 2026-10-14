@@ -26,6 +26,16 @@ Admin authorization and AI limits with isolated regression tests. No extension
 source/release change is required; see `docs/COPILOT_ROLLOUT.md` for publication
 and live-provider verification boundaries.
 
+The `pilot` enhancement remains CRM-only: saved-vs-draft AI state, checked config
+saves, Admin readiness/confirmed provider test, conversational search refinements,
+saved lead/daily work briefs, consented message drafting and expanded workspace.
+Minimize/restore is also CRM-only and preserves the in-memory session while exposing
+the underlying CRM page; closing still clears it. No native Donut assistant exists.
+It never executes urgent/technician assessments in a parallel implementation:
+existing authorized workflows are opened for those actions. No Donut source,
+prompt, manifest or ZIP changed. Pilot RPC migration/function rollout is pending;
+see the 2026-10-14 section in `docs/COPILOT_ROLLOUT.md` before publishing.
+
 ## Release verification checklist
 
 1. Test each changed flow on both surfaces and an excluded role.
