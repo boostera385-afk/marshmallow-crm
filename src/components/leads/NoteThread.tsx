@@ -105,15 +105,21 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
     void fetchNotes();
   }, [fetchNotes]);
 
-  // Fallback Polling every 15 seconds
+  // Keep the same visible-tab fallback, without polling an unread background tab.
+  // Catch up immediately on return even if Realtime missed an event while asleep.
   useEffect(() => {
     if (!canViewThread) return;
-    
-    const intervalId = setInterval(() => {
-      void fetchNotes();
-    }, 15000);
 
-    return () => clearInterval(intervalId);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void fetchNotes();
+    };
+    const intervalId = setInterval(refreshWhenVisible, 15000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [fetchNotes, canViewThread]);
 
   // Realtime subscription for notes

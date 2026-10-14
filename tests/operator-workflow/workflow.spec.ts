@@ -51,6 +51,39 @@ test("Request optimization: Admin cancellation badges retain 15-second polling",
   await expect.poll(() => cancellationReads).toBeGreaterThan(before);
 });
 
+test("Request optimization: notes catch up when a hidden tab returns", async ({ page }) => {
+  await mockSession(page, "admin");
+  await page.clock.install();
+  let reads = 0;
+  let content = "Initial browser synthetic note";
+  await page.route("**/rest/v1/lead_notes*", async (route) => {
+    if (route.request().method() !== "GET") return route.fulfill({ json: [] });
+    reads++;
+    const type = new URL(route.request().url()).searchParams.get("note_type")?.replace("eq.", "") ?? "cs";
+    await route.fulfill({ json: [{
+      id: ALERT_ID, lead_id: JOB_ID, user_id: null, user_name: "Synthetic",
+      note_type: type, content, created_at: "2026-10-14T00:00:00Z",
+    }] });
+  });
+  await page.goto(`/leads/${JOB_ID}`);
+  await expect(page.getByText(content).first()).toBeVisible();
+  await page.clock.runFor(1_000);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const before = reads;
+  content = "Updated browser synthetic note";
+  await page.clock.runFor(60_000);
+  expect(reads).toBe(before);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(page.getByText(content).first()).toBeVisible();
+  expect(reads).toBeGreaterThan(before);
+});
+
 async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", options: { copyAllowed?: boolean; hold?: boolean } = {}) {
   let holdRead = false;
   let permission = options.copyAllowed ?? true;
