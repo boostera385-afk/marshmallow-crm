@@ -5,6 +5,8 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, X, ArrowUpRight, Wrench, MapPin, AlertCircle, Calendar } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
+import { subscribeToNotifications } from "@/lib/realtime";
+import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
 
 interface JobInProgressItem {
   notificationIds: string[];
@@ -37,7 +39,7 @@ export default function JobInProgressPopup() {
   // Only Admins and Processors receive Job in Progress popups
   const isEligible = (role === "admin" || role === "processor") && Boolean(user) && fullyAuthenticated;
 
-  const fetchReminders = useCallback(async () => {
+  const loadReminders = useCallback(async (isCurrent: () => boolean) => {
     if (!user || !isEligible) return;
 
     try {
@@ -50,6 +52,7 @@ export default function JobInProgressPopup() {
         .ilike("title", "%Job in Progress%")
         .order("created_at", { ascending: false })
         .limit(FETCH_LIMIT);
+      if (!isCurrent()) return;
 
       if (error || !notifications) {
         setItems([]);
@@ -81,6 +84,7 @@ export default function JobInProgressPopup() {
           .from("leads")
           .select("id, customer_name, expected_completion_date, tech_name, service_type, city, state")
           .in("id", [...new Set(leadIds)]);
+        if (!isCurrent()) return;
 
         if (leads) {
           leads.forEach((l) => leadDetailsMap.set(l.id, l));
@@ -120,6 +124,7 @@ export default function JobInProgressPopup() {
       console.warn("Failed to fetch Job in Progress reminders", err);
     }
   }, [user, isEligible]);
+  const fetchReminders = useCoalescedRefresh(loadReminders);
 
   useEffect(() => {
     if (!isEligible) return;
@@ -132,28 +137,12 @@ export default function JobInProgressPopup() {
   useEffect(() => {
     if (!user || !isEligible) return;
 
-    const channel = supabase
-      .channel(`job-in-progress-popup:${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const row = payload.new as { title?: string } | undefined;
-          if (row?.title?.toLowerCase().includes("job in progress")) {
-            void fetchReminders();
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return subscribeToNotifications(user.id, (payload) => {
+      const row = payload.new as { title?: string };
+      if (payload.eventType === "INSERT" && row.title?.toLowerCase().includes("job in progress")) {
+        void fetchReminders();
+      }
+    });
   }, [user, isEligible, fetchReminders]);
 
   const markRead = useCallback(async (ids: string[]) => {

@@ -124,8 +124,10 @@ export default function AppSidebar() {
   }, []);
 
   // Fetch pending cancellation requests count for the sidebar badge
+  const canSeeCancellations = canAccess("cancellation_requests");
   const { data: pendingCancellationCount = 0 } = useQuery({
     queryKey: ["pending-cancellations-count"],
+    enabled: canSeeCancellations,
     queryFn: async () => {
       const { count, error } = await supabase
         .from("lead_cancellation_requests")
@@ -141,9 +143,10 @@ export default function AppSidebar() {
     refetchInterval: 15000,
   });
 
-  // Fetch pending payment requests count (Admin-only nav item, but query is cheap)
+  // Hidden badges do not need a query or a polling timer.
   const { data: pendingPaymentCount = 0 } = useQuery({
     queryKey: ["pending-payment-requests-count"],
+    enabled: canAccess("payment_requests"),
     queryFn: async () => {
       const { count, error } = await supabase.from("lead_payment_requests")
         .select("*", { count: "exact", head: true })
@@ -177,6 +180,7 @@ export default function AppSidebar() {
 
   const { data: pendingQuoteCount = 0 } = useQuery({
     queryKey: ["pending-quote-requests-count"],
+    enabled: canAccess("quote_pending_requests"),
     queryFn: async () => {
       const { count, error } = await supabase
         .from("leads")
@@ -267,6 +271,7 @@ export default function AppSidebar() {
 
   // Realtime subscription for instant sidebar updates when a cancellation is requested/resolved
   useEffect(() => {
+    if (!canSeeCancellations) return;
     const channel = supabase
       .channel("lead-cancellations-sidebar-realtime")
       .on(
@@ -281,7 +286,7 @@ export default function AppSidebar() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [canSeeCancellations, queryClient]);
 
   // Realtime subscription for payment request badge
   useEffect(() => {

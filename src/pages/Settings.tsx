@@ -1288,7 +1288,7 @@ const Settings = () => {
 
       {activeTab === "nav_permissions" && isAdmin && (
         <div className="space-y-4">
-          <CopilotAccessSettings users={users} />
+<CopilotAccessSettings users={users} />
           <LeadCopyAccessSettings users={users} features={featureColumns} />
           {navPermissionsError && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 p-4"><p role="alert" className="text-sm text-destructive">Navigation permissions could not be loaded: {navPermissionsError.message}</p><Button variant="outline" onClick={() => void refetchNavPermissions()}>Retry navigation permissions</Button></div>}
         </div>

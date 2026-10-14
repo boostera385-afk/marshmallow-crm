@@ -21,3 +21,14 @@ claim "all tasks completed" based only on a successful build or an HTTP 200.
 
 # Rule: Supabase Migrations Notification
 Whenever you create or modify a database migration (SQL query) and push it to GitHub, you MUST always explicitly notify the user that they need to manually run the SQL query in their Supabase dashboard or via the Supabase CLI.
+
+# Rule: Optimization by Default for Every Change
+Follow `AGENTS.md` → **Optimization by default** for every feature, fix, and refactor.
+Review all affected layers, from UI/cache and API/database work through realtime,
+background jobs, storage/bandwidth, and CRM/Donut parity. Remove unnecessary work
+without changing functionality, permissions, approvals, alert timing, freshness,
+complete data, or recovery behavior. Require behavioral tests and evidence-based
+before/after comparisons; local request reductions are not verified bill savings.
+Production database changes and deployment still require separate approval.
+When commits are authorized, keep each coherent change, tests, and relevant docs
+together; never include unrelated local work or create artificial commit counts.

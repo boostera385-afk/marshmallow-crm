@@ -16,6 +16,139 @@ const savedLead = {
 };
 const snapshot = { ...savedLead, status: "scheduled", quote: null };
 
+test("Request optimization: notification burst keeps urgent popup and exact unread count", async ({ page }) => {
+  await mockSession(page, "admin");
+  await page.clock.install();
+  let ready = false;
+  let reads = 0;
+  await page.route("**/rest/v1/notifications*", async (route) => {
+    if (route.request().method() === "GET" || route.request().method() === "HEAD") reads++;
+    const url = new URL(route.request().url());
+    const urgent = url.searchParams.get("title")?.includes("Urgent Job");
+    const list = !url.searchParams.has("title");
+    await route.fulfill({ status: 200, json: ready && (urgent || list) ? [{
+      id: ALERT_ID, user_id: USER_ID, title: "Synthetic Urgent Job", message: "Synthetic urgent notification",
+      lead_id: JOB_ID, read: false, created_at: "2026-10-14T00:00:00Z",
+    }] : [], headers: {
+      "content-range": `0-0/${ready ? 125 : 0}`,
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "content-range",
+    } });
+  });
+  await page.goto("/leads");
+  await expect(page.getByText("Synthetic Customer").first()).toBeVisible();
+  // Bell initially loads before role resolution, then reloads with the resolved role.
+  await expect.poll(() => reads).toBe(6);
+  const before = reads;
+  ready = true;
+  await page.evaluate(async ({ userId }) => {
+    const modulePath = "/src/lib/realtime.ts";
+    const { realtimeBus } = await import(modulePath);
+    for (let i = 0; i < 50; i++) {
+      realtimeBus.dispatchEvent(new CustomEvent(`notifications:${userId}`, {
+        detail: { eventType: "INSERT", new: { user_id: userId, title: "Synthetic Urgent Job" } },
+      }));
+    }
+  }, { userId: USER_ID });
+  await expect(page.getByText("Synthetic urgent notification", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Notifications", exact: true })).toContainText("125");
+  expect(reads - before).toBe(3); // Bell list/count and urgent query, not 150 requests.
+});
+
+test("Request optimization: notifications recover from a failed read without losing alerts", async ({ page }) => {
+  await mockSession(page, "admin");
+  await page.clock.install();
+  let failed = false;
+  let read = false;
+  await page.route("**/rest/v1/notifications*", async (route) => {
+    const url = new URL(route.request().url());
+    if (!url.searchParams.get("title")?.includes("Urgent Job")) return route.fulfill({ json: [] });
+    if (failed) return route.fulfill({ status: 403, json: { code: "42501", message: "Synthetic denial" } });
+    await route.fulfill({ json: read ? [] : [{
+      id: ALERT_ID, user_id: USER_ID, title: "Synthetic Urgent Job", message: "Synthetic alert remains visible",
+      lead_id: JOB_ID, read: false, created_at: "2026-10-14T00:00:00Z",
+    }] });
+  });
+  await page.goto("/leads");
+  const alert = page.getByText("Synthetic alert remains visible", { exact: true });
+  await expect(alert).toBeVisible();
+  failed = true;
+  await page.clock.runFor(20_100);
+  await expect(alert).toBeVisible();
+  failed = false;
+  read = true;
+  await page.clock.runFor(20_100);
+  await expect(alert).not.toBeVisible();
+});
+
+test("Request optimization: hidden Operator badges make no reads or polls", async ({ page }) => {
+  await mockSession(page, "opr");
+  await page.clock.install();
+  const badgeReads: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() !== "HEAD") return;
+    if (["/rest/v1/lead_cancellation_requests", "/rest/v1/lead_payment_requests"].includes(url.pathname)
+      || (url.pathname === "/rest/v1/leads" && url.searchParams.get("status") === "eq.pending_to_send")) {
+      badgeReads.push(url.pathname);
+    }
+  });
+  await page.goto("/leads");
+  await expect(page.getByText("Synthetic Customer").first()).toBeVisible();
+  await page.clock.runFor(60_000);
+  expect(badgeReads).toEqual([]);
+  await expect(page.getByRole("link", { name: /Cancellation requests/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Payment approvals/ })).toHaveCount(0);
+});
+
+test("Request optimization: Admin cancellation badges retain 15-second polling", async ({ page }) => {
+  await mockSession(page, "admin");
+  await page.clock.install();
+  let cancellationReads = 0;
+  page.on("request", (request) => {
+    if (request.method() === "HEAD" && new URL(request.url()).pathname === "/rest/v1/lead_cancellation_requests") cancellationReads++;
+  });
+  await page.goto("/leads");
+  await expect(page.getByRole("link", { name: /Cancellation requests/ })).toBeVisible();
+  await expect.poll(() => cancellationReads).toBeGreaterThan(0);
+  const before = cancellationReads;
+  await page.clock.runFor(15_100);
+  await expect.poll(() => cancellationReads).toBeGreaterThan(before);
+});
+
+test("Request optimization: notes catch up when a hidden tab returns", async ({ page }) => {
+  await mockSession(page, "admin");
+  await page.clock.install();
+  let reads = 0;
+  let content = "Initial browser synthetic note";
+  await page.route("**/rest/v1/lead_notes*", async (route) => {
+    if (route.request().method() !== "GET") return route.fulfill({ json: [] });
+    reads++;
+    const type = new URL(route.request().url()).searchParams.get("note_type")?.replace("eq.", "") ?? "cs";
+    await route.fulfill({ json: [{
+      id: ALERT_ID, lead_id: JOB_ID, user_id: null, user_name: "Synthetic",
+      note_type: type, content, created_at: "2026-10-14T00:00:00Z",
+    }] });
+  });
+  await page.goto(`/leads/${JOB_ID}`);
+  await expect(page.getByText(content).first()).toBeVisible();
+  await page.clock.runFor(1_000);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const before = reads;
+  content = "Updated browser synthetic note";
+  await page.clock.runFor(60_000);
+  expect(reads).toBe(before);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(page.getByText(content).first()).toBeVisible();
+  expect(reads).toBeGreaterThan(before);
+});
+
 async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", options: { copyAllowed?: boolean; hold?: boolean; photos?: boolean } = {}) {
   let holdRead = false;
   let permission = options.copyAllowed ?? true;

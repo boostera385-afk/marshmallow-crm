@@ -5,6 +5,8 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileCheck, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
+import { subscribeToNotifications } from "@/lib/realtime";
+import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
 
 interface QuoteUpdatedNotification {
   id: string;
@@ -68,14 +70,14 @@ export default function QuoteUpdatedPopup() {
     Boolean(user) &&
     fullyAuthenticated;
 
-  const fetchUpdated = useCallback(async () => {
+  const loadUpdated = useCallback(async (isCurrent: () => boolean) => {
     if (!user || !isEligible) return;
 
     if (!baselineRef.current) baselineRef.current = getOrInitBaseline(user.id);
 
     const { data } = await supabase
       .from("notifications")
-      .select("*")
+      .select("id, title, message, lead_id, created_at")
       .eq("user_id", user.id)
       .eq("read", false)
       .ilike("title", "%Quote Updated%")
@@ -83,7 +85,7 @@ export default function QuoteUpdatedPopup() {
       .order("created_at", { ascending: false })
       .limit(FETCH_LIMIT);
 
-    if (!data) return;
+    if (!data || !isCurrent()) return;
 
     const rows = (data as QuoteUpdatedNotification[]).filter((n) => !dismissedIds.current.has(n.id));
     const hasNew = rows.some((n) => !seenIds.current.has(n.id));
@@ -91,12 +93,13 @@ export default function QuoteUpdatedPopup() {
 
     if (hasNew) {
       void import("@/lib/notification-sound").then(({ playAssignmentSound }) => {
-        playAssignmentSound();
+        if (isCurrent()) playAssignmentSound();
       });
     }
 
     setItems(rows);
   }, [user, isEligible]);
+  const fetchUpdated = useCoalescedRefresh(loadUpdated);
 
   // Polling
   useEffect(() => {
@@ -110,28 +113,12 @@ export default function QuoteUpdatedPopup() {
   useEffect(() => {
     if (!user || !isEligible) return;
 
-    const channel = supabase
-      .channel(`quote-updated-popup:${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const row = payload.new as { title?: string } | undefined;
-          if (row?.title?.toLowerCase().includes("quote updated")) {
-            void fetchUpdated();
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return subscribeToNotifications(user.id, (payload) => {
+      const row = payload.new as { title?: string };
+      if (payload.eventType === "INSERT" && row.title?.toLowerCase().includes("quote updated")) {
+        void fetchUpdated();
+      }
+    });
   }, [user, isEligible, fetchUpdated]);
 
   // Collapse per lead — the same quote updated twice is still one lead.
