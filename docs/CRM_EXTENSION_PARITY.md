@@ -33,8 +33,10 @@ Minimize/restore is also CRM-only and preserves the in-memory session while expo
 the underlying CRM page; closing still clears it. No native Donut assistant exists.
 It never executes urgent/technician assessments in a parallel implementation:
 existing authorized workflows are opened for those actions. No Donut source,
-prompt, manifest or ZIP changed. Pilot RPC migration/function rollout is pending;
-see the 2026-10-14 section in `docs/COPILOT_ROLLOUT.md` before publishing.
+prompt, manifest or ZIP changed. With user approval, the pilot RPC migration and
+Copilot function v2 were installed via MCP on 2026-10-14; generated types were
+refreshed. CRM publication and real signed-in/provider QA remain separate pending
+steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
 ## Release verification checklist
 

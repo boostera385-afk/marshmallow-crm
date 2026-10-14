@@ -41,8 +41,8 @@ five agree.
 
 **Copilot pilot:** the `pilot` branch adds a read-only operational workspace, saved
 lead/daily work briefs, conversational filters and explicitly consented AI drafting,
-with Admin readiness and stale-setting protection. Backend rollout, generated types
-and CRM publication are separate requirements; see
+with Admin readiness and stale-setting protection. Its backend is installed and
+types regenerated; CRM publication and real signed-in/provider QA remain separate; see
 [Copilot rollout](docs/COPILOT_ROLLOUT.md). No AI action approves or sends anything.
 
 > **Note on "Quo AI"** — the earlier Quo AI layer was removed in migration
