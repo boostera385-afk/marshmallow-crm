@@ -105,7 +105,7 @@ retrieves 251 distinct events across pages rather than the older technician repo
 **not verified production usage, latency or invoice savings**. Health/billing and
 normalized active-user/work-volume evidence are not available.
 
-## Database installed — deployment/publication pending approval
+## Database and Edge Function installed — CRM publication pending
 
 With the user's explicit approval on 2026-10-15, the exact reviewed Processor Board
 migration was applied through Supabase MCP to `kxiqholnmhkwhdkhtopp`.
@@ -121,9 +121,10 @@ migration was applied through Supabase MCP to `kxiqholnmhkwhdkhtopp`.
 2. `src/integrations/supabase/types.ts` was regenerated through MCP from the
    installed schema. Its 86 added lines describe only the two new tables and
    four new RPCs. The frontend retains runtime-validated Edge transport contracts.
-3. With separate approval deploy **processor-board** using its checked-in
-   `deno.json` dependency map. Keep JWT verification enabled in `config.toml`.
-   It independently verifies `auth.getUser()` and role membership. Server secrets
+3. With the user's additional approval, **processor-board v1** was deployed through
+   MCP on 2026-10-15 and is **ACTIVE**, with JWT verification enabled. All six
+   deployed files, including the pinned `deno.json` dependency map, exactly match
+   the committed source. It independently verifies `auth.getUser()` and role membership. Server secrets
    are `OPENAI_API_KEY`, `QUO_API_KEY` (raw key), and existing Supabase service-role
    environment configuration. No key belongs in VITE variables or Donut.
 4. Execute `supabase/tests/150_processor_board.sql` only on an isolated database
@@ -169,6 +170,20 @@ Its technician-wide intelligence panel is a different workflow and remains on
 `technician-chat-assessment`. No extension source, prompt, manifest or ZIP changes
 are needed; no new extension release is claimed.
 
+### Edge deployment verification
+
+- Function ID: `6281626c-9181-4714-b8cf-8956ca98333f`, version `1`.
+- Entrypoint: `processor-board/index.ts`; import map: `processor-board/deno.json`.
+- Retrieved the deployed function through MCP and compared all six source files
+  byte-for-byte against the reviewed local files; every comparison matched.
+- Five live non-mutating smoke checks passed: CORS preflight returned 200,
+  missing/invalid authorization returned 401, the legacy public anon key returned
+  the handler's `Not signed in.` 401 (not user authorization), and an unsupported
+  method returned the handler's 405. These confirm runtime boot and authentication
+  boundaries, **not** a completed signed-in review or verified provider credentials.
+- No secrets changed, Quo/OpenAI calls made, customer records changed, messages
+  sent, or other Edge Functions redeployed. CRM publication remains separate.
+
 ## Local verification boundaries
 
 - `npm run typecheck` and `npm run build` passed; build also verified the unchanged
@@ -186,8 +201,9 @@ are needed; no new extension release is claimed.
 - Changed-file ESLint reported no errors (four existing warnings in shared files).
   Full `npm run lint` remains blocked by the unrelated `prefer-const` violation
   at `src/integrations/supabase/previewAuthStorage.ts:38` from synced `main`.
-- Deno is not installed locally, so a native Deno check/live Edge runtime test is
-  pending. TypeScript/Vitest checks are not a substitute for that deployment check.
+- Deno is not installed locally, so a native Deno typecheck remains unrun. The
+  deployed runtime passed the limited live smoke checks above; a real signed-in
+  Admin/Processor job review and provider configuration still need verification.
 - Real Quo/OpenAI responses, signed-in production flows, production billing and
   CRM publication remain unverified. Manual AI refresh is implemented; no
   unattended AI monitoring is running.

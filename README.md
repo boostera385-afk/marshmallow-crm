@@ -361,8 +361,9 @@ appear without a manual refresh.
 
 **Processor Board** — the new scheduled-job queue uses job-specific verified
 technician evidence and advisory action labels, not automatic lead changes or
-messages. The database migration is installed and types regenerated; Edge Function
-deployment and CRM publication still need separate approval. See
+messages. The database migration is installed, types regenerated, and the Edge
+Function deployed through approved MCP operations; CRM publication and signed-in
+provider QA remain separate. See
 [Processor Board rollout](docs/PROCESSOR_BOARD_ROLLOUT.md).
 
 **State management** — no Redux or Zustand. Server data lives in TanStack Query
