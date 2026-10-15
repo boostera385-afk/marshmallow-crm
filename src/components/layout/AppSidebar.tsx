@@ -64,6 +64,7 @@ const getNavItems = (role: string) => [
   { title: "QUO Inbox", url: "/quo-monitor", icon: MessageSquare, navKey: "quo_monitor", group: "Work" },
   { title: "AI Assistance", url: "/ai-assistance", icon: Sparkles, navKey: "ai_assistance", group: "Work" },
   { title: "Schedule", url: "/schedule", icon: Calendar, navKey: "schedule", group: "Work" },
+  { title: "Processor Board", url: "/processor-board", icon: ClipboardCheck, navKey: "processor_board", group: "Work" },
   { title: "Map View", url: "/map-view", icon: MapIcon, navKey: "map_view", group: "Work" },
   { title: "Cancellation requests", url: "/lead-cancellation-requests", icon: ClipboardX, navKey: "cancellation_requests", group: "Review" },
   { title: "Payment approvals", url: "/lead-payment-requests", icon: DollarSign, navKey: "payment_requests", group: "Review" },

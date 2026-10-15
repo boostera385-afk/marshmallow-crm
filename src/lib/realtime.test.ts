@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { subscribeToNotifications, type NotificationChange } from "./realtime";
+import { subscribeToNotifications, subscribeToProcessorBoard, type NotificationChange } from "./realtime";
 
 const state = vi.hoisted(() => ({
   channels: [] as {
@@ -77,5 +77,23 @@ describe("recipient-scoped notification bus", () => {
     state.channels[2].handlers[0].callback(insert);
     expect(replacement).toHaveBeenCalledOnce();
     expect(second).not.toHaveBeenCalled();
+  });
+});
+
+describe("mounted Processor Board transport", () => {
+  it("shares one channel, cleans up on last consumer and ignores retired events", () => {
+    const first = vi.fn(); const second = vi.fn();
+    const releaseA = subscribeToProcessorBoard(first);
+    const releaseB = subscribeToProcessorBoard(second);
+    releases.push(releaseA, releaseB);
+    expect(state.channels).toHaveLength(1);
+    const retired = state.channels[0];
+    retired.handlers[0].callback(insert);
+    expect(first).toHaveBeenCalledOnce(); expect(second).toHaveBeenCalledOnce();
+    releaseA(); expect(state.remove).not.toHaveBeenCalled();
+    releaseB(); releaseB(); expect(state.remove).toHaveBeenCalledOnce();
+    const replacement = vi.fn(); releases.push(subscribeToProcessorBoard(replacement));
+    retired.handlers[0].callback(insert); expect(replacement).not.toHaveBeenCalled();
+    state.channels[1].handlers[0].callback(insert); expect(replacement).toHaveBeenCalledOnce();
   });
 });

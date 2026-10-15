@@ -1,0 +1,62 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import ProcessorBoardPage from "./ProcessorBoardPage";
+import type { ProcessorJob } from "@/lib/processor-board";
+const state = vi.hoisted(() => ({ role: "processor", assess: vi.fn(), hook: vi.fn(), refetch: vi.fn() }));
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "actor" }, role: state.role }) }));
+vi.mock("@/hooks/useProcessorBoard", () => ({ PROCESSOR_QUERY_KEY: ["processor-board"], useProcessorBoard: state.hook }));
+vi.mock("@/lib/processor-board", async (load) => ({ ...await load<object>(), assessProcessorJob: state.assess }));
+const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1001", customer_name: "John Sample", customer_phone: null, address: "10 Sample St", city: "Miami", state: "FL", service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: null, assessment: null };
+function mount() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>); }
+beforeEach(() => {
+  vi.clearAllMocks(); state.role = "processor";
+  state.assess.mockResolvedValue({ result: {} });
+  state.hook.mockReturnValue({ data: { rows: [job, { ...job, id: "00000000-0000-4000-8000-000000000002", job_id: "JOB-1002", customer_name: "Jane Example", status: "paid" }], total: 26, observed_at: "2026-10-15T18:00:00Z" }, isLoading: false, isFetching: false, isError: false, refetch: state.refetch });
+});
+afterEach(cleanup);
+describe("Processor Board interactions", () => {
+  it("shows technician identity and schedule, and opens this job's evidence instead of another job", () => {
+    mount(); expect(screen.getAllByText("4155550199").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    const dialog = screen.getByRole("dialog"); expect(dialog).toHaveTextContent("John Sample"); expect(dialog).not.toHaveTextContent("Jane Example");
+    expect(dialog).toHaveTextContent("Afternoons only"); expect(dialog).toHaveTextContent("not a completed AI review");
+  });
+  it("retains the job and reports a failed review without fake completion", async () => {
+    state.assess.mockRejectedValue(new Error("Synthetic provider unavailable")); mount();
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Check this job" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Synthetic provider unavailable"));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Saved lead status: Scheduled");
+    expect(state.assess).toHaveBeenCalledExactlyOnceWith(job.id, "America/New_York");
+  });
+  it("bulk checks only eligible jobs and guards repeated clicks", async () => {
+    let resolve!: () => void;
+    state.assess.mockImplementation(() => new Promise<void>((done) => { resolve = done; })); mount();
+    const button = screen.getByRole("button", { name: "Refresh AI · this page" });
+    fireEvent.click(button); fireEvent.click(button);
+    expect(state.assess).toHaveBeenCalledTimes(1); resolve();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("No lead statuses or messages were changed"));
+  });
+  it("keeps failed-review page filters consistent with the displayed status counts", async () => {
+    state.assess.mockRejectedValue(new Error("Synthetic provider unavailable")); mount();
+    const actionCard = screen.getByRole("button", { name: /Take Job Update/ });
+    fireEvent.click(actionCard);
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Check this job" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Synthetic provider unavailable"));
+    expect(screen.queryAllByLabelText("Review JOB-1001")).toHaveLength(0);
+    expect(actionCard).toHaveTextContent("0");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Unavailable");
+  });
+  it("searches with debounce, changes page on action, and exposes recovery on load failure", async () => {
+    mount(); fireEvent.change(screen.getByRole("textbox", { name: "Search jobs or technicians" }), { target: { value: "John" } });
+    await waitFor(() => expect(state.hook).toHaveBeenLastCalledWith(expect.objectContaining({ search: "John", offset: 0 })));
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(state.hook).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 25 }));
+  });
+  it.each(["opr", "opr_admin", "customer_service", "cs_admin"])("does not read or show jobs to %s", (role) => {
+    state.role = role; mount(); expect(screen.getByRole("alert")).toHaveTextContent("restricted"); expect(state.hook).not.toHaveBeenCalled();
+  });
+});

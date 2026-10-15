@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
-import { Suspense, type ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -30,6 +30,8 @@ import CrmUpdates from "@/pages/CrmUpdates";
 import MapViewPage from "@/pages/MapViewPage";
 import TechniciansPage from "@/pages/TechniciansPage";
 import OptimizationPage from "@/pages/OptimizationPage";
+
+const ProcessorBoardPage = lazy(() => import("@/pages/ProcessorBoardPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -126,6 +128,7 @@ const App = () => (
               <Route path="leads" element={<PageRoute navItem="leads"><LeadsPage /></PageRoute>} />
               <Route path="leads/:id" element={<PageRoute navItem="leads"><LeadDetailPage /></PageRoute>} />
               <Route path="schedule" element={<PageRoute navItem="schedule"><SchedulePage /></PageRoute>} />
+              <Route path="processor-board" element={<PageRoute navItem="processor_board"><Suspense fallback={<PageFallback />}><ProcessorBoardPage /></Suspense></PageRoute>} />
               <Route path="analytics" element={<PageRoute navItem="analytics"><Analytics /></PageRoute>} />
               <Route path="areas" element={<PageRoute navItem="areas"><AreasPage /></PageRoute>} />
               <Route path="map-view" element={<PageRoute navItem="map_view"><MapViewPage /></PageRoute>} />

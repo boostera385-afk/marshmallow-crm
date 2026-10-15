@@ -3,7 +3,7 @@ import { ALL_LEAD_STATUSES, ALL_NAV_ITEMS, type NavItem } from "@/lib/constants"
 
 const DEFAULT_NAV_ACCESS: Record<AppRole, Set<NavItem>> = {
   admin: new Set(ALL_NAV_ITEMS),
-  processor: new Set(["leads", "schedule", "cancellation_requests", "map_view", "technicians", "cx_updates"]),
+  processor: new Set(["leads", "schedule", "processor_board", "cancellation_requests", "map_view", "technicians", "cx_updates"]),
   customer_service: new Set(["leads", "schedule", "quote_approval_requests", "ai_assistance", "cx_updates"]),
   opr: new Set(["leads"]),
   // The urgent review queue is the CS Admin side of the AI check. customer_service
@@ -20,6 +20,10 @@ const DEFAULT_NAV_ACCESS: Record<AppRole, Set<NavItem>> = {
 };
 
 export function canRequestCxUpdate(role: AppRole | null | undefined): boolean {
+  return role === "admin" || role === "processor";
+}
+
+export function canAccessProcessorBoard(role: AppRole | null | undefined): boolean {
   return role === "admin" || role === "processor";
 }
 
@@ -160,6 +164,7 @@ export function canAccessNavItem(
   }
 
   if (navItem === "cx_updates") return canAccessCxUpdates(role);
+  if (navItem === "processor_board") return canAccessProcessorBoard(role);
 
   if (navItem === "ai_assistance") {
     // CS Missed-Lead Tracker — a shared CS worklist. Admin is handled above;

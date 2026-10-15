@@ -59,6 +59,35 @@ export function subscribeToNotifications(userId: string, onChange: (payload: Not
 
 let isRealtimeSetup = false;
 let globalChannel: ReturnType<typeof supabase.channel> | null = null;
+let processorBoardConsumers = 0;
+let processorBoardChannel: ReturnType<typeof supabase.channel> | null = null;
+let processorBoardGeneration = 0;
+
+/** Mounted Processor Board consumers share one transport; no board traffic for other screens/roles. */
+export function subscribeToProcessorBoard(onChange: () => void) {
+  realtimeBus.addEventListener("processor_board_changed", onChange);
+  processorBoardConsumers++;
+  if (!processorBoardChannel) {
+    const generation = ++processorBoardGeneration;
+    const dispatch = () => {
+      if (generation === processorBoardGeneration) realtimeBus.dispatchEvent(new Event("processor_board_changed"));
+    };
+    processorBoardChannel = supabase.channel(`processor-board:${generation}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, dispatch)
+      .subscribe((status) => { if (status === "SUBSCRIBED") dispatch(); });
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    realtimeBus.removeEventListener("processor_board_changed", onChange);
+    if (--processorBoardConsumers === 0 && processorBoardChannel) {
+      ++processorBoardGeneration;
+      void supabase.removeChannel(processorBoardChannel);
+      processorBoardChannel = null;
+    }
+  };
+}
 
 export function setupGlobalRealtime() {
   if (isRealtimeSetup) return;
