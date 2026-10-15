@@ -1782,6 +1782,64 @@ export type Database = {
         }
         Relationships: []
       }
+      processor_job_assessments: {
+        Row: {
+          checked_at: string
+          input_hash: string
+          lead_id: string
+          lead_updated_at: string
+          result: Json
+        }
+        Insert: {
+          checked_at?: string
+          input_hash: string
+          lead_id: string
+          lead_updated_at: string
+          result: Json
+        }
+        Update: {
+          checked_at?: string
+          input_hash?: string
+          lead_id?: string
+          lead_updated_at?: string
+          result?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "processor_job_assessments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      processor_job_refresh_locks: {
+        Row: {
+          expires_at: string
+          lead_id: string
+          token: string
+        }
+        Insert: {
+          expires_at: string
+          lead_id: string
+          token: string
+        }
+        Update: {
+          expires_at?: string
+          lead_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "processor_job_refresh_locks_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           can_add_manual_leads: boolean
@@ -2754,6 +2812,10 @@ export type Database = {
         Args: { p_cooldown_seconds?: number; p_trigger: string }
         Returns: boolean
       }
+      claim_processor_job_refresh: {
+        Args: { p_lead_id: string; p_token: string }
+        Returns: boolean
+      }
       claim_sheets_sync_queue: {
         Args: { p_limit?: number }
         Returns: {
@@ -3026,6 +3088,15 @@ export type Database = {
           opr_code: string
         }[]
       }
+      list_processor_jobs: {
+        Args: {
+          p_history?: boolean
+          p_offset?: number
+          p_search?: string
+          p_timezone?: string
+        }
+        Returns: Json
+      }
       list_technician_change_requests: {
         Args: { p_status?: string }
         Returns: {
@@ -3144,6 +3215,10 @@ export type Database = {
           tech_count: number
         }[]
       }
+      processor_can_view_status: {
+        Args: { p_status: string }
+        Returns: boolean
+      }
       prune_sheets_sync_errors: { Args: { p_keep?: number }; Returns: number }
       quo_conversation_counts_by_number: {
         Args: never
@@ -3236,6 +3311,17 @@ export type Database = {
           p_review_note?: string
         }
         Returns: string
+      }
+      save_processor_job_assessment: {
+        Args: {
+          p_actor: string
+          p_hash: string
+          p_lead_id: string
+          p_result: Json
+          p_token: string
+          p_updated_at: string
+        }
+        Returns: boolean
       }
       search_technicians: {
         Args: { _limit: number; _offset: number; _q: string }

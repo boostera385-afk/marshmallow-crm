@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, Profile, NavigationPermission } from "@/types";
-import { canAccessNavItem, canAccessCxUpdates } from "@/lib/access";
+import { canAccessNavItem, canAccessCxUpdates, canAccessProcessorBoard } from "@/lib/access";
 
 const VERIFIED_USER_KEY = "auth_verified_user_id";
 const PENDING_AUTH_KEY = "auth_pending_state";
@@ -308,6 +308,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const canAccess = (navItem: string): boolean => {
+    if (navItem === "processor_board") return canAccessProcessorBoard(role);
     if (navItem === "cx_updates") return canAccessCxUpdates(role);
     if (navItem === "quote_pending_requests") {
       // CS Admins do not work the Quote to Send queue.

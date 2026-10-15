@@ -109,6 +109,7 @@ Navigation is grouped and filtered per role. Items can be granted per user throu
 | `/leads` | Leads list | `leads` |
 | `/leads/:id` | Lead detail | `leads` |
 | `/schedule` | Schedule board | `schedule` |
+| `/processor-board` | Processor Board: job-specific technician updates and next actions | **Admin / Processor only** |
 | `/map-view` | Map view | `map_view` |
 | `/analytics` | Analytics | `analytics` |
 | `/areas` | Area insights | `areas` |
@@ -357,6 +358,13 @@ appear without a manual refresh.
 ---
 
 ## Architecture notes
+
+**Processor Board** — the new scheduled-job queue uses job-specific verified
+technician evidence and advisory action labels, not automatic lead changes or
+messages. The database migration is installed, types regenerated, and the Edge
+Function deployed through approved MCP operations; CRM publication and signed-in
+provider QA remain separate. See
+[Processor Board rollout](docs/PROCESSOR_BOARD_ROLLOUT.md).
 
 **State management** — no Redux or Zustand. Server data lives in TanStack Query
 (`staleTime` 60s, `gcTime` 5min, single retry, no refetch on focus or reconnect). Local

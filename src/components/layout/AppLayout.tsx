@@ -59,6 +59,7 @@ export default function AppLayout() {
     "/tech-approvals": { title: "Tech Approvals", subtitle: "Review processor requests to change technician Good Tech or active status." },
     "/lead-cancellation-requests": { title: "Cancellation Requests", subtitle: "Review cancellation reasons and approve or decline requests." },
     "/schedule": { title: "Schedule", subtitle: "Review jobs by day, week, and date range." },
+    "/processor-board": { title: "Processor Board", subtitle: "Job-specific technician updates and next actions." },
     "/analytics": { title: "Analytics", subtitle: "Watch volume, pace, and operational trends." },
     "/areas": { title: "Areas", subtitle: "Compare neighborhoods and service performance." },
     "/map-view": { title: "Map View", subtitle: "Match field capacity to nearby customer demand." },

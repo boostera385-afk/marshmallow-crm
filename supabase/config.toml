@@ -1,1 +1,4 @@
 project_id = "kxiqholnmhkwhdkhtopp"
+
+[functions.processor-board]
+verify_jwt = true

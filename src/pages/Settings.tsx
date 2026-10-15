@@ -54,6 +54,7 @@ const NAV_SECTION_LABELS: Record<string, string> = {
   leads: "All Leads",
   quo_monitor: "QUO Dashboard",
   ai_assistance: "AI Assistance",
+  processor_board: "Processor Board",
   calls: "Calls Log",
   analytics: "Analytics",
   settings: "Settings",
@@ -822,6 +823,7 @@ const Settings = () => {
         const fixedReason = section === "optimization" || section === "payment_requests"
           ? "Admin only"
           : section === "ai_assistance" ? "Customer Service roles only"
+          : section === "processor_board" ? "Admin and Processor roles only"
           : section === "cx_updates" ? "Admin, Processor, CS Admin and Customer Service roles"
           : section === "settings" ? "Controlled by Manage CS in Users"
           : section === "quote_pending_requests" ? "Controlled by Quotation Master"
