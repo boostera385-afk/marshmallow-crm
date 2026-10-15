@@ -819,6 +819,8 @@ const Settings = () => {
     ...ALL_NAV_ITEMS.map((section) => ({
       key: section,
       label: NAV_SECTION_LABELS[section] || section,
+      searchTerms: section === "cx_updates" ? ["Get CX Update", "Get Tech Update", "CX Updates", "Tech Updates", "Question More"]
+        : section === "processor_board" ? ["Dispatch Board", "Job Update Board"] : [],
       renderControl: (target: SettingsUser) => {
         const fixedReason = section === "optimization" || section === "payment_requests"
           ? "Admin only"

@@ -1,7 +1,7 @@
 import { isObject } from "./copilot-core.ts";
 import type { CopilotAiAnswer } from "./copilot-handler.ts";
 
-export const COPILOT_BACKEND_VERSION = "pilot-2";
+export const COPILOT_BACKEND_VERSION = "pilot-3";
 export const COPILOT_PROMPT_VERSION = "2026-10-14.1";
 // Deliberately pinned: another model needs a cost/quality review before changing
 // the fixed two-cent reservation. No automatic model fallback or paid retry.

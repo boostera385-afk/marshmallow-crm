@@ -1,5 +1,132 @@
 # Marshmallow Copilot rollout
 
+## Current feature / role catalogue audit — 2026-10-15
+
+### Outcome and authorization boundaries
+
+- The catalogue covers all **21 current navigation sections**, with regression
+  coverage against `ALL_NAV_ITEMS` and the existing six-role frontend defaults.
+  Added Processor Board, separate Get CX Update / Get Tech Update guides,
+  independently granted CX/Tech Quickchat, and a Donut manual-install/version guide.
+  Map/Settings guidance now reflects existing filters and fixed role gates.
+- Processor Board remains **Admin/Processor only**. CX/Tech Updates remain
+  **Admin/Processor/Customer Service/CS Admin**. Quickchat uses its own existing
+  navigation grant. Manage CS and Quotation Master still control their respective
+  tools. No new role, user grant, AI consent or permission bypass was introduced.
+- Exact workflow names such as `Get Tech Update`, `Quotes to Send` and
+  `update Donut` resolve to read-only help, not mutation errors or paid AI.
+  Requests to update a job, send Dose or approve payment remain blocked.
+  Word-aware matching avoids false `map` results from `roadmap`.
+- Copilot opens existing routes; it does **not** query Processor Board evidence,
+  start a review, complete/acknowledge updates, send messages, or change records.
+  Saved-brief/attention answers offer only caller-permitted workflow links.
+  No lead/status/approval policies or workflow endpoints were changed.
+- Settings Feature Access search now recognizes `Get Tech Update`, `Get CX Update`,
+  `Dispatch Board` and `Job Update Board`. Fixed-role cells remain labelled read-only,
+  not ineffective grant switches.
+- Donut has no native Copilot, scheduled-job board or saved-lead update queue.
+  Its existing native intake, urgent checks, technician intelligence and photo/chat
+  handoff remain separate. No extension sources or release artifacts changed;
+  no ZIP installation is required for this Copilot-only update.
+
+### Approved MCP application and deployment
+
+Target: existing shared project **`kxiqholnmhkwhdkhtopp`**. Only the user's approved
+Copilot migration/function rollout was performed; no data repair, role grants,
+secret changes, messages, ingestion changes, CRM Publish, commits or pushes.
+
+1. Applied exact local file
+   `supabase/migrations/20261015060558_copilot_current_feature_access.sql` through
+   MCP. Recorded version: **`20261015063130`**, name
+   **`copilot_current_feature_access`**. It replaces only `copilot_nav_allowed(text)`
+   and `copilot_get_access()`, preserving SECURITY INVOKER, fixed empty search paths,
+   authenticated-only execute and existing caller-token RLS.
+2. Deployed **`marshmallow-copilot` v6**, ACTIVE. Diagnostics backend version is
+   `pilot-3`; model/prompt stay `gpt-4o-mini` / `2026-10-14.1`. All five retrieved
+   deployment files matched local source (line-ending normalized).
+3. Live preflight found **v5**, not the historical v2 documented below. Its five
+   source files matched the committed baseline. Its **`verify_jwt=false`** was
+   preserved; this rollout did not disable gateway JWT checking. The entrypoint
+   still validates the supplied token with `auth.getUser()` before any caller RPC
+   or provider request. Four live non-customer probes passed: OPTIONS 200, GET 405,
+   missing bearer 401, invalid synthetic bearer 401.
+4. All **26 production-safe checks** in
+   `supabase/tests/115_copilot_current_features_readonly.sql` passed. The exact
+   `40_leads_rls_baseline.sql` six-role matrix matched before/after, cell for cell.
+   Role grants, user grants, global config and lead-policy fingerprints also matched.
+5. No function signatures, table columns, enums or generated-type contracts changed;
+   `src/integrations/supabase/types.ts` was not hand-edited or regenerated.
+
+**Manual migration handling:** already installed on this project; do not rerun,
+rename applied history, replay the original Copilot migration, or use `db push`.
+For a separately approved target with existing Copilot dependencies, manually apply
+only the new migration after review, then run `115_copilot_current_features_readonly.sql`.
+`114_copilot_current_features.sql` is **write-based and isolated-fixture only**.
+Rollback requires separate approval: restore only the two function definitions
+from `20261013045711_marshmallow_copilot.sql` with their authenticated-only grants,
+then redeploy the reviewed pre-rollout v5 source. Do not replay the full old migration
+or remove users' grants. CRM role access itself is unchanged by that rollback.
+
+### Verification and efficiency review
+
+- `npm test -- --maxWorkers=1`: **796 tests / 94 files passed**. An earlier run hit
+  the shell's 300-second timeout; the standalone longer-timeout run completed green.
+- Focused catalogue/API/handler tests: **98 passed**, including denied/stale sections,
+  backend failure, zero provider/budget work and preserved mutation denial.
+- Network-isolated Chromium: **27 tests passed** in the final complete suite;
+  six-role feature visibility, Processor-to-board
+  navigation without assessment, desktop/mobile layout, denied users, saved settings,
+  failures and feature-search aliases tested using synthetic users only. Initial
+  new-test failures were locator mistakes (duplicate history answers and expecting
+  switches where fixed-role labels exist); selectors were corrected without
+  weakening product assertions.
+- `node scripts/test-copilot-db.mjs <PGlite installation>`: **92 behavioral + 68
+  read-only checks passed**; migrations applied twice; isolated six-role lead
+  visibility baseline unchanged. The new harness contributes 19 override/opt-in
+  checks plus 26 metadata/role checks. Shared production was not used for write tests.
+- Full lint: **0 errors / 28 existing warnings**. App/node typecheck, production
+  build (including extension integrity), and diff whitespace checks passed.
+  Existing chunk-size/Browserslist warnings remain. Native Deno typecheck and a real
+  signed-in/provider end-to-end workflow were not run.
+
+Efficiency scope: UI adds catalogue entries/search aliases only; hooks, existing
+caller/role-scoped cache, polling and shared realtime bus are unchanged. API help
+continues to perform the **two existing access RPCs** (initial + late revocation
+check), with **zero** board/queue reads, assessments, budget reservations, or AI
+requests. No background jobs, storage objects/downloads or extension listeners are
+added. Database work adds four bounded navigation sections, preserving indexed
+permission lookups and all record queries/RLS; no index changes were justified.
+
+Reproducible local comparison: on the same synthetic Admin/Processor/CS fixtures,
+`open Processor Board` previously returned no matching feature and `Get Tech Update`
+was treated as a mutation; both now return the permitted guide. The new handler
+tests assert unchanged two-access-read safety and zero additional resource calls.
+The full Admin AI guide is 5,073 characters, below its existing 8,000-character
+context limit. This is functional/resource-test evidence, **not measured production
+latency or billing savings**. Prior 24-hour Copilot logs showed 6,595 HTTP 200s and
+one 503; no comparable post-rollout user workload, active-user normalization or
+invoice evidence has been collected.
+
+Pre/post advisors reported no findings on the two changed functions. Existing
+project-wide notices remain out of scope: mutable search paths, public `pg_net`,
+anonymous/authenticated definer execution, leaked-password protection, RLS initplans,
+multiple policies and index notices. Review the
+[database linter remediation guide](https://supabase.com/docs/guides/database/database-linter)
+and [password protection guidance](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)
+separately; this task did not loosen or silently repair unrelated security settings.
+
+**Still separate:** publish the latest CRM and verify a real signed-in permitted and
+excluded role. The earlier uncommitted Processor Board reliability backend was
+not redeployed by this Copilot-only rollout; see `PROCESSOR_BOARD_ROLLOUT.md`.
+No production assessments or paid AI test was triggered.
+
+Changed implementation files: `_shared/copilot-core.ts`, `copilot-handler.ts` and
+`copilot-provider.ts` under `supabase/functions/`; `src/pages/Settings.tsx`; the new
+migration above; `scripts/test-copilot-db.mjs`; SQL harnesses 114/115; catalogue,
+API and handler tests under `src/lib/`; and `tests/operator-workflow/copilot.spec.ts`.
+This section and `docs/CRM_EXTENSION_PARITY.md` record the rollout. Earlier local
+Processor Board changes and unrelated untracked files were preserved.
+
 ## Authorized pilot backend rollout — 2026-10-14
 
 With explicit user approval, the pilot backend was installed via Supabase MCP on

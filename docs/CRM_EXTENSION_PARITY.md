@@ -54,6 +54,26 @@ approved deployment**; CRM publication and live-provider QA are separate steps.
 The installed migration/types are unchanged. See `docs/PROCESSOR_BOARD_ROLLOUT.md`
 for read-only findings, synthetic before/after measurements and verification.
 
+## Copilot feature/role catalogue audit (2026-10-15)
+
+Copilot now describes all 21 current CRM navigation sections, including Processor
+Board (Admin/Processor), both CX/Tech queues (Admin/Processor/CS Admin/Customer
+Service), and independently granted customer/technician Quickchat. It also explains
+the header's Donut version/ZIP controls and manual installation; it never assumes
+an installed version, sends photos/messages, or runs assessments. Fixed gates cannot
+be widened by a navigation switch. Existing Copilot opt-in grants are unchanged.
+Settings feature search recognizes the queue names and Processor Board aliases.
+
+No native Copilot, Processor Board, or saved-lead update queue exists in Donut.
+Existing Quickchat/photo handoff is only explained, not changed. There is no shared
+runtime change to port: extension sources, manifest, metadata and ZIP are unchanged.
+The Copilot-only migration was applied by approved MCP as
+`20261015063130 / copilot_current_feature_access`; `marshmallow-copilot` v6 is
+ACTIVE and all five deployed files matched local source. Existing function-level
+`auth.getUser()` authentication and gateway `verify_jwt=false` were preserved from
+live v5. CRM publication/signed-in QA remain separate. This does not deploy the
+earlier local Processor Board reliability changes. See `docs/COPILOT_ROLLOUT.md`.
+
 ## Release verification checklist
 
 1. Test each changed flow on both surfaces and an excluded role.
