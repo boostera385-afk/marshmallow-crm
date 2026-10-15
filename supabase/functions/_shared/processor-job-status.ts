@@ -6,6 +6,7 @@ export type JobIdentity = {
   status: string; updated_at: string; created_at: string;
 };
 export type JobMessage = { id: string; conversation_id: string; sender: string; text: string | null; message_time: string | null; status?: string | null };
+export type JobPeer = Pick<JobIdentity, "id" | "job_id" | "customer_name" | "customer_phone" | "address" | "tech_number">;
 export type JobSignal = "accepted" | "progress" | "completed" | "update_request";
 export type JobEvidence = { signal: JobSignal; quote: string; message_id: string; message_time: string; sender: string };
 export type ProcessorStatus = "take_job_update" | "job_in_progress" | "payment_pending" | "send_dose" | "needs_review" | "unavailable" | "scheduled";
@@ -14,23 +15,36 @@ export function phoneKey(value: string | null): string | null {
   const digits = (value ?? "").replace(/\D/g, "");
   return digits.length === 10 ? digits : digits.length === 11 && digits[0] === "1" ? digits.slice(1) : null;
 }
-export function jobAnchors(job: JobIdentity): string[] {
-  return [job.job_id.length >= 4 ? normalize(job.job_id) : "", job.address && /\d/.test(job.address) ? normalize(job.address) : "",
-    job.customer_name.trim().split(/\s+/).length >= 2 ? normalize(job.customer_name) : ""].filter((s) => s.length >= 4);
+export function jobAnchors(job: Pick<JobIdentity, "job_id" | "address" | "customer_name">): string[] {
+  const { job_id, address, customer_name } = job;
+  return [job_id.length >= 4 ? normalize(job_id) : "", address && /\d/.test(address) ? normalize(address) : "",
+    customer_name.trim().split(/\s+/).length >= 2 ? normalize(customer_name) : ""].filter((s) => s.length >= 4);
+}
+/** Compile once per review, not once per message/quote. No cross-request identity cache. */
+export function createJobMatcher(job: JobIdentity, peers: JobPeer[]): (text: string) => boolean {
+  const anchors = new Set(jobAnchors(job));
+  const peerAnchors = new Set<string>();
+  const peerPhones = new Set<string>();
+  for (const peer of peers) {
+    if (peer.id === job.id) continue;
+    for (const anchor of jobAnchors(peer)) peerAnchors.add(anchor);
+    const peerPhone = phoneKey(peer.customer_phone);
+    if (peerPhone) peerPhones.add(peerPhone);
+  }
+  const own = [...anchors].filter((anchor) => !peerAnchors.has(anchor)).map((anchor) => ` ${anchor} `);
+  const others = [...peerAnchors].filter((anchor) => !anchors.has(anchor)).map((anchor) => ` ${anchor} `);
+  const phone = phoneKey(job.customer_phone);
+  const ownPhone = phone && !peerPhones.has(phone);
+  return (text) => {
+    const haystack = ` ${normalize(text)} `;
+    const phones = new Set((text.match(/(?<!\d)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/g) ?? []).map(phoneKey).filter(Boolean));
+    if (!own.some((anchor) => haystack.includes(anchor)) && !(ownPhone && phones.has(phone))) return false;
+    return !others.some((anchor) => haystack.includes(anchor)) && ![...phones].some((p) => p !== phone && peerPhones.has(p!));
+  };
 }
 /** An explicit identifier must be unique to this job, and no peer job may be mentioned. */
-export function belongsToJob(text: string, job: JobIdentity, peers: JobIdentity[]): boolean {
-  const haystack = ` ${normalize(text)} `;
-  const mentions = (anchor: string) => haystack.includes(` ${anchor} `);
-  const phone = phoneKey(job.customer_phone);
-  const phones = new Set((text.match(/(?<!\d)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/g) ?? []).map(phoneKey).filter(Boolean));
-  const own = jobAnchors(job).filter((a) => !peers.some((p) => p.id !== job.id && jobAnchors(p).includes(a)));
-  const ownPhone = phone && !peers.some((p) => p.id !== job.id && phoneKey(p.customer_phone) === phone);
-  if (!own.some(mentions) && !(ownPhone && phones.has(phone))) return false;
-  return !peers.some((p) => p.id !== job.id && (
-    jobAnchors(p).filter((a) => !jobAnchors(job).includes(a)).some(mentions) ||
-    (phoneKey(p.customer_phone) && phoneKey(p.customer_phone) !== phone && phones.has(phoneKey(p.customer_phone)!))
-  ));
+export function belongsToJob(text: string, job: JobIdentity, peers: JobPeer[]): boolean {
+  return createJobMatcher(job, peers)(text);
 }
 export function localDateTime(now: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(now);
@@ -40,15 +54,16 @@ export function localDateTime(now: Date, timezone: string): string {
 export function schedulePassed(job: { scheduled_date?: string | null; scheduled_time_start?: string | null }, now: Date, timezone: string): boolean {
   return !!job.scheduled_date && !!job.scheduled_time_start && localDateTime(now, timezone) >= `${job.scheduled_date}T${job.scheduled_time_start.length === 5 ? `${job.scheduled_time_start}:00` : job.scheduled_time_start}`;
 }
-export function verifyJobEvidence(value: unknown, job: JobIdentity, peers: JobIdentity[], messages: JobMessage[], timezone: string, now = new Date()): JobEvidence[] {
+export function verifyJobEvidence(value: unknown, job: JobIdentity, peers: JobPeer[], messages: JobMessage[], timezone: string, now = new Date(), matches = createJobMatcher(job, peers)): JobEvidence[] {
   if (!Array.isArray(value)) return [];
+  const byId = new Map(messages.map((message) => [message.id, message]));
   return value.slice(0, 20).flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const { signal, quote, message_id } = item;
     if (!["accepted", "progress", "completed", "update_request"].includes(signal) || typeof quote !== "string" || quote.trim().length < 12 || quote.length > 1000) return [];
-    const message = messages.find((m) => m.id === message_id);
+    const message = byId.get(message_id);
     if (!message?.text || !message.message_time || !Number.isFinite(Date.parse(message.message_time)) || Date.parse(message.message_time) > now.getTime() || Date.parse(message.message_time) < Date.parse(job.created_at)) return [];
-    if (!message.text.includes(quote.trim()) || !belongsToJob(quote, job, peers) || !belongsToJob(message.text, job, peers)) return [];
+    if (!message.text.includes(quote.trim()) || !matches(quote) || !matches(message.text)) return [];
     if ((signal === "update_request") !== (message.sender === "agent")) return [];
     if (signal === "update_request" && message.status !== "delivered") return [];
     if (signal !== "update_request" && message.sender !== "customer") return [];

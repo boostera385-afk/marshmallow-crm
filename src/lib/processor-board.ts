@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { schedulePassed } from "../../supabase/functions/_shared/processor-job-status";
+export { processorReadiness } from "../../supabase/functions/_shared/processor-review";
 
 export const PROCESSOR_STATUSES = ["take_job_update", "job_in_progress", "payment_pending", "send_dose", "needs_review", "unavailable", "scheduled"] as const;
 export type ProcessorStatus = typeof PROCESSOR_STATUSES[number];
@@ -28,16 +29,21 @@ export const processorJobSchema = z.object({
 });
 export type ProcessorJob = z.infer<typeof processorJobSchema>;
 export const processorQueueSchema = z.object({ rows: z.array(processorJobSchema), total: z.number().int().nonnegative(), observed_at: z.string(), timezone: z.string() });
+export type ProcessorQueue = z.infer<typeof processorQueueSchema>;
 export type ProcessorFilters = { offset: number; search: string; history: boolean; timezone: string };
+export class ProcessorReviewFailure extends Error {
+  constructor(message: string, public retryable = true, public code = "review_unavailable") { super(message); }
+}
 async function call(body: object, signal?: AbortSignal): Promise<unknown> {
   const { data, error } = await supabase.functions.invoke("processor-board", { body, signal });
   if (error) {
     const context: unknown = error.context;
     if (context instanceof Response) {
+      if (context.status === 546) throw new ProcessorReviewFailure("Review reached the server resource limit while reading a long conversation. Previous evidence is retained. Retry this job; contact Admin if it repeats.", true, "resource_limit");
       const payload = await context.clone().json().catch(() => null);
-      if (payload && typeof payload.error === "string") throw new Error(payload.error);
+      if (payload && typeof payload.error === "string") throw new ProcessorReviewFailure(payload.error, typeof payload.retryable === "boolean" ? payload.retryable : ![400, 401, 403, 404, 422].includes(context.status), typeof payload.code === "string" ? payload.code : "review_unavailable");
     }
-    throw new Error("Processor Board is unavailable. Ask Admin to check database setup and function deployment.");
+    throw new ProcessorReviewFailure("Processor Board is unavailable. Check your connection or ask Admin to check function health, then retry.");
   }
   return data;
 }

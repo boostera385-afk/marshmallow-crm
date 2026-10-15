@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { canAccessNavItem } from "./access";
-import { currentAssessment, processorStatus, fetchProcessorJobs, type ProcessorJob } from "./processor-board";
+import { currentAssessment, processorStatus, processorReadiness, assessProcessorJob, fetchProcessorJobs, type ProcessorJob } from "./processor-board";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke } } }));
 const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1", customer_name: "John Sample", customer_phone: null, address: null, city: null, state: null, service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-10-15", scheduled_time_start: "10:00:00", scheduled_time_end: null, customer_schedule_requirements: null, terms: null, status: "scheduled", updated_at: "2026-10-15T10:00:00Z", checked_at: null, assessment: null };
@@ -23,5 +23,16 @@ describe("Processor Board contract", () => {
   it("fails closed on invalid transport rather than rendering fabricated jobs", async () => {
     invoke.mockResolvedValue({ data: { rows: [{ customer_name: "invalid" }], total: 1 }, error: null });
     await expect(fetchProcessorJobs({ offset: 0, search: "", history: false, timezone: "America/New_York" })).rejects.toThrow();
+  });
+  it("turns resource-limit shutdowns into actionable errors even when the gateway supplies generic JSON", async () => {
+    invoke.mockResolvedValue({ data: null, error: { context: new Response(JSON.stringify({ error: "CPU Time exceeded" }), { status: 546 }) } });
+    await expect(assessProcessorJob(job.id, "America/New_York")).rejects.toMatchObject({ code: "resource_limit", retryable: true, message: expect.stringContaining("server resource limit") });
+  });
+  it("preserves the server's recovery classification for setup and transient failures", async () => {
+    invoke.mockResolvedValue({ data: null, error: { context: new Response(JSON.stringify({ error: "Verify technician chat", code: "chat_setup", retryable: false }), { status: 422 }) } });
+    await expect(assessProcessorJob(job.id, "America/New_York")).rejects.toMatchObject({ code: "chat_setup", retryable: false });
+    expect(processorReadiness({ ...job, tech_number: null })).toContain("technician number");
+    expect(processorReadiness({ ...job, scheduled_date: null })).toContain("agreed appointment");
+    expect(processorReadiness(job)).toBeNull();
   });
 });
