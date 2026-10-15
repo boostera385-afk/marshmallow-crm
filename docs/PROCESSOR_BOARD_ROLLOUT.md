@@ -192,15 +192,21 @@ are needed; no new extension release is claimed.
   twice to verify idempotency. No write-based harness ran on the shared project.
 - Seven network-isolated Playwright checks passed at desktop/mobile widths,
   including evidence review, provider failure and all four excluded roles.
-- The final targeted Vitest run passed all 59 tests across eight files (board,
-  history, handler, hook, realtime and sidebar). Full-suite verification is not
-  green: the two-worker run reported 743 passed and two sidebar failures after
+- The initial targeted Vitest run passed all 59 tests across eight files (board,
+  history, handler, hook, realtime and sidebar). Initial full-suite verification
+  was incomplete: the two-worker run reported 743 passed and two sidebar failures after
   a timeout; the single-worker retry passed those sidebar tests but exceeded the
   300-second command limit before a final suite summary. No test/configuration
-  was weakened or skipped to conceal that limitation.
-- Changed-file ESLint reported no errors (four existing warnings in shared files).
-  Full `npm run lint` remains blocked by the unrelated `prefer-const` violation
-  at `src/integrations/supabase/previewAuthStorage.ts:38` from synced `main`.
+  was weakened or skipped to conceal that limitation. The 2026-10-15 lint follow-up
+  subsequently passed the complete suite: **752 tests across 92 files**, using
+  `npm test -- --maxWorkers=1` with enough command runtime to finish.
+- The 2026-10-15 lint follow-up fixed the preview-auth timer's `prefer-const`
+  violation and the Quo analytics memo's missing exact-total dependency.
+  Full `npm run lint` now passes with **zero errors and 28 remaining warnings**;
+  typecheck and build also pass. Broker origin/timeout/logout behavior and count-only
+  analytics refresh are regression-tested, with no extra requests/subscriptions.
+  Neither CRM-only fix has a native Donut counterpart or changes database, Edge,
+  realtime transport, background-job, storage or bandwidth behavior.
 - Deno is not installed locally, so a native Deno typecheck remains unrun. The
   deployed runtime passed the limited live smoke checks above; a real signed-in
   Admin/Processor job review and provider configuration still need verification.
