@@ -75,6 +75,24 @@ describe("Processor Board server boundary", () => {
   it("does not start a duplicate provider review while another session owns the lease", async () => {
     const s = setup({ busy: true }); expect((await s.request()).status).toBe(429); expect(s.fetcher).not.toHaveBeenCalled();
   });
+  it.each([{ tech_number: null }, { scheduled_date: null }, { scheduled_time_start: null }])("rejects incomplete saved jobs before service leases, chat reads or provider calls: %j", async (missing) => {
+    const s = setup(); s.tables.leads = [{ ...job, ...missing }];
+    const response = await s.request();
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ code: "job_setup", retryable: false });
+    expect(s.reads).toEqual(["user_roles", "leads"]);
+    expect(s.rpc.mock.calls.map(([name]) => name)).toEqual(["processor_can_view_status"]);
+    expect(s.fetcher).not.toHaveBeenCalled();
+  });
+  it("distinguishes provider failures without exposing provider bodies or saving partial reviews", async () => {
+    for (const [options, code] of [[{ aiFail: true }, "ai_provider"], [{ directFail: true }, "history_provider"]] as const) {
+      const s = setup(options); const response = await s.request();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code, retryable: true });
+      expect(s.tables.processor_job_assessments).toEqual([]);
+      expect(s.tables.leads).toEqual([job]);
+    }
+  });
   it("keeps a successful advisory save successful when lease cleanup fails", async () => {
     const s = setup({ failRelease: true });
     const response = await s.request();

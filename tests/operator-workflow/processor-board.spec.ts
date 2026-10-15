@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 const version = JSON.parse(readFileSync(new URL("../../public/extension-release.json", import.meta.url), "utf8")).version;
 const USER = "00000000-0000-4000-8000-000000000001";
 const LEAD = "00000000-0000-4000-8000-000000000002";
-async function isolatedBoard(page: Page, role = "processor", fail = false) {
+async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean } = {}) {
   const actions: Record<string, unknown>[] = [];
   let reviewed = false;
+  let failures = 0;
   const row = () => ({ id: LEAD, job_id: "JOB-1001", customer_name: "John Sample", customer_phone: "4155550101", service_type: "Garage Door Service", address: "10 Sample St Apt 2", city: "Miami", state: "FL", tech_name: "Alex Technician", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only; call before arrival", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: reviewed ? new Date().toISOString() : null,
-    assessment: reviewed ? { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer" }], messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null });
+    assessment: reviewed ? { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer" }], messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
+    ...(options.setup ? { tech_number: null, scheduled_date: null, scheduled_time_start: null } : {}) });
   await page.context().routeWebSocket(/supabase\.co/, (socket) => socket.close());
   await page.context().route("**/*", async (route) => {
     const url = new URL(route.request().url());
@@ -16,7 +18,7 @@ async function isolatedBoard(page: Page, role = "processor", fail = false) {
     if (url.pathname.endsWith("/functions/v1/processor-board")) {
       const body = route.request().postDataJSON(); actions.push(body);
       if (body.action === "list") return route.fulfill({ json: { rows: [row()], total: 1, observed_at: new Date().toISOString(), timezone: body.timezone } });
-      if (fail) return route.fulfill({ status: 503, json: { error: "Synthetic AI provider unavailable. Previous review retained." } });
+      if (fail || (options.retryOnce && failures++ === 0)) return route.fulfill({ status: 503, json: { error: "Synthetic AI provider unavailable. Previous review retained.", code: "ai_provider", retryable: true } });
       reviewed = true; return route.fulfill({ json: { result: row().assessment, cached: false } });
     }
     let data: unknown = [];
@@ -63,6 +65,35 @@ test("failed provider review remains explicit and does not advance the job", asy
   await expect(page.getByRole("alert")).toContainText("Synthetic AI provider unavailable");
   await expect(page.getByRole("dialog")).toContainText("Saved lead status: Scheduled");
 });
+for (const width of [1440, 390]) {
+  test(`incomplete jobs show a repair path without an AI request at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const actions = await isolatedBoard(page, "processor", false, { setup: true }); await page.goto("/processor-board");
+    await page.getByLabel("Filter this page").selectOption("setup");
+    await expect(page.getByRole("button", { name: "Refresh AI · this page" })).toBeDisabled();
+    await expect(page.getByText(/Save a valid technician number/).filter({ visible: true })).toBeVisible();
+    await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
+    await expect(page.getByRole("alert")).toContainText("Saved details need attention");
+    await expect(page.getByRole("button", { name: "Check this job" })).toBeDisabled();
+    await expect(page.getByRole("link", { name: /Open saved lead/ })).toHaveAttribute("href", `/leads/${LEAD}`);
+    expect(actions.filter((action) => action.action === "assess")).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  });
+  test(`failed-only retry recovers and fresh page reviews avoid repeat requests at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const actions = await isolatedBoard(page, "processor", false, { retryOnce: true }); await page.goto("/processor-board");
+    await page.getByRole("button", { name: "Refresh AI · this page" }).click();
+    await expect(page.getByRole("button", { name: "Retry failed · 1" })).toBeEnabled();
+    await expect(page.getByText(/Synthetic AI provider unavailable/).filter({ visible: true })).toBeVisible();
+    await page.getByRole("button", { name: "Retry failed · 1" }).click();
+    await expect(page.getByRole("status")).toContainText("1 reviewed · 0 failed");
+    await expect(page.getByRole("button", { name: /Retry failed/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Refresh AI · this page" }).click();
+    await expect(page.getByRole("status")).toContainText("0 reviewed · 0 failed · 1 skipped");
+    expect(actions.filter((action) => action.action === "assess")).toHaveLength(2);
+    await page.screenshot({ path: test.info().outputPath(`processor-recovery-${width}.png`), fullPage: true });
+  });
+}
 for (const role of ["opr", "opr_admin", "customer_service", "cs_admin"]) test(`${role} cannot access Processor Board`, async ({ page }) => {
   const actions = await isolatedBoard(page, role); await page.goto("/processor-board");
   await expect(page).toHaveURL(/\/leads$/);

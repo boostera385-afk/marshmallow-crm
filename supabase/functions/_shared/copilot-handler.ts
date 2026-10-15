@@ -62,7 +62,7 @@ export async function runCopilotQuery(db: CopilotRpcClient, ask: CopilotAsk, acc
       ...(row.quote != null ? [{ label: "Quote", value: bounded(row.quote) }] : []),
       ...(access.role !== "cs_admin" && row.tech_name ? [{ label: "Technician", value: [row.tech_name, row.tech_number].map(text).filter(Boolean).join(" · ") }] : []),
     ] }];
-    result.links = matchingFeatures("urgent review quote approval cancellation payments", access).map((f) => ({ label: f.label, href: f.href }));
+    result.links = matchingFeatures("urgent review quote approval cancellation payments processor board cx updates tech updates", access).map((f) => ({ label: f.label, href: f.href }));
   } else if (intent === "blocked") {
     result.title = "Read-only assistant";
     result.text = "I can find records and take you to an authorised workflow, but cannot change records, approve requests or send messages.";
@@ -100,7 +100,7 @@ export async function runCopilotQuery(db: CopilotRpcClient, ask: CopilotAsk, acc
       return { id: text(row.id), title: `${text(row.job_id)} · ${text(row.customer_name)}`, subtitle: `${text(row.status).replace(/_/g, " ")} · ${text(row.service_type)}`,
         href: `/leads/${text(row.id)}`, fields };
     });
-    if (intent === "attention") result.links = accessibleFeatures(access).filter((f) => ["followups", "quotes", "payments", "cancellations", "urgent", "tech-approvals"].includes(f.id)).map((f) => ({ label: f.label, href: f.href }));
+    if (intent === "attention") result.links = accessibleFeatures(access).filter((f) => ["followups", "quotes", "payments", "cancellations", "urgent", "tech-approvals", "processor-board", "cx-updates", "tech-updates"].includes(f.id)).map((f) => ({ label: f.label, href: f.href }));
   } else if (intent === "report" || intent === "explain_report") {
     const range = reportRange(ask.message, businessDate(new Date(), access.timezone));
     const scope = ask.scope ?? (/\bteam\b/i.test(ask.message) ? "team" : "mine");

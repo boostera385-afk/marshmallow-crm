@@ -12,7 +12,7 @@ describe("Copilot permissions and deterministic routing", () => {
     expect(resolveCopilotAccess("opr", true, false, true)).toBe(true);
     expect(resolveCopilotAccess("admin", false, true, true)).toBe(false);
     expect(resolveCopilotAccess(null, true, true, true)).toBe(false);
-    expect(accessibleFeatures({ allowed: true, aiEnabled: false, role: "opr", timezone: "UTC", sections: ["leads"] }).map((f) => f.id)).toEqual(["leads"]);
+    expect(accessibleFeatures({ allowed: true, aiEnabled: false, role: "opr", timezone: "UTC", sections: ["leads"] }).map((f) => f.id)).toEqual(["leads", "donut"]);
   });
   it.each([
     ["MM-101", "leads", "MM-101"], ["find lead 5550100000", "leads", "5550100000"],

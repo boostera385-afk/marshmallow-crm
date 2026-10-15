@@ -23,6 +23,31 @@ beforeEach(() => {
   generate.mockResolvedValue({ kind: "answer", query: "", text: "A heat pump transfers heat.", inputTokens: 100, outputTokens: 40 });
 });
 describe("authenticated Copilot handler", () => {
+  it.each(["admin", "processor"] as const)("opens Processor Board help for %s with no AI or assessment request", async (role) => {
+    access.role = role; access.sections.push("processor_board", "cx_updates");
+    const response = await handle(ask("open Processor Board", { allowAi: true }));
+    expect(await response.json()).toMatchObject({ source: "crm", aiUsed: false, cards: [{ title: "Processor Board", href: "/processor-board" }] });
+    expect(db.rpc.mock.calls.map((call) => call[0])).toEqual(["copilot_get_access", "copilot_get_access"]);
+    expect(generate).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled();
+  });
+  it.each(["opr", "opr_admin", "customer_service", "cs_admin"] as const)("does not expose Processor Board to %s", async (role) => {
+    access.role = role; access.sections = ["leads", "processor_board"];
+    const response = await handle(ask("Processor Board", { allowAi: true }));
+    expect(await response.json()).toMatchObject({ source: "crm", links: [], cards: [] });
+    expect(generate).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled();
+  });
+  it("explains Tech Update and Donut deterministically without running either workflow", async () => {
+    access.role = "customer_service"; access.sections = ["leads", "cx_updates"];
+    expect(await (await handle(ask("Get Tech Update", { allowAi: true }))).json()).toMatchObject({ cards: [{ title: "Get Tech Update", href: "/get-tech-update" }] });
+    expect(await (await handle(ask("update Donut", { allowAi: true }))).json()).toMatchObject({ cards: [{ title: "Donut extension guide", href: "/leads", subtitle: expect.stringContaining("Installation is manual") }] });
+    expect(db.rpc.mock.calls.map((call) => call[0])).toEqual(Array(4).fill("copilot_get_access"));
+    expect(generate).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled();
+  });
+  it("does not invent feature access or call AI when the access lookup fails", async () => {
+    db.rpc.mockResolvedValue({ data: null, error: { message: "Synthetic database failure" } });
+    expect((await handle(ask("Processor Board", { allowAi: true }))).status).toBe(503);
+    expect(generate).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled();
+  });
   it("requires authentication before any database tool or provider request", async () => {
     authenticate.mockResolvedValue({ userId: "", db });
     expect((await handle(ask("hello"))).status).toBe(401);

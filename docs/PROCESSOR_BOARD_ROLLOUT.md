@@ -1,5 +1,101 @@
 # Processor Board
 
+## Reliability follow-up (2026-10-15) — awaiting deployment/publication
+
+The source changes below are **local only**. The installed migration is unchanged;
+the earlier v1 deployment verification is historical and does not verify this
+follow-up. Obtain separate approval to redeploy `processor-board` (include the new
+`_shared/processor-review.ts` dependency), then publish the CRM separately. Do not
+reapply the migration or regenerate unchanged database types for this update.
+
+### Confirmed findings and recovery
+
+- Read-only production logs for the previous 24 hours included three HTTP 546
+  responses and five `CPU Time exceeded` events for this function, alongside three
+  HTTP 422 setup rejections. These are aggregate observations, not proof of the
+  cause of every individual failed row. No transcripts, credentials or provider
+  bodies were retrieved/logged, and no real provider assessment was invoked.
+- A limited read-only check of the eight reported job IDs found two with invalid
+  or missing technician numbers and missing structured schedules; a third also
+  lacked its schedule and a matching technician-directory row. The five other
+  jobs had valid numbers and linked directory entries. No customer data was repaired
+  or guessed. Users must save the agreed schedule/technician details through the
+  existing authorized workflow, or verify the directory's saved Quo link.
+- The long-chat hot path rebuilt every peer's normalized identity repeatedly per
+  message and again for the displayed match count. It now compiles a **per-review**
+  identity index, filters history once, reuses the match count and index for quote
+  verification, and looks up evidence message IDs through a map. No cross-request
+  history/identity cache, shortened history, looser matching or generic-reply inference
+  was introduced. Quo/OpenAI still receive independent, job-specific reviews.
+- Both UI and backend preflight reject missing technician numbers or agreed date/
+  start time before conversation reads, leases or provider requests. Incomplete jobs
+  stay visible as Needs Review with the saved status, explanation and saved-lead link.
+  Closed/approval-workflow jobs remain read-only. Server preflight is not a replacement
+  for caller JWT, role, lead RLS or independent status-visibility checks.
+- Rows and the evidence drawer expose failure/recovery details rather than a generic
+  “Review failed” caption. Safe structured errors distinguish provider availability,
+  credentials, timeouts, invalid/truncated AI output, limits and chat setup; HTTP 546
+  gets a specific resource-limit explanation even for a generic gateway body.
+- Page filters now include setup, unavailable and remaining advisory states. Counts
+  and filters explicitly remain page-local; exact queue totals and full pagination
+  are unchanged. Desktop/mobile show saved status separately and readable terms.
+- Retry failed checks only retryable failed jobs. Page refresh skips current evidence
+  within the existing five-minute freshness window; explicit single-job checks still
+  request current history. Successful results update the caller/role/filter cache
+  immediately, with a final invalidation scoped to that caller/role. A completely
+  skipped batch does not trigger an extra board request. Errors retire on record
+  revision/timezone changes, and role/caller changes remount local state.
+- Batch progress identifies the current job; Stop after current job preserves its
+  result and prevents remaining requests. No unattended or automatic retries were
+  added. Existing refresh guards, leases, audited atomic save, revision checks,
+  30-second polling and shared realtime reconnect/coalescing behavior remain intact.
+
+### Efficiency review and reproducible verification
+
+- Reproduce the synthetic comparison with
+  `npm test -- --maxWorkers=1 src/lib/processor-matching.test.ts`.
+  Windows local Vitest/Node, **60 peer jobs / 360 messages**, same target and inputs:
+  baseline **718.4ms / 66,960 identity reads**, optimized **4.5ms / 60 identity reads**.
+  All outcomes matched; 10,000 additional optimized events also preserve peer
+  exclusion without additional identity normalization. Timings are observations,
+  not test thresholds or production latency claims. The regression asserts resource
+  work and results instead of relying on flaky wall-clock assertions.
+- UI/hooks/cache: no added polling/subscriptions; fewer assessments for setup/fresh
+  jobs and failed-only retries. Isolated browser checks confirm a failed review,
+  successful retry and immediate page refresh make **two**, not three, assess calls.
+- API/database: peer reads project six identity columns rather than the complete
+  twelve-column review projection. Caller scoping, pagination, hashes, all history
+  events, saved evidence and exact totals remain complete. No SQL, indexes, policies,
+  grants, enums or generated types changed. No database tuning/cost claim is made.
+- Realtime/background jobs/storage/bandwidth: existing bus, polling and recovery
+  unchanged; no new worker, upload, transcript log or download artifact. Repeated
+  explicit checks for different jobs sharing a technician still retrieve their
+  required current history independently; this update does not claim to deduplicate
+  those provider-history requests. Donut has no native Processor Board counterpart;
+  extension source/release assets remain unchanged.
+- Focused verification: **67 Vitest tests** and **11 network-isolated Playwright
+  desktop/mobile/denied-role checks** passed, including incomplete jobs, failed-only
+  recovery, fresh-result request avoidance, stop behavior and changed-record recovery.
+  Typecheck, changed-file lint and build (including extension integrity) passed.
+  Full lint passed with zero errors and 28 existing warnings. Screenshots were
+  inspected at 1440px and 390px; no horizontal page overflow was observed.
+- Full-suite verification: **767 tests across 93 files passed** with
+  `npm test -- --maxWorkers=1` run alone. The first run overlapped with the build
+  and had 764 passes plus three failures in unchanged sidebar/technician-workflow
+  timing/recovery tests; all passed on the standalone full-suite rerun. No assertions,
+  timeouts, skips, configuration or unrelated source files were changed to obtain
+  that result. The overlapping-run failures remain recorded, not concealed.
+- Read-only security/performance advisors were reviewed. Existing warnings are
+  outside this change; the service-only refresh-lock table intentionally has no
+  browser policy ([advisor explanation](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)).
+  No schema/authorization changes were made to silence advisors.
+- Native Deno check, deployment and signed-in/live-provider QA remain outstanding.
+  No production write-based harness, secret change, ingestion change, customer
+  message, migration application or CRM publication was performed. Billing and
+  production-after health evidence are unavailable; no invoice savings are claimed.
+- Rollback: redeploy the previously reviewed v1 function and restore the prior CRM
+  release; preserve all advisory/audit rows. No database rollback is necessary.
+
 ## Scope and behavior
 
 - CRM route: `/processor-board`, Work → Processor Board. Fixed Admin/Processor

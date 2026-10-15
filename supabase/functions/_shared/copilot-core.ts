@@ -2,16 +2,22 @@
 // No database client, keys or customer data belong in this module.
 export const COPILOT_ROLES = ["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin"] as const;
 export type CopilotRole = typeof COPILOT_ROLES[number];
-export interface CopilotFeature { id: string; section: string; label: string; href: string; aliases: string[]; help: string }
+export interface CopilotFeature { id: string; section: string; label: string; href: string; aliases: string[]; help: string; roles?: readonly CopilotRole[] }
 export const COPILOT_FEATURES: CopilotFeature[] = [
   { id: "leads", section: "leads", label: "Leads", href: "/leads", aliases: ["leads", "lead list", "customers"], help: "Search by job ID, customer name or phone. Open a saved lead to see permitted details. Visibility and status-change access are separate." },
   { id: "schedule", section: "schedule", label: "Schedule", href: "/schedule", aliases: ["schedule", "calendar", "scheduled jobs"], help: "Review scheduled jobs and the customer's agreed schedule. Urgent priority does not change the agreed date or time." },
+  { id: "processor-board", section: "processor_board", label: "Processor Board", href: "/processor-board", aliases: ["processor board", "dispatch board", "job update board", "scheduled job queue"], roles: ["admin", "processor"], help: "Admin/Processor review job-specific technician evidence and advisory next actions. Missing technician numbers or agreed date/start time need saved-record repair. Review row errors, retry failed jobs, or stop after the current review. Page checks skip fresh evidence; a single-job recheck is explicit. Labels do not change lead status, approve payments or send messages. Shared technician chats never justify applying another job's update." },
+  { id: "cx-updates", section: "cx_updates", label: "Get CX Update", href: "/get-cx-update", aliases: ["get cx update", "cx updates", "cx update", "customer updates", "customer update queue"], roles: ["admin", "processor", "customer_service", "cs_admin"], help: "Admin/Processor request customer updates. Assigned Customer Service (creator only when unassigned) and CS Admin complete them. All four roles can view their permitted queue and returned answers. Acknowledge or Question More keeps thread history. Request status is separate from lead status; Copilot cannot request, complete or acknowledge updates." },
+  { id: "tech-updates", section: "cx_updates", label: "Get Tech Update", href: "/get-tech-update", aliases: ["get tech update", "tech updates", "tech update", "technician updates", "technician update queue"], roles: ["admin", "processor", "customer_service", "cs_admin"], help: "Customer Service/CS Admin request technician updates; Processor records the reply and Admin monitors. All four roles can view their permitted queue and returned answers. Acknowledge or Question More preserves thread history. This is not an AI Processor Board assessment and does not change a job's saved status or schedule." },
   { id: "technicians", section: "technicians", label: "Technicians", href: "/technicians", aliases: ["technicians", "technician directory", "tech directory"], help: "Find technicians by name, service, phone or area. Operator scoping still applies. Active does not mean available right now." },
-  { id: "map", section: "map_view", label: "Map View", href: "/map-view", aliases: ["map", "map view", "nearby technicians"], help: "Review lead locations and field coverage. Saved map coordinates use the authenticated Census-only endpoint." },
+  { id: "map", section: "map_view", label: "Map View", href: "/map-view", aliases: ["map", "map view", "nearby technicians", "map filters"], help: "Review lead locations and field coverage; filter services/states in the map toolbar. Saved map coordinates use the authenticated Census-only endpoint. Preview approximations are not a saved lead's map location." },
   { id: "analytics", section: "analytics", label: "Analytics", href: "/analytics", aliases: ["analytics", "performance", "statistics"], help: "Review operational trends. Report scope is limited by your access; paid-transition dates cannot be inferred from creation dates." },
   { id: "areas", section: "areas", label: "Area Insights", href: "/areas", aliases: ["areas", "area insights"], help: "Compare service areas and recorded job outcomes." },
   { id: "optimization", section: "optimization", label: "Optimization", href: "/optimization", aliases: ["optimization"], help: "Admin-only area optimization and paid technician performance." },
   { id: "quo", section: "quo_monitor", label: "Quo Inbox", href: "/quo-monitor", aliases: ["quo", "inbox", "openphone", "chats"], help: "Review mirrored Quo conversations. Photo handoff is not delivery: review the attachments and send them in Quo yourself." },
+  { id: "donut", section: "leads", label: "Donut extension guide", href: "/leads", aliases: ["donut", "donut extension", "browser extension", "install donut", "update donut", "extension updates"], help: "Open the Donut version button in the CRM header for the latest/installed version and ZIP instructions. Installation is manual: extract the reviewed ZIP, load or reload it in Chrome Extensions, then refresh CRM and Quo tabs. Do not assume a version is installed or current until detection confirms it. Native intake, urgent checks and technician intelligence use their existing authorized workflows; Copilot and Processor Board are CRM-only. Handing a photo to Quo is not delivery; the user sends it." },
+  { id: "cx-quickchat", section: "quick_chat", label: "CX Quickchat", href: "/leads", aliases: ["cx quickchat", "customer quickchat", "customer chat"], help: "Open a visible saved lead and use its permitted customer Quickchat action. Its navigation grant is independent of Copilot. Copilot cannot send messages; verify the recipient and use the source chat yourself." },
+  { id: "tech-quickchat", section: "tech_quick_chat", label: "Tech Quickchat", href: "/leads", aliases: ["tech quickchat", "technician quickchat", "technician chat"], help: "Open a visible saved lead and use its permitted technician Quickchat action. Technician field restrictions and the Quickchat grant still apply. Verify the saved technician conversation before manually sending anything; Copilot never sends." },
   { id: "followups", section: "ai_assistance", label: "CS Missed-Lead Tracker", href: "/ai-assistance", aliases: ["followups", "missed calls", "missed leads", "ai assistance"], help: "The existing rules-based CS worklist identifies missed calls and unanswered texts. It does not need OpenAI." },
   { id: "cancellations", section: "cancellation_requests", label: "Cancellation Requests", href: "/lead-cancellation-requests", aliases: ["cancellation", "cancellations", "cancel lead"], help: "Use the existing cancellation request and review process. Copilot cannot cancel or approve a job." },
   { id: "payments", section: "payment_requests", label: "Payment Approvals", href: "/lead-payment-requests", aliases: ["payments", "payment approval", "paid approval"], help: "Admin reviews payment evidence using the existing approval workflow. Paid is terminal. Copilot cannot approve payments or set a lead to paid." },
@@ -19,7 +25,7 @@ export const COPILOT_FEATURES: CopilotFeature[] = [
   { id: "quotes-send", section: "quote_pending_requests", label: "Quotes to Send", href: "/quote-pending", aliases: ["quotes to send", "pending quotes"], help: "Review the approved sending queue. Quotation Master and role restrictions remain independent of Copilot." },
   { id: "tech-approvals", section: "technician_change_requests", label: "Tech Approvals", href: "/tech-approvals", aliases: ["tech approvals", "technician approvals"], help: "Review requested technician flag changes through the existing approval process." },
   { id: "urgent", section: "urgent_review_requests", label: "Urgent Review", href: "/urgent-review-requests", aliases: ["urgent review"], help: "AI urgent checks are advisory. Unavailable is not a passed check. The existing server-side review gate remains authoritative." },
-  { id: "settings", section: "settings", label: "Settings", href: "/settings", aliases: ["settings", "feature access", "permissions", "copy details"], help: "Admin controls Copilot and Copy Details in Feature Access. A user override wins over its role default; neither grants additional record visibility." },
+  { id: "settings", section: "settings", label: "Settings", href: "/settings", aliases: ["settings", "feature access", "permissions", "copy details"], help: "Admin controls Copilot and Copy All Details in Feature Access. A user override wins over its role default; neither grants additional record visibility. Fixed role gates, such as Processor Board and CX/Tech Updates, cannot be widened by a navigation switch. CS Admin with Manage CS has only its existing permitted Settings tools, not Admin feature management." },
   { id: "activity", section: "activity_logs", label: "Activity Logs", href: "/activity-logs", aliases: ["activity logs", "audit"], help: "Review recorded actions. Logs are not guaranteed to contain complete historical transitions, and access remains Admin-only in Copilot." },
 ];
 
@@ -60,7 +66,7 @@ export function resolveCopilotAccess(role: CopilotRole | null, enabled: boolean,
   return Boolean(role && enabled && (role === "admin" || (override ?? roleDefault)));
 }
 export function accessibleFeatures(access: CopilotAccess) {
-  return access.allowed ? COPILOT_FEATURES.filter((f) => access.sections.includes(f.section)) : [];
+  return access.allowed ? COPILOT_FEATURES.filter((f) => access.sections.includes(f.section) && (!f.roles || (access.role !== null && f.roles.includes(access.role)))) : [];
 }
 export function safeCopilotHref(href: string): boolean {
   return COPILOT_FEATURES.some((f) => href === f.href) || /^\/leads\/[0-9a-f-]{36}$/i.test(href) ||
@@ -83,6 +89,11 @@ export function reportRange(message: string, today: string) {
 export function routeCopilotMessage(message: string): { intent: CopilotIntent; query: string; status?: string; dayOffset?: number } {
   const text = message.trim(); const lower = text.toLowerCase();
   if (/^(draft|write|compose)\b/i.test(text)) return { intent: "ai", query: text };
+  // Exact feature names (including "Get Tech Update" and "update Donut") are
+  // navigation/help, not mutation commands or paid AI. Extra action/record text
+  // does not qualify and still passes through the mutation guard below.
+  const featureName = lower.replace(/^(?:please\s+)?(?:show(?: me)?|find|open|go to|navigate to)\s+(?:the\s+)?/, "").replace(/[.!?]+$/, "").trim();
+  if (COPILOT_FEATURES.some((f) => !["leads", "technicians"].includes(f.id) && (f.aliases.includes(featureName) || f.label.toLowerCase() === featureName))) return { intent: "help", query: text };
   if (/\b(delete|approve|cancel|reassign|send|update|change|mark|pay)\b/i.test(text) && !/\b(how|where|help|open|find|show|explain|features)\b/i.test(text)) return { intent: "blocked", query: text };
   if (/\b(daily brief|work brief|start my day|morning work)\b/i.test(text)) return { intent: "daily_brief", query: "" };
   if (/\b(this lead|selected lead|lead brief)\b/i.test(text)) return { intent: "brief", query: "" };
@@ -103,8 +114,9 @@ export function routeCopilotMessage(message: string): { intent: CopilotIntent; q
   return { intent: "ai", query: text };
 }
 export function matchingFeatures(query: string, access: CopilotAccess) {
-  const text = query.toLowerCase();
-  return accessibleFeatures(access).filter((f) => f.aliases.some((alias) => text.includes(alias)));
+  const normalize = (value: string) => ` ${value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+  const text = normalize(query);
+  return accessibleFeatures(access).filter((f) => [f.label, ...f.aliases].some((alias) => text.includes(normalize(alias))));
 }
 export function emptyCopilotResult(intent: CopilotIntent): CopilotResult {
   return { source: "crm", title: "Marshmallow Copilot", text: "", cards: [], links: [], metrics: [], hasMore: false, nextOffset: 0, resolvedIntent: intent, refreshedAt: new Date().toISOString() };

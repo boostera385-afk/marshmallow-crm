@@ -6,7 +6,7 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Flow | CRM | Donut | Shared authority / verification |
 | --- | --- | --- | --- |
 | Technician intelligence | Technicians → Processing Workflow; map selection up to 8 | Native Technician Intelligence panel for the captured phone, reviewed-label saving, full-workflow link for batch selection/flag approvals/chat actions | `technician-chat-assessment`: Admin/Processor only; identical AI prompt, evidence checks, counts and labels. Missing history is unavailable, not misconduct. |
-| Processor Board | `/processor-board`: scheduled-job queue with technician identity, four advisory action labels, explicit timezone, job-specific evidence and on-demand current-history checks | No native scheduled-job board/job-specific assessment action; existing technician-wide intelligence is not this flow. Donut sources and v1.7.0 artifacts unchanged | Authenticated `processor-board` function, caller-token lead/status scope, per-job leases/revision-checked advisory save and atomic audit. No lead status changes, approvals or outbound messages. Database installed and function v1 deployed through approved MCP on 2026-10-15; generated types refreshed, 18 read-only production checks passed and six-role baseline unchanged. Deployed source matches all six reviewed files; five live auth/runtime smoke checks passed. CRM publication and signed-in/provider QA remain pending; see `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
+| Processor Board | `/processor-board`: scheduled-job queue with technician identity, four advisory action labels, explicit timezone, job-specific evidence and on-demand current-history checks | No native scheduled-job board/job-specific assessment action; existing technician-wide intelligence is not this flow. Donut sources and v1.7.0 artifacts unchanged | Authenticated `processor-board` function, caller-token lead/status scope, per-job leases/revision-checked advisory save and atomic audit. No lead status changes, approvals or outbound messages. Database installed and function v1 deployed through approved MCP on 2026-10-15; generated types refreshed, 18 read-only production checks passed and six-role baseline unchanged. Initial v1 source matched all six reviewed files; five live auth/runtime smoke checks passed. The subsequent reliability/CPU optimization is local and awaiting approved Edge deployment and CRM publication; signed-in/provider QA remains separate. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
 | Technician flags | Admin applies; Processor requests review | Opens full workflow for the same reviewed actions | Existing `request_technician_change` approval RPC and technician flag trigger; never write flags directly in Donut. |
 | Urgent lead review | Latest customer agreement, corrections and missing details | Same check; displays issues, corrections and flags; opens saved-lead review for confirmed corrections/approval | `check-urgent-lead`, urgent verification/review RPCs and database status gate. No duplicate prompt or approval bypass. |
 | Address lookup / map coordinates | Authenticated Census-only lookup and preserved units | Same function for Find Address, coverage preview and submission coordinates | `geocode-lead-address`: only Census coordinates may be cached/persisted for the free map. Google or unlabelled points are rejected by both clients. Preserve Apt/Suite/Unit/#. |
@@ -40,6 +40,39 @@ prompt, manifest or ZIP changed. With user approval, the pilot RPC migration and
 Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
+
+## Processor Board reliability follow-up (2026-10-15; local only)
+
+CRM-only: compiled per-review job matching, shared UI/backend readiness checks,
+actionable row errors, failed-only retry, page-local setup/status filters, fresh
+evidence skipping and stoppable progress. No native Donut job board or job-level
+assessment exists; technician-wide intelligence remains separate. No extension
+source, prompt, manifest, release metadata or ZIP changed. Existing authorization,
+approvals, schedules and job attribution rules remain intact. The changed
+`processor-board` backend (including new `_shared/processor-review.ts`) is **awaiting
+approved deployment**; CRM publication and live-provider QA are separate steps.
+The installed migration/types are unchanged. See `docs/PROCESSOR_BOARD_ROLLOUT.md`
+for read-only findings, synthetic before/after measurements and verification.
+
+## Copilot feature/role catalogue audit (2026-10-15)
+
+Copilot now describes all 21 current CRM navigation sections, including Processor
+Board (Admin/Processor), both CX/Tech queues (Admin/Processor/CS Admin/Customer
+Service), and independently granted customer/technician Quickchat. It also explains
+the header's Donut version/ZIP controls and manual installation; it never assumes
+an installed version, sends photos/messages, or runs assessments. Fixed gates cannot
+be widened by a navigation switch. Existing Copilot opt-in grants are unchanged.
+Settings feature search recognizes the queue names and Processor Board aliases.
+
+No native Copilot, Processor Board, or saved-lead update queue exists in Donut.
+Existing Quickchat/photo handoff is only explained, not changed. There is no shared
+runtime change to port: extension sources, manifest, metadata and ZIP are unchanged.
+The Copilot-only migration was applied by approved MCP as
+`20261015063130 / copilot_current_feature_access`; `marshmallow-copilot` v6 is
+ACTIVE and all five deployed files matched local source. Existing function-level
+`auth.getUser()` authentication and gateway `verify_jwt=false` were preserved from
+live v5. CRM publication/signed-in QA remain separate. This does not deploy the
+earlier local Processor Board reliability changes. See `docs/COPILOT_ROLLOUT.md`.
 
 ## Release verification checklist
 

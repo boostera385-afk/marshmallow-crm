@@ -24,7 +24,9 @@ async function isolatedCopilot(page: Page, role: CopilotRole = "admin", options:
       calls.push({ name, args });
       const success = (data: unknown) => ({ data, error: null });
       if (name === "copilot_get_access") return success({ allowed: permitted && config.enabled, aiEnabled: permitted && config.enabled && config.ai_enabled, role, timezone: config.timezone,
-        sections: role === "admin" ? ["leads", "schedule", "technicians", "settings"] : ["leads"] });
+        sections: role === "admin" ? ["leads", "schedule", "technicians", "settings", "processor_board", "cx_updates"]
+          : role === "processor" ? ["leads", "processor_board", "cx_updates"]
+          : ["customer_service", "cs_admin"].includes(role) ? ["leads", "cx_updates"] : ["leads"] });
        if (["copilot_get_settings", "copilot_usage_summary", "copilot_set_permission", "copilot_configure", "copilot_configure_checked", "copilot_diagnostics"].includes(name) && role !== "admin") return { data: null, error: { code: "42501", message: "Only Admin may manage Copilot" } };
       if (name === "copilot_get_settings") return success({ config, roles, users });
       if (name === "copilot_usage_summary") return success({ requests: 0, reservedCents: 0, inputTokens: 0, outputTokens: 0, unavailable: 0 });
@@ -125,6 +127,36 @@ test("Excluded user gets no launcher or command-menu entry", async ({ page }) =>
   await expect(page.getByPlaceholder("Type a command or search...")).toBeVisible();
   await expect(page.getByText("Ask Marshmallow Copilot")).toHaveCount(0);
 });
+for (const role of ["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin"] as const) test(`Copilot current workflows respect ${role} gates without AI`, async ({ page }) => {
+  const fixture = await isolatedCopilot(page, role); await page.goto("/leads");
+  await page.getByRole("button", { name: "Ask Marshmallow Copilot", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "Marshmallow Copilot" });
+  await panel.getByRole("button", { name: "Explore features", exact: true }).click();
+  await expect(panel.getByText("Your accessible features", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Processor Board", exact: true })).toHaveCount(["admin", "processor"].includes(role) ? 1 : 0);
+  await expect(panel.getByRole("heading", { name: "Get Tech Update", exact: true })).toHaveCount(role.startsWith("opr") ? 0 : 1);
+  await expect(panel.getByRole("heading", { name: "Donut extension guide", exact: true })).toHaveCount(1);
+  await panel.getByRole("textbox", { name: "Ask Marshmallow Copilot" }).fill("Get Tech Update");
+  await panel.getByRole("button", { name: "Send Copilot question" }).click();
+  if (role.startsWith("opr")) await expect(panel.getByText(/couldn't find an accessible feature/)).toBeVisible();
+  else await expect(panel.getByLabel("Answer: CRM guide", { exact: true }).getByText(/Customer Service\/CS Admin request technician updates/)).toBeVisible();
+  expect(fixture.generated).toHaveLength(0);
+  expect(fixture.calls.every((c) => c.name === "copilot_get_access")).toBe(true);
+});
+test("Processor opens board from Copilot without starting an assessment", async ({ page }) => {
+  const fixture = await isolatedCopilot(page, "processor"); await page.goto("/leads");
+  await page.getByRole("button", { name: "Ask Marshmallow Copilot", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "Marshmallow Copilot" });
+  await panel.getByRole("textbox", { name: "Ask Marshmallow Copilot" }).fill("open Processor Board");
+  await panel.getByRole("button", { name: "Send Copilot question" }).click();
+  await expect(panel.getByRole("heading", { name: "Processor Board", exact: true })).toBeVisible();
+  const assessments: string[] = [];
+  page.on("request", (request) => { if (request.url().includes("/functions/v1/processor-board")) assessments.push(request.url()); });
+  await panel.getByRole("button", { name: "Open feature", exact: true }).click();
+  await expect(page).toHaveURL(/\/processor-board$/);
+  await expect(page.getByRole("heading", { name: "Processor Board", exact: true })).toBeVisible();
+  expect(assessments).toEqual([]); expect(fixture.generated).toEqual([]);
+});
 test("Command menu opens Copilot without replacing Ctrl+K navigation", async ({ page }) => {
   await isolatedCopilot(page); await page.goto("/leads");
   await expect(page.getByRole("button", { name: "Ask Marshmallow Copilot" })).toBeVisible();
@@ -184,6 +216,14 @@ test("Admin manages role default, searchable override and explicit global switch
   await page.getByLabel("Find feature", { exact: true }).fill("copilot");
   await expect(page.getByRole("table").getByRole("columnheader", { name: "Marshmallow Copilot", exact: true })).toBeVisible();
   await expect(page.getByRole("table").getByRole("switch", { name: "Marshmallow Copilot for Synthetic Operator", exact: true })).toBeEnabled();
+  await page.getByLabel("Find feature", { exact: true }).fill("Get Tech Update");
+  await expect(page.getByRole("table").getByRole("columnheader", { name: "CX & Tech Updates", exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByRole("row").filter({ hasText: "Synthetic Operator" }).getByTitle("Admin, Processor, CS Admin and Customer Service roles", { exact: true })).toContainText("Not allowed");
+  await expect(page.getByRole("table").getByRole("switch", { name: "CX & Tech Updates for Synthetic Operator", exact: true })).toHaveCount(0);
+  await page.getByLabel("Find feature", { exact: true }).fill("Dispatch Board");
+  await expect(page.getByRole("table").getByRole("columnheader", { name: "Processor Board", exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByRole("row").filter({ hasText: "Synthetic Operator" }).getByTitle("Admin and Processor roles only", { exact: true })).toContainText("Not allowed");
+  await expect(page.getByRole("table").getByRole("switch", { name: "Processor Board for Synthetic Operator", exact: true })).toHaveCount(0);
   await page.getByLabel("Find feature", { exact: true }).fill("");
   const control = page.getByRole("switch", { name: "Allow Copilot for Operator", exact: true });
   await expect(control).not.toBeChecked(); await control.click(); await expect(control).toBeChecked();
