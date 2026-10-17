@@ -118,4 +118,42 @@ describe("Admin Copilot feature access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reload saved configuration" }));
     expect(ai).not.toBeChecked(); expect(screen.getByRole("spinbutton", { name: "AI requests per user / day" })).toHaveValue(3); expect(state.configure).not.toHaveBeenCalled();
   });
+  it("explains why AI off and unsaved Copilot off do not hide the assistant", async () => {
+    renderSettings(); const global = await screen.findByRole("switch", { name: "Enable Marshmallow Copilot globally" });
+    await waitFor(() => expect(global).toBeEnabled()); fireEvent.click(global);
+    expect(screen.getByText(/Not applied yet/)).toHaveTextContent("Saving will hide Copilot for everyone");
+    expect(screen.getByText(/controls paid AI answers only/)).toBeVisible();
+    expect(settings.config.enabled).toBe(true); expect(state.configure).not.toHaveBeenCalled();
+  });
+  it("confirms and saves a global disable without silently saving unsaved AI or budget edits", async () => {
+    settings.users = [{ user_id: targetId, allowed: true }];
+    renderSettings(); const ai = await screen.findByRole("switch", { name: "Enable Copilot AI" }); await waitFor(() => expect(ai).toBeEnabled());
+    fireEvent.click(ai); fireEvent.change(screen.getByRole("spinbutton", { name: "Monthly AI allowance (USD)" }), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Disable Copilot for everyone" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("users with an Allow override"); expect(state.configure).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm disable for everyone" }));
+    await waitFor(() => expect(settings.config.enabled).toBe(false));
+    expect(state.configure).toHaveBeenCalledWith({ enabled: false, ai_enabled: false, monthly_budget_cents: 1000, daily_ai_limit: 20, timezone: "America/New_York" }, expect.objectContaining({ enabled: true }));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Enable Marshmallow Copilot globally" })).not.toBeChecked());
+    expect(ai).toBeChecked(); expect(screen.getByRole("spinbutton", { name: "Monthly AI allowance (USD)" })).toHaveValue(5);
+    expect(settings.users).toEqual([{ user_id: targetId, allowed: true }]); expect(state.permission).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("does not change saved access when the confirmed global disable fails", async () => {
+    state.configure.mockRejectedValue(new Error("Global save failed")); renderSettings();
+    const button = await screen.findByRole("button", { name: "Disable Copilot for everyone" }); await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button); fireEvent.click(screen.getByRole("button", { name: "Confirm disable for everyone" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Global save failed"));
+    expect(settings.config.enabled).toBe(true); expect(screen.getByRole("switch", { name: "Enable Marshmallow Copilot globally" })).toBeChecked(); expect(toast.success).not.toHaveBeenCalled();
+  });
+  it("surfaces a role-denied user Allow and allows restoring role inheritance", async () => {
+    settings.users = [{ user_id: targetId, allowed: true }]; renderSettings();
+    await screen.findByText(/can keep Copilot visible even when a role is denied/);
+    fireEvent.click(screen.getByRole("button", { name: "1 individual Allow · Review Operator overrides" }));
+    expect(await screen.findByText("Effective access: Allowed")).toBeVisible();
+    const override = screen.getByRole("combobox", { name: "Copilot override for Synthetic Operator" });
+    fireEvent.keyDown(override, { key: "ArrowDown" }); fireEvent.click(screen.getByRole("option", { name: "Inherit role default" }));
+    await waitFor(() => expect(state.permission).toHaveBeenCalledWith(null, targetId, null));
+    await screen.findByText("Effective access: Denied"); expect(settings.users).toEqual([]);
+  });
 });
