@@ -1,5 +1,29 @@
 # Marshmallow Copilot rollout
 
+## Repository handoff — 2026-10-17
+
+The latest access/disable and Needs attention fixes are ported to
+`boostera385-afk/marshmallow-crm`, based on its `main` at `73b54c2`, rather than
+pushing the older Pastry branch over this repository's newer main. The five
+logical commits preserve the current feature catalogue, Processor Board work,
+existing role restrictions, deployed v6 backend and all prior rollout records.
+The destination branch is `copilot`; main/CRM publication remains a separate step.
+The access-fix section below records the original verification; destination-base
+verification is recorded here after the port. No database/function/Donut deployment
+is part of this Git handoff.
+
+Efficiency review: the patch is frontend-only. UI uses existing query keys and
+the shared realtime bus; the cross-tab payload is a random invalidation token,
+not permission or customer data. No channels, background jobs, storage downloads,
+record queries, RLS/index changes, AI calls or extension listeners are introduced.
+Polling is intentionally faster for revocation freshness: closed-session interval
+60s → 10s and open/minimized-session interval 15s → 5s, only while active, plus
+focus/reconnect checks. This can increase access requests (sixfold/threefold for
+the polling component); it is not a cost-saving claim. The synthetic fake-timer
+regression observes initial access plus one server revalidation by 10,001ms and
+denies revoked CS access; same-origin storage signals revalidate rather than grant.
+No production request/billing comparison or invoice savings is claimed.
+
 ## Current feature / role catalogue audit — 2026-10-15
 
 ### Outcome and authorization boundaries
@@ -126,6 +150,81 @@ migration above; `scripts/test-copilot-db.mjs`; SQL harnesses 114/115; catalogue
 API and handler tests under `src/lib/`; and `tests/operator-workflow/copilot.spec.ts`.
 This section and `docs/CRM_EXTENSION_PARITY.md` record the rollout. Earlier local
 Processor Board changes and unrelated untracked files were preserved.
+
+## Access/disable and Needs attention fixes — 2026-10-17 (publication pending)
+
+The user reports the earlier frontend is live. This frontend-only follow-up is
+versioned on `copilot`; publishing these new fixes remains a separate step. No
+production configuration, permissions, grants, schema, secrets or functions were
+modified by this follow-up.
+
+Read-only investigation found saved Copilot on, optional AI off, all role defaults
+allowed, and one CS individual Allow override. The screenshot shows **Unsaved
+changes**. AI off intentionally leaves deterministic Copilot available. A role
+default is not a master deny: an individual override still takes precedence; only
+global off denies every role and user, including Admin. Existing SQL and RLS remain
+the authority; the frontend does not introduce an authorization bypass.
+
+Fixes prepared:
+
+- Explain global Copilot access versus paid optional AI next to the controls, mark
+  draft switches as not yet applied, and distinguish explicitly saved role switches.
+- Add a confirmed **Disable Copilot for everyone** action using the existing
+  caller-authorized checked-save RPC. It saves only global off against the saved
+  config, preserves unsaved AI/budget edits and all user/role grants, and cannot
+  silently enable AI or report a failed mutation as a successful save.
+- Surface saved individual Allow counts and role-specific Review links. Admin can
+  explicitly select Inherit or Deny for the affected user instead of unintentionally
+  removing other users' grants. Global off takes precedence over every override.
+- Refresh access every 10 seconds while the page is active (5 while the assistant
+  session is open, including minimized), and always recheck on focus/reconnect.
+  Other tabs in the same browser receive a random storage invalidation signal;
+  no permissions, identity or customer content are stored in that signal. Other
+  users/devices revalidate with the server. Failed access reads still fail closed.
+- Keep **Needs attention** in the persistent mode selector and expanded workspace,
+  not just the first welcome screen. It is available to Admin and CS Admin when
+  Leads navigation is permitted, uses no AI, and retains the same caller-scoped
+  retrieval, status visibility, hidden-field gates and pagination.
+
+Live read-only role checks successfully returned bounded attention results for
+both Admin and CS Admin with AI disabled; only access metadata/counts were read
+back, not customer contents. The deployed function is now v6 with newer source
+and RPC capabilities than the original pilot v2. Those remote changes were
+preserved, not replaced with the older branch backend. No new migration or Edge
+Function deployment is required for these frontend fixes. Do not redeploy the
+older pilot function as part of publishing this UI patch.
+
+Regression coverage includes saved-vs-draft state, confirmed and failed global
+disable, retaining unsaved AI/budget drafts, explicit override inheritance,
+storage invalidation, CS polling revocation, all-role global-off precedence,
+Admin/CS Admin attention after the first answer, and denied Leads access. Browser
+tests intercept external requests and use synthetic records; they do not toggle
+live permissions or make paid provider calls.
+
+Final local verification for this patch:
+
+| Check | Result |
+| --- | --- |
+| `npm run lint` | No errors; 29 pre-existing warnings in unchanged files. |
+| ESLint on every changed/new supported TypeScript source and test | Passed without warnings. |
+| `npm run typecheck` | Passed for app and node configurations. |
+| `npm test -- --maxWorkers=2` | 633 tests passed across 72 files. |
+| `npx playwright test --config playwright.operator-workflow.config.ts` | 51 isolated browser tests passed. Covers Admin/CS Admin persistent attention, global-disable success/failure, CS launcher/minimized-session revocation, AI-only disable with CRM tools preserved, and existing desktop/mobile workflows. |
+| `npm run build` | Passed, including unchanged Donut v1.7.0 integrity check; existing bundle/Browserslist notices remain. |
+| `git diff --check` | Passed. |
+
+All five layers were inspected: only UI/access-refresh behavior changed; permission
+resolution still preserves per-user precedence, live RPCs require global enablement
+and caller navigation, existing RLS is unchanged, and the shared request contract
+already includes attention; generated RPC signatures and role enums need no changes.
+No schema, generated types or Edge source changed, so database harnesses/deployment
+were not rerun as writes.
+No real signed-in browser workflow or paid provider check is claimed by these
+local results.
+
+Donut has no native assistant or Admin Copilot editor; its sources and release
+artifacts are unchanged. The existing shared urgent/technician AI flows are not
+modified. Separate publication of this frontend patch is still required.
 
 ## Authorized pilot backend rollout — 2026-10-14
 

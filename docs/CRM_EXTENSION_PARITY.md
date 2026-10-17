@@ -76,6 +76,13 @@ earlier local Processor Board reliability changes. See `docs/COPILOT_ROLLOUT.md`
 
 ## Release verification checklist
 
+The 2026-10-17 access/attention patch is also CRM-only: explicit global-disable
+confirmation, unsaved-toggle guidance, visible individual Allow overrides,
+cross-tab invalidation/shorter access polling, and persistent Needs attention for
+authorized Admin/CS Admin callers. Existing RPC/RLS semantics and the newer live
+backend are unchanged. There is no Donut counterpart and no extension release is
+needed. See the latest entry in `docs/COPILOT_ROLLOUT.md` for verification limits.
+
 1. Test each changed flow on both surfaces and an excluded role.
 2. Run Vitest, changed-file lint, app typecheck and the production build.
 3. Verify backend source against deployed versions, and deploy changed functions.
