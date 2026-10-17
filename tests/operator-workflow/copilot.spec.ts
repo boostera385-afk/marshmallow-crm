@@ -91,7 +91,7 @@ async function isolatedCopilot(page: Page, role: CopilotRole = "admin", options:
     // Copilot controls. The real notification behavior is unchanged.
     localStorage.setItem(`donut-release-notice:${id}:${extensionVersion}`, "shown");
   }, { id: USER, extensionVersion: extensionRelease.version });
-  return { calls, questions, generated, revoke: () => { permitted = false; } };
+  return { calls, questions, generated, revoke: () => { permitted = false; }, disableAi: () => { config.ai_enabled = false; } };
 }
 
 for (const width of [1920, 1366, 1024, 390]) test(`Copilot fits ${width}px and keyboard close restores focus`, async ({ page }) => {
@@ -355,4 +355,60 @@ test("Minimized Copilot keeps its session when navigating to another work page",
   await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
   await page.getByRole("button", { name: "Restore Marshmallow Copilot" }).click();
   await expect(panel.getByRole("textbox", { name: "Ask Marshmallow Copilot" })).toHaveValue("Keep my session across pages");
+});
+
+for (const role of ["admin", "cs_admin"] as const) test(`Needs attention remains reachable after another answer for ${role}`, async ({ page }) => {
+  const fixture = await isolatedCopilot(page, role); await page.goto("/leads");
+  await page.getByRole("button", { name: "Ask Marshmallow Copilot", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "Marshmallow Copilot" });
+  await panel.getByRole("button", { name: "My daily report" }).click(); await expect(panel.getByText("My work report", { exact: true })).toBeVisible();
+  await panel.getByLabel("Copilot mode").selectOption("attention");
+  await panel.getByRole("button", { name: "Send Copilot question" }).click();
+  await expect(panel.getByRole("region", { name: "Answer: Needs attention" })).toContainText("MM-101");
+  expect(fixture.questions.at(-1)).toMatchObject({ intent: "attention", allowAi: false });
+  expect(fixture.generated).toHaveLength(0); expect(fixture.calls.some((c) => c.name === "copilot_reserve_ai")).toBe(false);
+});
+
+test("Confirmed global disable removes the Admin launcher and denies new backend questions", async ({ page }) => {
+  const fixture = await isolatedCopilot(page); await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Ask Marshmallow Copilot", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Disable Copilot for everyone" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("including for Admin");
+  expect(fixture.calls.some((c) => c.name === "copilot_configure_checked")).toBe(false);
+  await page.getByRole("button", { name: "Confirm disable for everyone" }).click();
+  await expect(page.getByRole("button", { name: "Ask Marshmallow Copilot", exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Saved: Copilot disabled/)).toBeVisible();
+  const status = await page.evaluate(async () => (await fetch("https://kxiqholnmhkwhdkhtopp.supabase.co/functions/v1/marshmallow-copilot", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "ask", message: "What needs attention?", requestId: crypto.randomUUID(), allowAi: false }),
+  })).status);
+  expect(status).toBe(403); expect(fixture.generated).toHaveLength(0);
+});
+
+test("A failed global disable keeps the saved state and launcher", async ({ page }) => {
+  await isolatedCopilot(page, "admin", { configureFailure: true }); await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  await page.getByRole("button", { name: "Disable Copilot for everyone" }).click();
+  await page.getByRole("button", { name: "Confirm disable for everyone" }).click();
+  await expect(page.getByText("You do not have access to this Copilot feature.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ask Marshmallow Copilot", exact: true })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Enable Marshmallow Copilot globally" })).toBeChecked();
+  await expect(page.getByText("Marshmallow Copilot settings saved", { exact: true })).toHaveCount(0);
+});
+
+test("CS launcher revalidates without a reload when its access is removed", async ({ page }) => {
+  const fixture = await isolatedCopilot(page, "customer_service"); await page.goto("/leads");
+  const launcher = page.getByRole("button", { name: "Ask Marshmallow Copilot", exact: true }); await expect(launcher).toBeVisible();
+  await launcher.click(); await page.getByRole("button", { name: "Minimize Copilot", exact: true }).click();
+  fixture.revoke(); await expect(launcher).toHaveCount(0, { timeout: 10000 });
+  await expect(page.getByRole("button", { name: "Restore Marshmallow Copilot" })).toHaveCount(0);
+});
+
+test("Disabling AI in another session removes the AI control but keeps CRM tools for CS", async ({ page }) => {
+  const fixture = await isolatedCopilot(page, "customer_service", { aiSuccess: true }); await page.goto("/leads");
+  await page.getByRole("button", { name: "Ask Marshmallow Copilot", exact: true }).click(); const panel = page.getByRole("dialog", { name: "Marshmallow Copilot" });
+  await expect(panel.getByRole("switch", { name: "Allow AI-assisted mode" })).toBeVisible();
+  fixture.disableAi(); await expect(panel.getByRole("switch", { name: "Allow AI-assisted mode" })).toHaveCount(0, { timeout: 10000 });
+  await panel.getByLabel("Copilot mode").selectOption("attention"); await panel.getByRole("button", { name: "Send Copilot question" }).click();
+  await expect(panel.getByRole("region", { name: "Answer: Needs attention" })).toContainText("MM-101"); expect(fixture.generated).toHaveLength(0);
 });

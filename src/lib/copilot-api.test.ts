@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { askCopilot, configureCopilot, fetchCopilotAccess, fetchCopilotDiagnostics, testCopilotAi, safeCopilotHref } from "./copilot-api";
-import { accessibleFeatures, businessDate, emptyCopilotResult, parseCopilotAsk, reportRange, resolveCopilotAccess, routeCopilotMessage } from "../../supabase/functions/_shared/copilot-core";
+import { accessibleFeatures, businessDate, COPILOT_ROLES, emptyCopilotResult, parseCopilotAsk, reportRange, resolveCopilotAccess, routeCopilotMessage } from "../../supabase/functions/_shared/copilot-core";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke } } }));
 const id = "00000000-0000-4000-8000-000000000001";
@@ -13,6 +13,9 @@ describe("Copilot permissions and deterministic routing", () => {
     expect(resolveCopilotAccess("admin", false, true, true)).toBe(false);
     expect(resolveCopilotAccess(null, true, true, true)).toBe(false);
     expect(accessibleFeatures({ allowed: true, aiEnabled: false, role: "opr", timezone: "UTC", sections: ["leads"] }).map((f) => f.id)).toEqual(["leads", "donut"]);
+  });
+  it.each(COPILOT_ROLES)("global off denies %s even with role and user Allow grants", (role) => {
+    expect(resolveCopilotAccess(role, false, true, true)).toBe(false);
   });
   it.each([
     ["MM-101", "leads", "MM-101"], ["find lead 5550100000", "leads", "5550100000"],
