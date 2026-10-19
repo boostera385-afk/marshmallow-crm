@@ -1,5 +1,68 @@
 # Processor Board
 
+## Compact queue presentation (2026-10-19) — local only
+
+- Replaces the large hero and four standalone count cards with one compact table
+  panel and four keyboard-accessible toggle chips. Service and Area are separate
+  columns, with technician identity, job ID and saved status grouped under the
+  customer. Mobile retains labelled cards and now shows terms as well.
+- Each job's saved check time appears **above** its advisory status, also in the
+  drawer. A semantic time element exposes the exact timestamp in the selected
+  timezone. Relative times reuse the existing 30-second UI clock; there is no new
+  timer. Unchecked jobs say Not checked yet. Expired evidence, changed records,
+  changed timezone, invalidated history and failed retries show Previous check,
+  never a false fresh-success indicator. The header shows the latest persisted
+  check **on this page**, separately from the board-read time.
+- Setup/failure explanations remain visible. Expanded help explains timezone,
+  freshness, page-local filtering and manual call review. Existing exact totals,
+  25-job pagination, permissions, approval gates, schedules and review controls
+  are unchanged. No database, Edge Function or generated-type changes were made;
+  no migration application or function deployment is required for this layout.
+  The earlier reliability follow-up below remains a separate deployment item.
+- Donut has no native job board/job-assessment flow; its sources, v1.7.0 metadata
+  and ZIP remain unchanged. CRM publication and real signed-in/provider QA remain
+  separate steps, not outcomes of local mocked browser tests.
+
+### Efficiency and regression review
+
+Comparison: local Windows React/Vitest and network-isolated Chromium, synthetic
+scheduled job, the same existing list/review contract. Before: three top-level
+sections (hero, four large count cards, queue); after: one queue panel with four
+inline chips. This reduces presentation overhead, not queue data or requirements.
+Opening the page still makes **zero assessment requests**. Explicit review makes
+one assessment request; a failed review, successful retry and fresh page refresh
+still make **two**, not three. Reproduce with:
+
+```sh
+npm test -- --maxWorkers=1 src/pages/ProcessorBoardPage.test.tsx src/hooks/useProcessorBoard.test.tsx src/lib/processor-board.test.ts
+npx playwright test --config playwright.operator-workflow.config.ts processor-board.spec.ts
+```
+
+UI/rendering is the affected layer; timestamp calculation is bounded to the
+existing maximum 25 loaded jobs and reuses the UI clock. Hooks/cache, API payloads,
+database queries/RLS/indexes, realtime/subscriptions and polling are unchanged.
+Background jobs, storage/uploads and Donut downloads are not applicable. No new
+reads, writes or provider calls are introduced for the timestamps/chips. No
+production latency, normalized usage, billing or health-after evidence is
+available; no invoice savings are claimed. Regression coverage checks column
+order, exact/page counts, timestamp placement, stale/failure states, denied roles,
+setup recovery, retries and request counts at desktop/mobile widths.
+
+Final local validation: **803 tests across 94 files passed** with the full suite
+run alone, including all 22 page tests and the existing hook/resource tests.
+All **11 network-isolated browser tests** passed on the final source, and 1440px/
+390px screenshots were inspected; check times sit above statuses with no page
+overflow. Full lint passed with zero errors/28 existing warnings; changed-file
+lint, app/node typecheck, build (including unchanged Donut ZIP integrity) and
+`git diff --check` passed. Existing Browserslist/bundle warnings remain. The first
+browser run timed out during cold dev-server navigation; the complete rerun and
+final-source run both passed without changing timeouts or test configuration.
+An initial new unit assertion queried the background table while the modal had
+correctly hidden it from accessibility; the test now closes the modal before
+checking the row. No behavior assertion was removed or skipped. Real signed-in
+production/provider QA, CRM publication and the earlier backend reliability
+deployment remain unverified/unperformed; no production mutation was made.
+
 ## Reliability follow-up (2026-10-15) — awaiting deployment/publication
 
 The source changes below are **local only**. The installed migration is unchanged;

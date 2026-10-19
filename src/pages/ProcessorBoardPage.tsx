@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpRight, CheckCheck, ChevronLeft, ChevronRight, Clock3, ListChecks, Loader2, MessageSquareText, RefreshCw, Search, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ChevronLeft, ChevronRight, ListChecks, Loader2, MessageSquareText, RefreshCw, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessProcessorBoard } from "@/lib/access";
 import { useProcessorBoard, PROCESSOR_QUERY_KEY } from "@/hooks/useProcessorBoard";
@@ -27,8 +27,15 @@ function Schedule({ job }: { job: ProcessorJob }) {
 }
 function StatusPill({ status }: { status: ProcessorStatus }) {
   const config = PROCESSOR_STATUS_UI[status];
-  return <Badge variant="outline" className={cn("gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold", config.color)}>
+  return <Badge variant="outline" className={cn("gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold", config.color)}>
     <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{config.label}</Badge>;
+}
+function CheckTime({ value, now, timezone, previous = false }: { value: string | null; now: Date; timezone: string; previous?: boolean }) {
+  const timestamp = value ? Date.parse(value) : NaN;
+  if (!Number.isFinite(timestamp)) return <span className="block text-[10px] text-muted-foreground">Not checked yet</span>;
+  const minutes = Math.max(0, Math.floor((now.getTime() - timestamp) / 60_000));
+  const relative = minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
+  return <time dateTime={value ?? undefined} title={new Date(timestamp).toLocaleString([], { timeZone: timezone, timeZoneName: "short" })} className="block text-[10px] text-muted-foreground">{previous ? "Previous check" : "Checked"} {relative}</time>;
 }
 export default function ProcessorBoardPage() {
   const { user, role } = useAuth();
@@ -74,7 +81,13 @@ function ProcessorBoard() {
   }, [rows, filters.timezone, now, issues]);
   const setupCount = rows.filter((job) => !!processorReadiness(job)).length;
   const retryableJobs = rows.filter((job) => !processorReadiness(job) && issues.get(job.id)?.retryable);
+  const latestCheck = rows.reduce<string | null>((latest, job) => job.checked_at && Number.isFinite(Date.parse(job.checked_at)) && (!latest || Date.parse(job.checked_at) > Date.parse(latest)) ? job.checked_at : latest, null);
   const reviewNote = (job: ProcessorJob) => processorReadiness(job) || issues.get(job.id)?.message || (currentAssessment(job, filters.timezone, now) ? "Evidence checked · review source quotes" : job.checked_at ? "Review stale · refresh AI" : "Saved record / schedule rule · not AI checked");
+  const jobStatus = (job: ProcessorJob) => <div className="space-y-1.5">
+    <CheckTime value={job.checked_at} now={now} timezone={filters.timezone} previous={!!processorReadiness(job) || issues.has(job.id) || !currentAssessment(job, filters.timezone, now)} />
+    <StatusPill status={displayStatus(job)} />
+    <p className={cn("text-[10px] leading-relaxed", issues.has(job.id) ? "text-destructive" : "text-muted-foreground")}>{reviewNote(job)}</p>
+  </div>;
   async function refreshAi(jobs: ProcessorJob[], skipFresh = false) {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -104,41 +117,24 @@ function ProcessorBoard() {
   }
   const selectedAssessment = selected ? currentAssessment(selected, filters.timezone, now) : null;
   const selectedStatus = selected ? displayStatus(selected) : "needs_review";
-  return <div className="mx-auto max-w-[1600px] space-y-6">
-    <section className="relative overflow-hidden rounded-2xl border bg-card p-5 sm:p-7">
-      <div className="pointer-events-none absolute -right-12 -top-24 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
-      <div className="relative flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
-        <div><div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[.18em] text-primary"><ListChecks className="h-4 w-4" />Dispatch workspace</div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Processor Board</h1>
-          <p className="mt-2 max-w-xl text-sm text-muted-foreground">Every scheduled job. The right technician. One clear next action.</p></div>
+  return <div className="mx-auto max-w-[1600px] space-y-3">
+    <section className="overflow-hidden rounded-2xl border bg-card" aria-label="Scheduled jobs">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+        <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+          <h1 className="text-base font-semibold tracking-tight">Processor Board</h1>
+          <Badge variant="secondary" className="tabular-nums" aria-label="Total matching jobs">{query.data?.total ?? "—"}</Badge></div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" disabled={query.isFetching || !!progress} onClick={() => void query.refetch()}><RefreshCw className={cn("mr-2 h-3.5 w-3.5", query.isFetching && "animate-spin")} />Refresh board</Button>
-          <Button disabled={!!progress || query.isError || !visible.some((j) => !processorReadiness(j))} onClick={() => void refreshAi(visible, true)}>
-            {progress ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+          <div aria-label="Latest AI check on this page" className="hidden items-center gap-1 text-[10px] text-muted-foreground sm:flex">Latest on page · <CheckTime value={latestCheck} now={now} timezone={filters.timezone} /></div>
+          <Button size="sm" variant="ghost" className="h-8 text-xs" disabled={query.isFetching || !!progress} onClick={() => void query.refetch()}><RefreshCw className={cn("mr-1.5 h-3 w-3", query.isFetching && "animate-spin")} />Refresh board</Button>
+          <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!!progress || query.isError || !visible.some((j) => !processorReadiness(j))} onClick={() => void refreshAi(visible, true)}>
+            {progress ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1.5 h-3 w-3" />}
             {progress ? `Reviewing ${progress.done}/${progress.total}` : "Refresh AI · this page"}</Button>
           {progress && <Button variant="ghost" onClick={() => { stopRequested.current = true; setNotice("Stopping after the current job. Completed reviews will be retained."); }}>Stop after current job</Button>}
         </div>
       </div>
-      {progress && <div role="status" className="mt-4 space-y-2"><div className="flex justify-between text-xs text-muted-foreground"><span>{progress.job ? `Checking #${progress.job}` : "Preparing reviews"}</span><span>{progress.done} / {progress.total}</span></div><div role="progressbar" aria-label="Job review progress" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress.total ? progress.done / progress.total * 100 : 0}%` }} /></div></div>}
-      <div className="mt-5 flex items-start gap-2 border-t pt-4 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
-        <span>Job-specific evidence only. AI labels are advisory—not saved lead status changes. Payment approvals stay protected.</span></div>
-    </section>
-
-    <section aria-label="Action counts on this page" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      {(["take_job_update", "job_in_progress", "payment_pending", "send_dose"] as const).map((status, i) => {
-        const Icon = [Clock3, Wrench, CheckCheck, MessageSquareText][i];
-        return <button key={status} onClick={() => setStatusFilter(statusFilter === status ? "all" : status)} aria-pressed={statusFilter === status}
-          className={cn("rounded-xl border bg-card p-4 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === status && "border-primary bg-primary/5")}>
-          <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium text-muted-foreground">{PROCESSOR_STATUS_UI[status].label}</span><Icon className="h-4 w-4 text-muted-foreground" /></div>
-          <div className="mt-3 flex items-baseline gap-2"><span className="text-2xl font-semibold tabular-nums">{counts[status] ?? 0}</span><span className="text-[11px] text-muted-foreground">on this page</span></div>
-        </button>;
-      })}
-    </section>
-
-    <section className="overflow-hidden rounded-2xl border bg-card" aria-label="Scheduled jobs">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-semibold"><span className="h-2 w-2 rounded-full bg-primary" />{filters.history ? "Scheduled job history" : "Active scheduled jobs"}
-          <Badge variant="secondary" className="tabular-nums">{query.data?.total ?? "—"}</Badge></div>
+      {progress && <div role="status" className="space-y-2 px-4 py-3"><div className="flex justify-between text-xs text-muted-foreground"><span>{progress.job ? `Checking #${progress.job}` : "Preparing reviews"}</span><span>{progress.done} / {progress.total}</span></div><div role="progressbar" aria-label="Job review progress" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress.total ? progress.done / progress.total * 100 : 0}%` }} /></div></div>}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-[11px] text-muted-foreground">
+        <span>{filters.history ? "Scheduled job history" : "Active scheduled jobs"} · AI suggestions only; saved statuses and approvals are unchanged.</span>
         <span className="text-[11px] text-muted-foreground">{query.isFetching ? "Refreshing…" : query.data ? `Board read ${new Date(query.data.observed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not loaded"} · reads every 30s</span>
       </div>
       <div className="flex flex-col gap-3 border-b bg-muted/20 p-4 xl:flex-row xl:items-end">
@@ -150,7 +146,13 @@ function ProcessorBoard() {
           </select></label>
         <label className="flex h-10 items-center gap-2 whitespace-nowrap text-xs"><input type="checkbox" checked={filters.history} disabled={!!progress} onChange={(e) => { setSelectedId(null); setFilters({ ...filters, history: e.target.checked, offset: 0 }); }} />Include closed/history</label>
       </div>
-      <p className="px-4 pt-3 text-[11px] text-muted-foreground">Schedule times use the timezone above, not the customer's state. AI reads the saved Quo chat (CRM mirror if direct access is unavailable). Calls need manual review.</p>
+      <div aria-label="Action counts on this page" className="flex flex-wrap items-center gap-2 px-4 pt-3">
+        <span className="text-[10px] text-muted-foreground">On this page</span>
+        {(["take_job_update", "job_in_progress", "payment_pending", "send_dose"] as const).map((status) => <button key={status} onClick={() => setStatusFilter(statusFilter === status ? "all" : status)} aria-pressed={statusFilter === status}
+          className={cn("inline-flex min-h-8 items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", statusFilter === status ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground")}>
+          {PROCESSOR_STATUS_UI[status].label}<span className="tabular-nums text-foreground">{counts[status] ?? 0}</span>
+        </button>)}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3">
         <label className="flex items-center gap-2 text-xs text-muted-foreground">This page
           <select aria-label="Filter this page" className="h-9 rounded-md border bg-background px-2 text-xs text-foreground" value={statusFilter} onChange={(e) => { const value = PAGE_FILTERS.find((filter) => filter === e.target.value); if (value) setStatusFilter(value); }}>
@@ -161,27 +163,29 @@ function ProcessorBoard() {
           {!!retryableJobs.length && <Button size="sm" variant="outline" disabled={!!progress || query.isError} onClick={() => void refreshAi(retryableJobs)}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry failed · {retryableJobs.length}</Button>}
         </div>
       </div>
-      <p className="px-4 pt-2 text-[11px] text-muted-foreground">Page refresh skips incomplete jobs and evidence checked within 5 minutes. Open a job to recheck it explicitly. Filters and counts apply to this page only.</p>
+      <details className="px-4 py-3 text-[11px] text-muted-foreground"><summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">How checks, freshness & timezone work</summary>
+        <div className="mt-2 space-y-1.5 leading-relaxed"><p>Schedule times use the timezone above, not the customer's state. AI reads the saved Quo chat (CRM mirror if direct access is unavailable). Calls need manual review.</p>
+          <p>Page refresh skips incomplete jobs and evidence checked within 5 minutes. Open a job to recheck it explicitly. Filters and counts apply to this page only.</p></div></details>
       {notice && <p role="status" className="mx-4 mt-3 rounded-lg border bg-muted/40 p-3 text-xs">{notice}</p>}
       {query.isError && <div role="alert" className="m-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm"><p>{query.error.message}</p><Button className="mt-3" variant="outline" onClick={() => void query.refetch()}>Retry loading board</Button></div>}
       {statusFilter !== "all" && <div className="flex items-center gap-2 px-4 pt-3 text-xs">This page: {statusFilter === "setup" ? "Setup needed" : PROCESSOR_STATUS_UI[statusFilter].label}<Button variant="ghost" size="sm" onClick={() => setStatusFilter("all")}>Clear filter</Button></div>}
       {query.isLoading ? <div aria-label="Loading jobs" className="space-y-3 p-5">{[1, 2, 3, 4].map((n) => <Skeleton key={n} className="h-14 w-full" />)}</div> : !query.isError && <>
-        <div className="hidden md:block"><Table><TableHeader><TableRow>
-          {["Customer / job", "Technician", "AI status", "Area / service", "Schedule", "Terms", "Action"].map((label) => <TableHead key={label} className="text-[10px] uppercase tracking-wider">{label}</TableHead>)}
+        <div className="hidden md:block"><Table className="text-xs [&_td]:px-3 [&_td]:py-3"><TableHeader className="bg-muted/30"><TableRow>
+          {["Customer / job / technician", "Service", "AI status", "Area", "Schedule", "Terms", "Action"].map((label) => <TableHead key={label} className="h-9 px-3 text-[10px] uppercase tracking-wider">{label}</TableHead>)}
         </TableRow></TableHeader><TableBody>{visible.map((job) => <TableRow key={job.id} className={cn(issues.has(job.id) && "bg-destructive/[.025]", !!processorReadiness(job) && "bg-amber-500/[.025]")}>
-          <TableCell><Link className="font-semibold hover:text-primary hover:underline" to={`/leads/${job.id}`}>{job.customer_name}</Link><p className="mt-1 text-[11px] text-muted-foreground">#{job.job_id}</p><p className="mt-1 text-[10px] text-muted-foreground">Saved: {STATUS_LABELS[job.status as LeadStatus] ?? job.status}</p></TableCell>
-          <TableCell><p className="font-medium">{job.tech_name || "Not assigned"}</p><p className="mt-1 text-xs tabular-nums text-muted-foreground">{job.tech_number || "Number missing"}</p></TableCell>
-          <TableCell className="min-w-[180px] max-w-[260px]"><StatusPill status={displayStatus(job)} /><p className={cn("mt-1.5 text-[11px] leading-relaxed", issues.has(job.id) ? "text-destructive" : "text-muted-foreground")}>{reviewNote(job)}</p></TableCell>
-          <TableCell className="max-w-[190px]"><p className="truncate" title={[job.city, job.state].filter(Boolean).join(", ")}>{[job.city, job.state].filter(Boolean).join(", ") || "Area missing"}</p><p className="mt-1 truncate text-xs text-muted-foreground" title={job.service_type ?? ""}>{job.service_type || "Service missing"}</p></TableCell>
+          <TableCell className="min-w-[160px] max-w-[220px]"><Link className="font-semibold hover:text-primary hover:underline" to={`/leads/${job.id}`}>{job.customer_name}</Link><p className="mt-1 text-[10px] text-muted-foreground">#{job.job_id} · Saved: {STATUS_LABELS[job.status as LeadStatus] ?? job.status}</p><p className="mt-1 font-medium">{job.tech_name || "Not assigned"}</p><p className="text-[10px] tabular-nums text-muted-foreground">{job.tech_number || "Number missing"}</p></TableCell>
+          <TableCell className="max-w-[150px]"><p className="truncate text-muted-foreground" title={job.service_type ?? ""}>{job.service_type || "Service missing"}</p></TableCell>
+          <TableCell className="min-w-[170px] max-w-[240px]">{jobStatus(job)}</TableCell>
+          <TableCell className="max-w-[150px]"><p className="truncate text-muted-foreground" title={[job.city, job.state].filter(Boolean).join(", ")}>{[job.city, job.state].filter(Boolean).join(", ") || "Area missing"}</p></TableCell>
           <TableCell><Schedule job={job} /></TableCell><TableCell className="text-xs capitalize">{job.terms?.replace(/_/g, " ") || "—"}</TableCell>
           <TableCell><Button size="sm" variant="ghost" aria-label={`Review ${job.job_id}`} onClick={() => setSelectedId(job.id)}>Review<ArrowUpRight className="ml-1 h-3.5 w-3.5" /></Button></TableCell>
         </TableRow>)}</TableBody></Table></div>
         <div className="divide-y md:hidden">{visible.map((job) => <article key={job.id} className="space-y-3 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2"><Link className="font-semibold" to={`/leads/${job.id}`}>{job.customer_name}</Link><StatusPill status={displayStatus(job)} /></div>
+          <div className="flex items-center justify-between gap-2"><Link className="font-semibold" to={`/leads/${job.id}`}>{job.customer_name}</Link><span className="text-[10px] capitalize text-muted-foreground">{job.terms?.replace(/_/g, " ") || "Terms not set"}</span></div>
+          {jobStatus(job)}
           <p className="text-xs text-muted-foreground">#{job.job_id} · {job.service_type} · {[job.city, job.state].filter(Boolean).join(", ")}</p>
           <div className="flex items-start justify-between gap-3 text-sm"><div><p className="font-medium">{job.tech_name || "Not assigned"}</p><p className="mt-1 text-xs text-muted-foreground">{job.tech_number || "Number missing"}</p></div><Schedule job={job} /></div>
           <p className="text-[11px] text-muted-foreground">Saved: {STATUS_LABELS[job.status as LeadStatus] ?? job.status}</p>
-          <p className={cn("text-xs leading-relaxed", issues.has(job.id) ? "text-destructive" : "text-muted-foreground")}>{reviewNote(job)}</p>
           <Button className="w-full" variant="outline" size="sm" aria-label={`Review ${job.job_id}`} onClick={() => setSelectedId(job.id)}>Review job & evidence<ArrowUpRight className="ml-2 h-3.5 w-3.5" /></Button>
         </article>)}</div>
         {!visible.length && <div className="px-5 py-14 text-center"><ListChecks className="mx-auto mb-3 h-8 w-8 text-muted-foreground/50" /><p className="font-medium">No jobs in this view</p><p className="mt-1 text-xs text-muted-foreground">Try another search, clear the page filter, or include history.</p></div>}
@@ -193,7 +197,7 @@ function ProcessorBoard() {
     <Sheet open={!!selected} onOpenChange={(open) => { if (!open) setSelectedId(null); }}><SheetContent className="w-full overflow-y-auto bg-background sm:max-w-lg">
       {selected && <><SheetHeader className="text-left"><div className="mb-2 text-[10px] font-semibold uppercase tracking-[.18em] text-primary">Job-specific review · #{selected.job_id}</div>
         <SheetTitle>{selected.customer_name}</SheetTitle><SheetDescription>{selected.service_type} · {selected.address || "Address missing"}</SheetDescription></SheetHeader>
-        <div className="mt-6 space-y-6"><div className="rounded-xl border bg-muted/20 p-4"><StatusPill status={selectedStatus} /><p className="mt-3 text-sm">{PROCESSOR_STATUS_UI[selectedStatus].action}</p>
+        <div className="mt-6 space-y-6"><div className="rounded-xl border bg-muted/20 p-4">{jobStatus(selected)}<p className="mt-3 text-sm">{PROCESSOR_STATUS_UI[selectedStatus].action}</p>
           <p className="mt-3 text-xs text-muted-foreground">Saved lead status: {STATUS_LABELS[selected.status as LeadStatus] ?? selected.status}</p></div>
           <div className="grid grid-cols-2 gap-4 text-sm"><div><p className="mb-2 text-[10px] uppercase tracking-wider text-muted-foreground">Technician</p><p className="font-medium">{selected.tech_name || "Not assigned"}</p><p className="mt-1 text-xs">{selected.tech_number || "Number missing"}</p></div><div><p className="mb-2 text-[10px] uppercase tracking-wider text-muted-foreground">Agreed schedule</p><Schedule job={selected} /><p className="mt-1 text-[10px] text-muted-foreground">{filters.timezone}</p></div></div>
           {selected.customer_schedule_requirements && <div><h2 className="text-xs font-semibold">Customer schedule requirements</h2><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{selected.customer_schedule_requirements}</p></div>}
