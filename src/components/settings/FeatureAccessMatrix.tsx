@@ -49,7 +49,7 @@ export default function FeatureAccessMatrix<T extends AccessUser>({ users, featu
             <div>
               <h3 className="text-sm font-semibold">Feature & Navigation Access</h3>
               <p className="mt-1 text-sm text-muted-foreground">Show only the tabs and features each teammate actually needs. All features are shown together; scroll across the table to view more.</p>
-              <p className="mt-1 text-xs text-muted-foreground">Copy All Details shows each user's effective access. Choose Inherit, Allow or Deny here; copy role defaults are managed above. Fixed permissions cannot be changed here.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Copy Details changes only the selected user's copy button. Existing role defaults apply until you change their switch. Fixed permissions cannot be changed here.</p>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
