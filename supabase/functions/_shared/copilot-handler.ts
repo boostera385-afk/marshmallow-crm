@@ -11,6 +11,7 @@ export interface CopilotRpcClient {
 }
 export interface CopilotAiAnswer { kind: "answer" | "leads" | "technicians" | "report" | "help"; query: string; text: string; inputTokens: number | null; outputTokens: number | null }
 export interface CopilotServices {
+  enabled: boolean;
   authenticate(request: Request): Promise<{ userId: string; db: CopilotRpcClient }>;
   budgetDb(): CopilotRpcClient;
   aiConfigured(): boolean;
@@ -148,6 +149,9 @@ export function createCopilotHandler(services: CopilotServices) {
     try {
       const { userId, db } = await services.authenticate(request);
       if (!userId) return json({ error: "Sign in to use Copilot." }, 401);
+      // Release pause applies even to Admin, saved grants and stale clients.
+      // Authenticate first, but never query CRM data, reserve budget or call AI.
+      if (!services.enabled) return json({ error: "Copilot is temporarily unavailable pending testing.", code: "copilot_paused" }, 503);
       const raw = await request.text();
       if (new TextEncoder().encode(raw).byteLength > 8000) return json({ error: "Request is too large." }, 413);
       let body: unknown;

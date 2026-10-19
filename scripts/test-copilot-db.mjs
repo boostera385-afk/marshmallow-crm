@@ -52,6 +52,33 @@ try {
   const featureSmoke = (await db.exec(await sql("supabase/tests/115_copilot_current_features_readonly.sql"))).flatMap((r) => r.rows).filter((r) => typeof r.name === "string" && typeof r.result === "string");
   console.table(featureChecks); console.table(featureSmoke);
   if (!featureChecks.length || !featureSmoke.length || [...featureChecks, ...featureSmoke].some((r) => r.result !== "PASS")) throw new Error("Copilot current-feature harness failed");
+  // Preserve a mix of previously allowed/denied grants across the release pause.
+  await db.exec("UPDATE public.copilot_role_permissions SET allowed=true WHERE role='processor'; INSERT INTO public.copilot_user_permissions(user_id,allowed) VALUES ('7c3ac25f-7106-4bf1-b367-1277cc5c3872',true),('0071cf5f-1eec-4ad6-abf7-82e16fee76b1',false);");
+  await db.exec("UPDATE public.copilot_config SET enabled=true,ai_enabled=true WHERE id;");
+  const preserved = async () => (await db.query(`SELECT jsonb_build_object(
+    'roles',(SELECT jsonb_agg(to_jsonb(t) ORDER BY role) FROM public.copilot_role_permissions t),
+    'users',(SELECT jsonb_agg(to_jsonb(t) ORDER BY user_id) FROM public.copilot_user_permissions t),
+    'navigation',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.navigation_permissions t),
+    'profiles',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.profiles t),
+    'leads',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.leads t),
+    'status',(SELECT jsonb_agg(to_jsonb(t) ORDER BY status) FROM public.lead_status_visibility t),
+    'budget',(SELECT to_jsonb(t)-'id'-'enabled'-'ai_enabled' FROM public.copilot_config t WHERE id),
+    'usage',(SELECT jsonb_agg(to_jsonb(t) ORDER BY request_id) FROM marshmallow_private.copilot_usage t)
+  ) AS snapshot`)).rows;
+  const saved = await preserved();
+  const pause = await sql("supabase/migrations/20261019111442_pause_marshmallow_copilot.sql");
+  await db.exec(pause); await db.exec(pause);
+  if ((await db.query("SELECT count(*)::integer AS count FROM public.activity_logs WHERE action='copilot_paused'")).rows[0].count !== 1) throw new Error("Pause audit missing or duplicated");
+  if (JSON.stringify(saved) !== JSON.stringify(await preserved())) throw new Error("Pause changed saved grants or customer records");
+  const pausedMatrix = matrix(await db.exec(baseline));
+  if (JSON.stringify(before) !== JSON.stringify(pausedMatrix)) throw new Error("Pause changed lead visibility matrix");
+  const pauseChecks = (await db.exec(await sql("supabase/tests/116_copilot_pause.sql"))).flatMap((r) => r.rows).filter((r) => typeof r.name === "string" && typeof r.result === "string");
+  console.table(pauseChecks);
+  if (pauseChecks.length !== 16 || pauseChecks.some((r) => r.result !== "PASS")) throw new Error("Copilot pause harness failed");
+  const pauseSmoke = (await db.exec(await sql("supabase/tests/117_copilot_pause_readonly.sql"))).flatMap((r) => r.rows).filter((r) => typeof r.name === "string" && typeof r.result === "string");
+  console.table(pauseSmoke);
+  if (pauseSmoke.length !== 9 || pauseSmoke.some((r) => r.result !== "PASS")) throw new Error("Copilot pause read-only smoke failed");
+  console.log("Pause applied twice; 16 pause checks passed; saved grants/customer records and six-role visibility unchanged.");
   console.log(`${checks.length + pilotChecks.length + featureChecks.length} behavioral checks and ${smoke.length + pilotSmoke.length + featureSmoke.length} read-only smoke checks passed; migrations applied twice; exact six-role baseline unchanged. Shared project untouched.`);
 } catch (error) { console.error(error.message); process.exitCode = 1; }
 finally { await db.close(); }

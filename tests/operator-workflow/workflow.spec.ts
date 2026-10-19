@@ -370,25 +370,27 @@ test("Copy All Details matrix preserves saved access after a backend rejection",
 });
 
 for (const width of [1920, 1440, 1366, 1024, 390]) {
-  test(`Feature Access is usable without horizontal scrolling at ${width}px`, async ({ page }) => {
+  test(`Feature Access shows all options with contained scrolling at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 768 });
     await mockSettingsUsers(page);
     await page.goto("/settings");
     await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
-    const next = page.getByRole("button", { name: "Next features" });
-    await next.scrollIntoViewIfNeeded();
-    await expect(page.getByRole("button", { name: "Previous features" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Next features" })).toHaveCount(0);
     if (width >= 1024) {
       const initialMatrix = page.getByRole("table");
-      await expect(initialMatrix.getByRole("columnheader")).toHaveCount(5);
+      expect(await initialMatrix.getByRole("columnheader").count()).toBeGreaterThan(20);
       const scroll = await initialMatrix.evaluate((element) => ({ width: element.parentElement!.clientWidth, content: element.parentElement!.scrollWidth }));
-      expect(scroll.content).toBeLessThanOrEqual(scroll.width);
+      expect(scroll.content).toBeGreaterThan(scroll.width);
+      const region = page.getByRole("region", { name: "Feature permissions table" });
+      await region.focus();
+      await page.keyboard.press("End");
+      await initialMatrix.getByRole("columnheader", { name: "Manual Lead", exact: true }).scrollIntoViewIfNeeded();
+      expect(await region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+      await expect(initialMatrix.getByText("Synthetic Operator With A Long Display Name")).toBeVisible();
     }
     if (width === 1366) await page.screenshot({ path: test.info().outputPath("feature-access-desktop.png") });
-    await next.click();
-    await expect(page.getByRole("status").filter({ hasText: "Features" })).toContainText("Features 5–8");
     await page.getByLabel("Find feature", { exact: true }).fill("Quickchat");
-    await expect(page.getByRole("status").filter({ hasText: "Features" })).toContainText("Features 1–2 of 2");
+    await expect(page.getByRole("status").filter({ hasText: "features" })).toContainText("2 of");
     await page.getByLabel("Find user", { exact: true }).fill("Synthetic Operator");
     const targetSwitch = page.getByRole("switch", { name: "CX Quickchat for Synthetic Operator With A Long Display Name", exact: true }).filter({ visible: true });
     await expect(targetSwitch).toBeVisible();
@@ -407,10 +409,7 @@ for (const width of [1920, 1440, 1366, 1024, 390]) {
     await expect(page.getByText(/No matching users/)).toBeVisible();
     await page.getByRole("button", { name: "Clear filters" }).click();
     await expect(page.getByLabel("Find user", { exact: true })).toHaveValue("");
-    await next.focus();
-    await expect(next).toBeFocused();
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("status").filter({ hasText: "Features" })).toContainText("Features 5–8");
+    if (width >= 1024) expect(await page.getByRole("table").getByRole("columnheader").count()).toBeGreaterThan(20);
   });
 }
 
@@ -429,6 +428,41 @@ test("Feature Access labels fixed permissions instead of offering ineffective to
   await expect(processor).toContainText("Included with role");
   await expect(processor.getByRole("switch")).toHaveCount(0);
 });
+
+for (const width of [1366, 390]) {
+  test(`Feature Access grants and revokes only the selected user's feature at ${width}px`, async ({ page }) => {
+    await mockSettingsUsers(page);
+    await page.setViewportSize({ width, height: 900 });
+    const saved = { id: REVISION_ID, user_id: JOB_ID, nav_section: "quick_chat", allowed: false };
+    const writes: { allowed: boolean }[] = [];
+    await page.route("**/rest/v1/navigation_permissions*", async (route) => {
+      if (route.request().method() === "GET") return route.fulfill({ json: [saved] });
+      expect(route.request().method()).toBe("PATCH");
+      expect(new URL(route.request().url()).searchParams.get("id")).toBe(`eq.${REVISION_ID}`);
+      const change = route.request().postDataJSON();
+      writes.push(change);
+      saved.allowed = change.allowed;
+      return route.fulfill({ json: null });
+    });
+    await page.goto("/settings");
+    await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+    await page.getByLabel("Find feature", { exact: true }).fill("Quickchat");
+    const target = page.getByRole("switch", { name: "CX Quickchat for Synthetic Operator With A Long Display Name", exact: true }).filter({ visible: true });
+    const other = page.getByRole("switch", { name: "CX Quickchat for Synthetic Processor", exact: true }).filter({ visible: true });
+    await expect(target).not.toBeChecked();
+    await target.click();
+    await expect(target).toBeChecked();
+    await expect(other).not.toBeChecked();
+    await target.click();
+    await expect(target).not.toBeChecked();
+    await expect(other).not.toBeChecked();
+    expect(writes).toEqual([{ allowed: true }, { allowed: false }]);
+    await page.reload();
+    await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+    await page.getByLabel("Find feature", { exact: true }).fill("Quickchat");
+    await expect(target).not.toBeChecked();
+  });
+}
 
 test("Feature Access reports a failed navigation save without success or access change", async ({ page }) => {
   await mockSettingsUsers(page);

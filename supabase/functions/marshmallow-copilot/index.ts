@@ -3,6 +3,7 @@ import { createCopilotHandler } from "../_shared/copilot-handler.ts";
 import { createCopilotGenerator } from "../_shared/copilot-provider.ts";
 
 const handler = createCopilotHandler({
+  enabled: false,
   authenticate: async (req) => {
     const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_ANON_KEY") ?? "", {
       global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
