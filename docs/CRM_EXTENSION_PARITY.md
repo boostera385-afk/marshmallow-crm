@@ -71,6 +71,16 @@ local backend reliability follow-up still requires its separately approved
 deployment; this UI change does not deploy it. See the rollout document for
 verification and efficiency boundaries.
 
+The subsequent Leads-style color/motion polish is also CRM-only: gradient/glass
+header and toolbar, tinted advisory chips, matching row/card accents, a single
+short page entrance and hover feedback. Text labels and selected-state rings are
+retained; reduced-motion mode disables board/drawer motion. Existing data reads,
+AI requests, check freshness, role gates and workflows are unchanged. No native
+Donut board was found; no extension source/release asset or backend schema/function
+changed. The scoped stylesheet, synthetic light/dark/mobile checks and resource
+comparison are recorded in `docs/PROCESSOR_BOARD_ROLLOUT.md`. This follow-up is
+local, not a claim of publication or backend deployment.
+
 ## Copilot feature/role catalogue audit (2026-10-15)
 
 Copilot now describes all 21 current CRM navigation sections, including Processor
