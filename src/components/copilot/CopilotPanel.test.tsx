@@ -173,4 +173,19 @@ describe("Copilot panel", () => {
     panel(); fireEvent.click(screen.getByRole("button", { name: "Minimize Copilot" }));
     fireEvent.click(screen.getByRole("button", { name: "Close minimized Copilot" })); expect(close).toHaveBeenCalledTimes(1);
   });
+  it.each(["admin", "cs_admin"] as const)("keeps Needs attention available for %s after the welcome screen is gone", async (role) => {
+    state.ask.mockResolvedValue(emptyCopilotResult("report")); panel({ ...access, role, aiEnabled: false, sections: ["leads"] });
+    fireEvent.click(screen.getByRole("button", { name: "My daily report" })); await screen.findByText(/Checked/);
+    expect(screen.queryByRole("button", { name: "Needs attention" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Copilot mode"), { target: { value: "attention" } });
+    expect(screen.queryByRole("button", { name: "Filters" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Send Copilot question" }));
+    await waitFor(() => expect(state.ask).toHaveBeenCalledTimes(2));
+    expect(state.ask.mock.calls[1][0]).toMatchObject({ intent: "attention", message: "What needs attention?", allowAi: false });
+  });
+  it("does not offer Needs attention when Leads access is excluded", () => {
+    panel({ ...access, sections: ["technicians"] });
+    expect(screen.queryByRole("option", { name: "Needs attention" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Needs attention" })).not.toBeInTheDocument();
+  });
 });

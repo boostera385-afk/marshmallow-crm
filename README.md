@@ -41,8 +41,9 @@ five agree.
 
 **Copilot paused pending testing:** local changes remove its header, Ctrl+K and
 Feature Access entries and restore the full per-user feature table. The reversible
-database pause and Edge Function release gate still require approved application /
-deployment; CRM publication is separate. Existing user grants are preserved. See
+database pause was applied through approved MCP on 2026-10-19. The Edge Function
+release gate still awaits approved deployment; CRM publication is separate.
+Existing user grants are preserved. See
 [Copilot rollout](docs/COPILOT_ROLLOUT.md) for the current pause and earlier pilot history.
 
 > **Note on "Quo AI"** — the earlier Quo AI layer was removed in migration
@@ -90,7 +91,7 @@ deployment; CRM publication is separate. Existing user grants are preserved. See
 | **Map** | Leaflet map view, coverage areas, nearby-urgent clustering, and nearby technician multi-select for workflow reports |
 | **Chat** | Quo/OpenPhone conversation mirror with a triage status axis and per-lead chat |
 | **Admin** | User management, access codes, TOTP status, activity logs, in-app system documentation |
-| **Copilot** | Paused pending testing; no active CRM entry points. Backend pause awaits approved migration/deployment; historical pilot code and grants retained |
+| **Copilot** | Database pause active pending testing; CRM entry-point removal and Edge release gate await publication/deployment. Historical pilot code and grants retained |
 | **Realtime** | ~24 Supabase Realtime channels with React Query cache invalidation |
 | **Audit** | Activity log writes on mutations, with denormalised actor names |
 

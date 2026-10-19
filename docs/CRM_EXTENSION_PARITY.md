@@ -15,7 +15,7 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Photos | Explicit View N photos beside combined-image copy on saved cards/details, with the existing image viewer and original-file technician handoff | Intake thumbnails already open the native previous/next/close photo preview; original-file attachment handoff to exact technician chat | Authenticated signed storage URLs for saved CRM photos; view never copies or sends. Donut's existing native preview is unchanged (no ZIP release needed). User's Quo Send action completes delivery. |
 | Complete lead details copy | Lead cards, OPR cards, tables and both detail views; Admin configures role defaults and Inherit/Allow/Deny user overrides in Feature Access; both Operator roles enabled by default | No equivalent clipboard action in native intake panel; no extension source change required | `get_lead_copy_access` resolves the authenticated caller; settings writes use admin-only `set_lead_copy_permission` and database RLS. Copies only loaded, visible details in Service Details / Address / Schedule Requirement / Quote order. Hidden OPR quotes stay blank. Copy does not write the lead or grant visibility. |
 | Feature Access settings usability | Restored full desktop per-user table with contained horizontal/vertical scrolling, sticky user identity/headings, user/role filters and feature search; Copy All Details retains saved Inherit/Allow/Deny overrides and effective access; narrow screens use labelled stacked controls. Copilot controls removed | No native admin permission editor in Donut; no extension source change required | Existing navigation/profile writes and copy permission RPCs remain the authority. Fixed role/flag gates and failed-save recovery are preserved; no existing grants are reset. Synthetic network-isolated browser coverage verifies both layouts. |
-| Marshmallow Copilot | Paused pending testing: header, command-menu, provider and Feature Access mounts removed; full per-user feature table restored | No native Copilot or Admin permission editor in Donut; extension source and v1.7.0 artifacts unchanged. Existing technician intelligence and urgent review remain distinct | Local function release gate rejects authenticated requests with `503 copilot_paused` before CRM/budget/provider work. New reversible configuration pause prevents direct RPC access and stale Admin re-enablement while preserving grants/history. Migration and function are **awaiting approved application/deployment**, and CRM Publish is separate. See the current section in `docs/COPILOT_ROLLOUT.md`; historical deployment records below are not evidence this pause is live. |
+| Marshmallow Copilot | Paused pending testing: header, command-menu, provider and Feature Access mounts removed locally; full per-user feature table restored | No native Copilot or Admin permission editor in Donut; extension source and v1.7.0 artifacts unchanged. Existing technician intelligence and urgent review remain distinct | Database pause installed via approved MCP as `20261019113029 / pause_marshmallow_copilot`; nine production-safe checks pass and six-role lead visibility plus existing grants/budgets are unchanged. The constraint prevents stale Admin re-enablement. Local function release gate (`503 copilot_paused` before CRM/budget/provider work) is **awaiting approved deployment**; CRM Publish remains separate. See the current section in `docs/COPILOT_ROLLOUT.md`. |
 | Operator hold alerts | All OPR/OPR Admin users receive a Marshmallow-themed, expandable read-only card and persistent bell history when an urgent job becomes Ready to Schedule, Waiting for CX for schedule confirmation, Scheduled or Cancelled. Newer hold cards stack above older cards instead of overlapping; pending urgent cancellations are remembered until final cancellation | No native Operator notification inbox or map filter controls in Donut; no extension source change required | One database trigger handles saved transitions from any client; recipient-only `lead_hold_alerts` RLS, server-owned field-whitelisted snapshots with hidden quotes redacted, revision-checked acknowledgement RPC. Existing lead/status approval gates remain unchanged. See `docs/OPERATOR_WORKFLOW_ROLLOUT.md`. |
 | CX / Tech Updates | Processor/Admin request CX updates; assigned CS (creator only when unassigned) and CS Admin see every pending CX request. CS/CS Admin request Tech updates; Admin/Processor see the queue and Processor records the reply. Both update queues stay visible to all four participating roles, with role-scoped unresolved counts, so CS/CS Admin can review returned Tech answers just as Processor/Admin review returned CX answers. Returned answers support Acknowledge or Question More with preserved thread history. Buttons are aligned on saved cards, full details and the lead drawer. | No native saved-lead request/completion queue in Donut; intake/status submission is not a counterpart. Extension source and v1.7.0 ZIP remain unchanged. | Authenticated `cx-update-requests` function proxies caller-JWT `update_requests`; request-table RLS, fixed role gates, whitelisted projections, per-kind pending uniqueness, stable retry IDs, atomic audit/notifications. No lead status, schedule, full-lead RLS or approval changes. Apply `20261121001000_fix_update_request_notification_uuid.sql` after the Tech Update migration to repair reported SQLSTATE 42804; shared-project application remains a separate approved operation. |
 | Map service/state filters | Responsive paired filters, non-shrinking grid widths, clipped long labels, collision-aware menus; Leaflet stays in its own stacking context | No equivalent map toolbar in native intake panel | UI-only layout change. No coordinate-provider, coverage, permission or storage changes. |
@@ -55,6 +55,43 @@ approved deployment**; CRM publication and live-provider QA are separate steps.
 The installed migration/types are unchanged. See `docs/PROCESSOR_BOARD_ROLLOUT.md`
 for read-only findings, synthetic before/after measurements and verification.
 
+### Compact Processor Board view (2026-10-19; local only)
+
+The CRM board now follows the compact urgent-leads table pattern: one panel with
+inline refresh controls, page-local action-count chips, separate Service/Area
+columns, and technician identity grouped with the customer/job. Last-check time
+appears above each advisory status on desktop, mobile and the evidence drawer;
+stale/invalidated evidence and failed retries say Previous check. The header's
+latest check is explicitly scoped to the loaded page, not the whole queue. Exact
+totals, pagination, saved status, error recovery and the role gates are unchanged.
+
+No native Processor Board exists in Donut (confirmed by source search), so no
+extension source, manifest, metadata or ZIP changed. This is presentation-only:
+no SQL, RPC, function, generated-type or production change is needed. The earlier
+local backend reliability follow-up still requires its separately approved
+deployment; this UI change does not deploy it. See the rollout document for
+verification and efficiency boundaries.
+
+The subsequent Leads-style color/motion polish is also CRM-only: gradient/glass
+header and toolbar, tinted advisory chips, matching row/card accents, a single
+short page entrance and hover feedback. Text labels and selected-state rings are
+retained; reduced-motion mode disables board/drawer motion. Existing data reads,
+AI requests, check freshness, role gates and workflows are unchanged. No native
+Donut board was found; no extension source/release asset or backend schema/function
+changed. The scoped stylesheet, synthetic light/dark/mobile checks and resource
+comparison are recorded in `docs/PROCESSOR_BOARD_ROLLOUT.md`. This follow-up is
+local, not a claim of publication or backend deployment.
+
+The follow-up **Rows in view** selector defaults to five rows (10/15/25 optional),
+with internal desktop/mobile scrolling and sticky desktop headings. It changes
+viewport height only, not the existing 25-job page, exact totals, filtered matches
+or page-level AI scope. Later jobs remain reachable with keyboard scrolling and
+their evidence drawers; refresh preserves scroll while explicit scope changes
+reset it. Mobile height is capped to the screen. This is also CRM-only with no
+native Donut counterpart; no backend, schema, extension source/release asset,
+permission or schedule change is needed. See the rollout document's synthetic
+resource comparison and verification boundaries.
+
 ## Copilot feature/role catalogue audit (2026-10-15)
 
 Copilot now describes all 21 current CRM navigation sections, including Processor
@@ -76,6 +113,13 @@ live v5. CRM publication/signed-in QA remain separate. This does not deploy the
 earlier local Processor Board reliability changes. See `docs/COPILOT_ROLLOUT.md`.
 
 ## Release verification checklist
+
+The 2026-10-17 access/attention patch is also CRM-only: explicit global-disable
+confirmation, unsaved-toggle guidance, visible individual Allow overrides,
+cross-tab invalidation/shorter access polling, and persistent Needs attention for
+authorized Admin/CS Admin callers. Existing RPC/RLS semantics and the newer live
+backend are unchanged. There is no Donut counterpart and no extension release is
+needed. See the latest entry in `docs/COPILOT_ROLLOUT.md` for verification limits.
 
 1. Test each changed flow on both surfaces and an excluded role.
 2. Run Vitest, changed-file lint, app typecheck and the production build.

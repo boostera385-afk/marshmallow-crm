@@ -16,7 +16,7 @@ import { useAllowedStatuses } from "@/hooks/useAllowedStatuses";
 import CopilotLogo from "./CopilotLogo";
 import CopilotAnswer from "./CopilotAnswer";
 
-type Mode = "ask" | "leads" | "technicians" | "report";
+type Mode = "ask" | "leads" | "technicians" | "report" | "attention";
 type Turn = { id: string; question: string; ask: CopilotAsk; result: CopilotResult };
 const selectClass = "h-10 min-w-0 rounded-lg border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -60,7 +60,8 @@ export default function CopilotPanel({ access, minimized, onMinimizedChange, onC
   const selectedLeadLabel = turns.flatMap((turn) => turn.result.cards).find((card) => card.id === selectedLeadId)?.title ?? selectedLeadId;
   const canLeads = access.sections.includes("leads");
   const canTechs = access.role !== "cs_admin" && access.sections.includes("technicians");
-  const modes: Mode[] = ["ask", ...(canLeads ? ["leads", "report"] as const : []), ...(canTechs ? ["technicians"] as const : [])];
+  const modes: Mode[] = ["ask", ...(canLeads ? ["leads", "report", "attention"] as const : []), ...(canTechs ? ["technicians"] as const : [])];
+  const filterableMode = mode === "leads" || mode === "technicians" || mode === "report";
 
   useEffect(() => () => { flight.current?.abort(); }, []);
   useEffect(() => {
@@ -130,6 +131,7 @@ export default function CopilotPanel({ access, minimized, onMinimizedChange, onC
           <div><p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Your workspace</p><div className="space-y-1">
             {canLeads && <><Button className="w-full justify-start" size="sm" variant="ghost" disabled={pending} onClick={() => void submit("My daily work brief", { intent: "daily_brief", allowAi: false })}>Daily work brief</Button><Button className="w-full justify-start" size="sm" variant="ghost" disabled={pending} onClick={() => selectSearch("leads")}>Find leads</Button><Button className="w-full justify-start" size="sm" variant="ghost" disabled={pending} onClick={() => { setMode("report"); setFiltersOpen(true); }}>Work report</Button></>}
             {canTechs && <Button className="w-full justify-start" size="sm" variant="ghost" disabled={pending} onClick={() => selectSearch("technicians")}>Find technicians</Button>}
+            {canLeads && <Button className="w-full justify-start" size="sm" variant="ghost" disabled={pending} onClick={() => void submit("What needs attention?", { intent: "attention", allowAi: false })}>Needs attention</Button>}
           </div></div>
           <div><p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Workflow sources</p><div className="space-y-1">{features.map((feature) => <Button key={feature.id} size="sm" variant="ghost" className="h-auto min-h-8 w-full justify-start whitespace-normal text-left text-xs" onClick={() => openLink(feature.href)}>{feature.label}</Button>)}</div></div>
           <p className="mt-auto rounded-lg border p-2 text-[11px] leading-relaxed text-muted-foreground">Only your permitted workflows are shown. Approval and sending happen in the source workflow, never in Copilot.</p>
@@ -162,16 +164,16 @@ export default function CopilotPanel({ access, minimized, onMinimizedChange, onC
         </div>
         <form className="shrink-0 space-y-3 border-t bg-background/80 p-4" onSubmit={(event) => {
           event.preventDefault();
-           const question = message.trim() || (mode === "report" ? "My daily report" : mode === "leads" ? "Find leads" : mode === "technicians" ? "Find technicians" : "");
+           const question = message.trim() || (mode === "report" ? "My daily report" : mode === "leads" ? "Find leads" : mode === "technicians" ? "Find technicians" : mode === "attention" ? "What needs attention?" : "");
            const refinement = /^(only|just|instead|make that|what about|and|explain that|explain it)\b/i.test(question);
            void submit(question, refinement ? {} : { ...(mode !== "ask" ? { intent: mode } : {}),
              ...(mode === "leads" || mode === "technicians" ? { query: message, service, area, ...(mode === "leads" ? { status: status || undefined, date: date || undefined } : { active: active === "" ? null : active === "true" }) } : {}),
-             ...(mode === "report" ? { start, end, scope } : {}) });
+              ...(mode === "report" ? { start, end, scope } : {}), ...(mode === "attention" ? { allowAi: false } : {}) });
         }}>
-          <div className="flex flex-wrap items-center gap-2"><label className="sr-only" htmlFor="copilot-mode">Copilot mode</label><select id="copilot-mode" value={mode} onChange={(event) => setMode(event.target.value as Mode)} className={selectClass}>{modes.map((value) => <option key={value} value={value}>{({ ask: "Ask Copilot", leads: "Find leads", technicians: "Find technicians", report: "Work report" })[value]}</option>)}</select>{mode !== "ask" && <Button type="button" variant="ghost" size="sm" aria-expanded={filtersOpen} aria-controls="copilot-filters" onClick={() => setFiltersOpen(!filtersOpen)}>Filters<ChevronDown className="ml-1 h-3.5 w-3.5"/></Button>}</div>
+          <div className="flex flex-wrap items-center gap-2"><label className="sr-only" htmlFor="copilot-mode">Copilot mode</label><select id="copilot-mode" value={mode} onChange={(event) => setMode(event.target.value as Mode)} className={selectClass}>{modes.map((value) => <option key={value} value={value}>{({ ask: "Ask Copilot", leads: "Find leads", technicians: "Find technicians", report: "Work report", attention: "Needs attention" })[value]}</option>)}</select>{filterableMode && <Button type="button" variant="ghost" size="sm" aria-expanded={filtersOpen} aria-controls="copilot-filters" onClick={() => setFiltersOpen(!filtersOpen)}>Filters<ChevronDown className="ml-1 h-3.5 w-3.5"/></Button>}</div>
           {canLeads && routeLeadId && !selectedLeadId && <Button type="button" size="sm" variant="outline" onClick={() => { setSelectedLeadId(routeLeadId); void submit("Show current lead brief", { selectedLeadId: routeLeadId, intent: "brief", allowAi: false }); }}>Use current lead</Button>}
            {selectedLeadId && <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 px-2 py-1 text-xs"><span className="min-w-0 break-words">Selected saved lead · {selectedLeadLabel} · permissions rechecked</span><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => { setSelectedLeadId(undefined); setConsentNotice(""); setFailedAsk(null); }}>Clear context</Button></div>}
-          {filtersOpen && mode !== "ask" && <div id="copilot-filters" className="grid grid-cols-2 gap-2">
+          {filtersOpen && filterableMode && <div id="copilot-filters" className="grid grid-cols-2 gap-2">
             {mode === "report" ? <><label className="space-y-1 text-xs">Start date<Input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)}/></label><label className="space-y-1 text-xs">End date<Input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)}/></label>{access.role === "admin" && <select aria-label="Report scope" value={scope} onChange={(e) => setScope(e.target.value as "mine" | "team")} className={selectClass}><option value="mine">My work</option><option value="team">Team (Admin)</option></select>}</> : <><Input aria-label="Filter service" placeholder="Service" value={service} onChange={(e) => setService(e.target.value)} maxLength={200}/><Input aria-label="Filter area" placeholder="City / state / area" value={area} onChange={(e) => setArea(e.target.value)} maxLength={200}/>{mode === "leads" ? <><select aria-label="Filter lead status" className={selectClass} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All accessible statuses</option>{Object.entries(LEAD_STATUS_CONFIG).filter(([key]) => allowedStatuses.has(key)).map(([key, config]) => <option key={key} value={key}>{config.label}</option>)}</select>{access.sections.includes("schedule") && <Input type="date" aria-label="Scheduled date" value={date} onChange={(e) => setDate(e.target.value)}/>}</> : <select aria-label="Filter technician active status" value={active} onChange={(e) => setActive(e.target.value)} className={selectClass}><option value="">Any active status</option><option value="true">Active</option><option value="false">Inactive</option></select>}</>}
           </div>}
           {consentNotice && <p className="text-xs text-muted-foreground">{consentNotice}</p>}

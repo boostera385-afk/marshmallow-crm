@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,86 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("Processor Board interactions", () => {
+  it("defaults to five rows in view but keeps all matching jobs in the page-level AI review", async () => {
+    const rows = Array.from({ length: 6 }, (_, index) => ({ ...job, id: `synthetic-${index}`, job_id: `JOB-${index}` }));
+    state.hook.mockReturnValue({ data: { rows, total: 26, observed_at: new Date().toISOString() }, refetch: state.refetch });
+    mount();
+    expect(screen.getByLabelText("Rows in view")).toHaveValue("5");
+    expect(screen.getAllByRole("row")).toHaveLength(7);
+    fireEvent.change(screen.getByLabelText("Rows in view"), { target: { value: "10" } });
+    expect(screen.getByLabelText("Rows in view")).toHaveValue("10");
+    expect(state.hook).toHaveBeenLastCalledWith({ offset: 0, search: "", history: false, timezone: "America/New_York" });
+    expect(state.assess).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Rows in view"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("6 reviewed"));
+    expect(state.assess.mock.calls.map(([id]) => id)).toEqual(rows.map(({ id }) => id));
+  });
+  it("uses the compact column layout and keeps the exact total separate from page counts", () => {
+    mount();
+    expect(screen.getAllByRole("columnheader").map((column) => column.textContent)).toEqual(["Customer / job / technician", "Service", "AI status", "Area", "Schedule", "Terms", "Action"]);
+    expect(screen.getByLabelText("Total matching jobs")).toHaveTextContent("26");
+    expect(screen.getByLabelText("Action counts on this page")).toHaveTextContent("On this page");
+    expect(screen.getAllByText("Not checked yet").length).toBeGreaterThan(0);
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it("keeps colored filters and rows tied to the displayed advisory state without triggering AI", () => {
+    mount();
+    const filter = screen.getByRole("button", { name: /Take Job Update/ });
+    expect(filter).toHaveAttribute("data-processor-status", "take_job_update");
+    fireEvent.click(filter);
+    expect(filter).toHaveAttribute("aria-pressed", "true");
+    const row = screen.getAllByRole("row")[1];
+    expect(row).toHaveAttribute("data-processor-status", "take_job_update");
+    expect(row).toHaveTextContent("John Sample");
+    expect(screen.queryAllByLabelText("Review JOB-1002")).toHaveLength(0);
+    fireEvent.click(filter);
+    expect(filter).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByLabelText("Review JOB-1002")).toHaveLength(2);
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it("shows the latest successful check above the job status on desktop, mobile and in the drawer", () => {
+    const checkedAt = new Date(Date.now() - 2 * 60_000).toISOString();
+    const reviewed = { ...job, checked_at: checkedAt, assessment: { status: "payment_pending", evidence: [], messages_reviewed: 1, matched_messages: 1, source: "Quo current history", history_complete: true, timezone: "America/New_York", checked_at: checkedAt, lead_updated_at: job.updated_at, summary: "Verified" } };
+    state.hook.mockReturnValue({ data: { rows: [reviewed], total: 1, observed_at: new Date().toISOString() } });
+    mount();
+    const row = screen.getAllByRole("row")[1];
+    const statusCell = within(row).getAllByRole("cell")[2];
+    const check = within(statusCell).getByText("Checked 2m ago");
+    const badge = within(statusCell).getByText("Payment Pending");
+    expect(check.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(check).toHaveAttribute("datetime", checkedAt);
+    expect(check.getAttribute("title")).toBeTruthy();
+    expect(screen.getByLabelText("Latest AI check on this page")).toHaveTextContent("Checked 2m ago");
+    expect(screen.getAllByText("Checked 2m ago")).toHaveLength(3);
+    fireEvent.click(screen.getAllByLabelText("Review JOB-1001")[0]);
+    expect(within(screen.getByRole("dialog")).getByText("Checked 2m ago")).toBeInTheDocument();
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it.each(["expired", "changed record", "other timezone", "invalidated history"])("marks %s evidence as a previous check, not a fresh status", (reason) => {
+    const checkedAt = new Date(Date.now() - (reason === "expired" ? 6 : 2) * 60_000).toISOString();
+    const assessment = { status: "payment_pending", evidence: [], timezone: reason === "other timezone" ? "America/Chicago" : "America/New_York", checked_at: checkedAt, lead_updated_at: reason === "changed record" ? "2025-01-01T00:00:00Z" : job.updated_at };
+    state.hook.mockReturnValue({ data: { rows: [{ ...job, checked_at: checkedAt, assessment: reason === "invalidated history" ? null : assessment }], total: 1, observed_at: new Date().toISOString() } });
+    mount();
+    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[2];
+    expect(cell).toHaveTextContent("Previous check");
+    expect(cell).toHaveTextContent("Review stale · refresh AI");
+    expect(within(cell).queryByText("Payment Pending")).not.toBeInTheDocument();
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it("does not label a failed retry as a fresh successful check", async () => {
+    const checkedAt = new Date().toISOString();
+    state.hook.mockReturnValue({ data: { rows: [{ ...job, checked_at: checkedAt, assessment: { status: "payment_pending", evidence: [], timezone: "America/New_York", checked_at: checkedAt, lead_updated_at: job.updated_at } }], total: 1, observed_at: checkedAt } });
+    state.assess.mockRejectedValue(new Error("Synthetic provider unavailable")); mount();
+    fireEvent.click(screen.getAllByLabelText("Review JOB-1001")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Check this job" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Synthetic provider unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[2];
+    expect(cell).toHaveTextContent("Previous check just now");
+    expect(cell).toHaveTextContent("Unavailable");
+    expect(cell.closest("tr")).toHaveAttribute("data-processor-status", "unavailable");
+  });
   it("shows technician identity and schedule, and opens this job's evidence instead of another job", () => {
     mount(); expect(screen.getAllByText("4155550199").length).toBeGreaterThan(0);
     fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);

@@ -1,5 +1,189 @@
 # Processor Board
 
+## Five-row scroll viewport (2026-10-19) — local only
+
+- **Rows in view** defaults to **Show 5**, with 10, 15 and 25 options beside the
+  page-status filter. This controls list height, **not** the server page size:
+  all matching jobs from the existing 25-job page remain mounted and reachable
+  by scrolling. The exact total, pagination, page-local status counts and AI
+  refresh scope are unchanged. A matching-job count and scroll hint distinguish
+  filtered matches from the footer's source-page range.
+- Desktop height measures through the selected last row, including wrapped
+  setup/failure explanations; no fixed row height, line clamping or data slicing
+  hides details. One scroll owner supports both axes, with opaque sticky headings.
+  Mobile cards share the selector and internal scrolling, capped at 70vh so the
+  list remains screen-sized. On smaller screens fewer than five cards can fit.
+- Each scroll area is labelled and keyboard-focusable. End/Page Down can reach
+  later jobs, including their evidence drawer. Filter/search/page/history/timezone
+  or row-limit changes reset to the top; ordinary refreshes preserve scroll.
+  Resize observation recalculates height for wrapping and viewport changes, and
+  every observer/fallback listener is cleaned up on unmount.
+- This is CRM-only: Donut still has no native board, and its sources/release/ZIP
+  remain unchanged. No SQL, RPC, function, types, lead permissions, approvals,
+  schedules, realtime transport or polling changed. No migration or function
+  deployment is required; CRM publication and real signed-in QA remain separate.
+
+### Efficiency and verification
+
+Affected layers: UI/rendering and scoped lazy-route CSS. At most 25 existing rows
+are inspected, using two geometry reads per mounted viewport measurement (not one
+per row), one ResizeObserver per viewport (desktop and mobile, at most two mounted),
+no new timer/scroll listener and no redundant identical height-style writes.
+The resize-listener fallback and observer cleanup are regression-tested. No
+observer is recreated for an unchanged-data refresh. Hooks/cache, API payloads,
+database queries/RLS/indexes, realtime, background jobs, storage/bandwidth outside
+these small assets, and the Donut counterpart are unchanged/not applicable.
+
+Reproducible comparison: same Windows local Vite build and network-isolated
+Chromium workload with six synthetic jobs. Before: all six desktop rows expanded
+the page. After: five visible rows, with the sixth reachable by internal keyboard
+scroll and Show 10 expanding all six. Both workloads retain **one list request,
+zero assessment requests** for mount, filtering, row-count changes and opening
+the drawer. A separate unit regression verifies that page AI refresh still checks
+**all six eligible jobs**, not only the five in view. No query/billing reduction
+is claimed. Route JS is **27.94 → 29.99 kB** (**8.99 → 9.61 kB gzip**); scoped CSS
+is **3.21 → 3.82 kB** (**0.80 → 0.98 kB gzip**). Production usage, normalized billing
+and health-after evidence remain unavailable.
+
+Focused tests: **42 passed**, including viewport measurement, unchanged-write
+avoidance, refresh scroll retention, scope reset, resize recovery and cleanup.
+All **16 network-isolated browser tests passed**, including actual five-row bounds,
+sticky headings after End, later-job review, selector expansion, filter reset and
+bounded mobile scrolling. Desktop/mobile screenshots were inspected. Full lint
+passed with zero errors/28 existing warnings; typecheck and build (including Donut
+v1.7.0 integrity) passed. Existing Browserslist/bundle warnings remain. The new
+full-unit-suite run is in the background and **pending**. The user authorized
+committing/pushing this follow-up to `boostera385-afk/marshmallow-crm`, branch
+`feat/processor-compact-board`, and will publish the CRM separately. No production
+mutation, migration application, backend deployment or CRM publication was
+performed by the agent for this follow-up.
+
+```sh
+npm test -- --maxWorkers=1 src/components/processor-board/ProcessorJobViewport.test.tsx src/pages/ProcessorBoardPage.test.tsx src/hooks/useProcessorBoard.test.tsx src/lib/processor-board.test.ts
+npx playwright test --config playwright.operator-workflow.config.ts processor-board.spec.ts
+```
+
+## Leads-style color and motion polish (2026-10-19) — local only
+
+- The compact queue now reuses the Leads page's rounded glass surface, a slim
+  blue/cyan gradient titlebar, inset search toolbar and highlighted AI button.
+  Page-local action chips have amber/blue/green/red tints, numeric count capsules
+  and a distinct selected ring. Advisory badges retain their existing labels and
+  palette. Rows/mobile cards add matching left-edge accents and subtle tints;
+  text labels remain present so color is never the only indicator.
+- Color is derived from the **displayed** advisory state, including Unavailable
+  after a failed check and Needs Review for incomplete jobs. It does not change
+  saved statuses, severity, schedules, approvals, backend outcomes or visibility.
+  Last-check timestamps remain above statuses on both screen sizes and the drawer.
+- One entrance animation uses the existing `pageVariants` (250ms); filters lift
+  1px on hover and row/review feedback uses short transitions. There are no idle
+  loops, staggered row mounts, animated layout measurements, per-row timers or
+  animations restarted by polling. OS reduced-motion preference skips the panel
+  entrance and disables board/drawer animation, transitions and hover movement.
+  Loading/progress text stays available even when spinner motion is disabled.
+- Styles live in `src/pages/ProcessorBoardPage.css`, scoped to the board and its
+  portalled drawer; shared CSS/components are unchanged. Light/dark text contrast,
+  keyboard filter toggling and mobile overflow are covered with synthetic data.
+  There is still no native Donut Processor Board (source search reconfirmed), so
+  no extension source, manifest, release metadata or ZIP change is required.
+
+### Efficiency review and local verification
+
+Affected: UI/rendering and a small lazy-route stylesheet. Reuses existing Framer
+Motion, theme/status tokens and the single UI clock, with no dependency change.
+Unchanged/not applicable: hooks/cache, API projections and calls, database queries/
+RLS/indexes, generated types, realtime/polling, background jobs, storage/uploads,
+and Donut downloads. No backend deployment or database migration is needed for
+this presentation change. The earlier reliability deployment remains separate.
+
+Reproducible comparison: Windows local Vite production builds plus the same
+network-isolated Chromium board tests. Relative to the preceding compact-view
+build, route JS is **26.89 → 27.94 kB** (**8.72 → 8.99 kB gzip**); the scoped lazy
+CSS is **3.21 kB / 0.80 kB gzip**. This is a small visual-asset increase, not a
+claimed bundle reduction. One mount/filter/hover/review-drawer workload still
+performs **one list request and zero assessments**, including six synthetic jobs
+in both themes and desktop-to-mobile resize. Existing explicit single review and
+failed-only retry/fresh-skip resource assertions still pass. No provider/billing
+or normalized production-after health evidence is available; no savings claimed.
+
+Reproduce with the focused Vitest and Playwright commands in the compact-view
+section below. **38 focused tests and all 14 network-isolated browser tests passed**;
+1366px light/dark and 390px screenshots were inspected. Full lint passed with
+zero errors/28 existing warnings; typecheck and production build passed, including
+unchanged Donut v1.7.0 ZIP integrity. Existing Browserslist/bundle warnings remain.
+The first full unit run had **802 passes and two failures** in the unchanged
+sidebar file (an Admin test timeout followed by a missing-link failure); all four
+sidebar tests passed in isolation. The subsequent full-suite rerun passed all
+**804 tests across 94 files**, including the sidebar file. No timeout,
+assertion, skip or configuration was weakened. No production mutation or CRM
+publication has been performed for this visual follow-up; real signed-in/provider
+QA remains separate. The user subsequently authorized code publication to
+`boostera385-afk/marshmallow-crm`, branch `feat/processor-compact-board`, credited
+to `kaash0542@gmail.com`. Pushing this branch does not merge or deploy the CRM.
+
+## Compact queue presentation (2026-10-19) — local only
+
+- Replaces the large hero and four standalone count cards with one compact table
+  panel and four keyboard-accessible toggle chips. Service and Area are separate
+  columns, with technician identity, job ID and saved status grouped under the
+  customer. Mobile retains labelled cards and now shows terms as well.
+- Each job's saved check time appears **above** its advisory status, also in the
+  drawer. A semantic time element exposes the exact timestamp in the selected
+  timezone. Relative times reuse the existing 30-second UI clock; there is no new
+  timer. Unchecked jobs say Not checked yet. Expired evidence, changed records,
+  changed timezone, invalidated history and failed retries show Previous check,
+  never a false fresh-success indicator. The header shows the latest persisted
+  check **on this page**, separately from the board-read time.
+- Setup/failure explanations remain visible. Expanded help explains timezone,
+  freshness, page-local filtering and manual call review. Existing exact totals,
+  25-job pagination, permissions, approval gates, schedules and review controls
+  are unchanged. No database, Edge Function or generated-type changes were made;
+  no migration application or function deployment is required for this layout.
+  The earlier reliability follow-up below remains a separate deployment item.
+- Donut has no native job board/job-assessment flow; its sources, v1.7.0 metadata
+  and ZIP remain unchanged. CRM publication and real signed-in/provider QA remain
+  separate steps, not outcomes of local mocked browser tests.
+
+### Efficiency and regression review
+
+Comparison: local Windows React/Vitest and network-isolated Chromium, synthetic
+scheduled job, the same existing list/review contract. Before: three top-level
+sections (hero, four large count cards, queue); after: one queue panel with four
+inline chips. This reduces presentation overhead, not queue data or requirements.
+Opening the page still makes **zero assessment requests**. Explicit review makes
+one assessment request; a failed review, successful retry and fresh page refresh
+still make **two**, not three. Reproduce with:
+
+```sh
+npm test -- --maxWorkers=1 src/pages/ProcessorBoardPage.test.tsx src/hooks/useProcessorBoard.test.tsx src/lib/processor-board.test.ts
+npx playwright test --config playwright.operator-workflow.config.ts processor-board.spec.ts
+```
+
+UI/rendering is the affected layer; timestamp calculation is bounded to the
+existing maximum 25 loaded jobs and reuses the UI clock. Hooks/cache, API payloads,
+database queries/RLS/indexes, realtime/subscriptions and polling are unchanged.
+Background jobs, storage/uploads and Donut downloads are not applicable. No new
+reads, writes or provider calls are introduced for the timestamps/chips. No
+production latency, normalized usage, billing or health-after evidence is
+available; no invoice savings are claimed. Regression coverage checks column
+order, exact/page counts, timestamp placement, stale/failure states, denied roles,
+setup recovery, retries and request counts at desktop/mobile widths.
+
+Final local validation: **803 tests across 94 files passed** with the full suite
+run alone, including all 22 page tests and the existing hook/resource tests.
+All **11 network-isolated browser tests** passed on the final source, and 1440px/
+390px screenshots were inspected; check times sit above statuses with no page
+overflow. Full lint passed with zero errors/28 existing warnings; changed-file
+lint, app/node typecheck, build (including unchanged Donut ZIP integrity) and
+`git diff --check` passed. Existing Browserslist/bundle warnings remain. The first
+browser run timed out during cold dev-server navigation; the complete rerun and
+final-source run both passed without changing timeouts or test configuration.
+An initial new unit assertion queried the background table while the modal had
+correctly hidden it from accessibility; the test now closes the modal before
+checking the row. No behavior assertion was removed or skipped. Real signed-in
+production/provider QA, CRM publication and the earlier backend reliability
+deployment remain unverified/unperformed; no production mutation was made.
+
 ## Reliability follow-up (2026-10-15) — awaiting deployment/publication
 
 The source changes below are **local only**. The installed migration is unchanged;
