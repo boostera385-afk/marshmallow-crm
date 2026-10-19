@@ -1,5 +1,62 @@
 # Processor Board
 
+## Leads-style color and motion polish (2026-10-19) — local only
+
+- The compact queue now reuses the Leads page's rounded glass surface, a slim
+  blue/cyan gradient titlebar, inset search toolbar and highlighted AI button.
+  Page-local action chips have amber/blue/green/red tints, numeric count capsules
+  and a distinct selected ring. Advisory badges retain their existing labels and
+  palette. Rows/mobile cards add matching left-edge accents and subtle tints;
+  text labels remain present so color is never the only indicator.
+- Color is derived from the **displayed** advisory state, including Unavailable
+  after a failed check and Needs Review for incomplete jobs. It does not change
+  saved statuses, severity, schedules, approvals, backend outcomes or visibility.
+  Last-check timestamps remain above statuses on both screen sizes and the drawer.
+- One entrance animation uses the existing `pageVariants` (250ms); filters lift
+  1px on hover and row/review feedback uses short transitions. There are no idle
+  loops, staggered row mounts, animated layout measurements, per-row timers or
+  animations restarted by polling. OS reduced-motion preference skips the panel
+  entrance and disables board/drawer animation, transitions and hover movement.
+  Loading/progress text stays available even when spinner motion is disabled.
+- Styles live in `src/pages/ProcessorBoardPage.css`, scoped to the board and its
+  portalled drawer; shared CSS/components are unchanged. Light/dark text contrast,
+  keyboard filter toggling and mobile overflow are covered with synthetic data.
+  There is still no native Donut Processor Board (source search reconfirmed), so
+  no extension source, manifest, release metadata or ZIP change is required.
+
+### Efficiency review and local verification
+
+Affected: UI/rendering and a small lazy-route stylesheet. Reuses existing Framer
+Motion, theme/status tokens and the single UI clock, with no dependency change.
+Unchanged/not applicable: hooks/cache, API projections and calls, database queries/
+RLS/indexes, generated types, realtime/polling, background jobs, storage/uploads,
+and Donut downloads. No backend deployment or database migration is needed for
+this presentation change. The earlier reliability deployment remains separate.
+
+Reproducible comparison: Windows local Vite production builds plus the same
+network-isolated Chromium board tests. Relative to the preceding compact-view
+build, route JS is **26.89 → 27.94 kB** (**8.72 → 8.99 kB gzip**); the scoped lazy
+CSS is **3.21 kB / 0.80 kB gzip**. This is a small visual-asset increase, not a
+claimed bundle reduction. One mount/filter/hover/review-drawer workload still
+performs **one list request and zero assessments**, including six synthetic jobs
+in both themes and desktop-to-mobile resize. Existing explicit single review and
+failed-only retry/fresh-skip resource assertions still pass. No provider/billing
+or normalized production-after health evidence is available; no savings claimed.
+
+Reproduce with the focused Vitest and Playwright commands in the compact-view
+section below. **38 focused tests and all 14 network-isolated browser tests passed**;
+1366px light/dark and 390px screenshots were inspected. Full lint passed with
+zero errors/28 existing warnings; typecheck and production build passed, including
+unchanged Donut v1.7.0 ZIP integrity. Existing Browserslist/bundle warnings remain.
+The first full unit run had **802 passes and two failures** in the unchanged
+sidebar file (an Admin test timeout followed by a missing-link failure); all four
+sidebar tests passed in isolation. A full-suite rerun is pending. No timeout,
+assertion, skip or configuration was weakened. No production mutation or CRM
+publication has been performed for this visual follow-up; real signed-in/provider
+QA remains separate. The user subsequently authorized code publication to
+`boostera385-afk/marshmallow-crm`, branch `feat/processor-compact-board`, credited
+to `kaash0542@gmail.com`. Pushing this branch does not merge or deploy the CRM.
+
 ## Compact queue presentation (2026-10-19) — local only
 
 - Replaces the large hero and four standalone count cards with one compact table

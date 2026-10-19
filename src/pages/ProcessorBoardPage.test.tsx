@@ -25,6 +25,21 @@ describe("Processor Board interactions", () => {
     expect(screen.getAllByText("Not checked yet").length).toBeGreaterThan(0);
     expect(state.assess).not.toHaveBeenCalled();
   });
+  it("keeps colored filters and rows tied to the displayed advisory state without triggering AI", () => {
+    mount();
+    const filter = screen.getByRole("button", { name: /Take Job Update/ });
+    expect(filter).toHaveAttribute("data-processor-status", "take_job_update");
+    fireEvent.click(filter);
+    expect(filter).toHaveAttribute("aria-pressed", "true");
+    const row = screen.getAllByRole("row")[1];
+    expect(row).toHaveAttribute("data-processor-status", "take_job_update");
+    expect(row).toHaveTextContent("John Sample");
+    expect(screen.queryAllByLabelText("Review JOB-1002")).toHaveLength(0);
+    fireEvent.click(filter);
+    expect(filter).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByLabelText("Review JOB-1002")).toHaveLength(2);
+    expect(state.assess).not.toHaveBeenCalled();
+  });
   it("shows the latest successful check above the job status on desktop, mobile and in the drawer", () => {
     const checkedAt = new Date(Date.now() - 2 * 60_000).toISOString();
     const reviewed = { ...job, checked_at: checkedAt, assessment: { status: "payment_pending", evidence: [], messages_reviewed: 1, matched_messages: 1, source: "Quo current history", history_complete: true, timezone: "America/New_York", checked_at: checkedAt, lead_updated_at: job.updated_at, summary: "Verified" } };
@@ -65,6 +80,7 @@ describe("Processor Board interactions", () => {
     const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[2];
     expect(cell).toHaveTextContent("Previous check just now");
     expect(cell).toHaveTextContent("Unavailable");
+    expect(cell.closest("tr")).toHaveAttribute("data-processor-status", "unavailable");
   });
   it("shows technician identity and schedule, and opens this job's evidence instead of another job", () => {
     mount(); expect(screen.getAllByText("4155550199").length).toBeGreaterThan(0);

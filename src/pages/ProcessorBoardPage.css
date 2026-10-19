@@ -1,0 +1,128 @@
+/* Scoped to the CRM board (including its portalled evidence drawer). */
+.processor-board [data-processor-status] {
+  --processor-tone: var(--primary);
+}
+
+.processor-board [data-processor-status="take_job_update"] {
+  --processor-tone: var(--warning);
+}
+
+.processor-board [data-processor-status="job_in_progress"] {
+  --processor-tone: var(--status-blue);
+}
+
+.processor-board [data-processor-status="payment_pending"] {
+  --processor-tone: var(--success);
+}
+
+.processor-board [data-processor-status="send_dose"] {
+  --processor-tone: var(--destructive);
+}
+
+.processor-board [data-processor-status="needs_review"] {
+  --processor-tone: 258 72% 60%;
+}
+
+.processor-board [data-processor-status="unavailable"],
+.processor-board [data-processor-status="scheduled"] {
+  --processor-tone: var(--status-muted);
+}
+
+.processor-board .processor-panel {
+  background: linear-gradient(180deg, hsl(var(--card) / 0.94), hsl(var(--muted) / 0.32));
+}
+
+.processor-board .processor-titlebar {
+  background:
+    radial-gradient(ellipse at top left, hsl(var(--primary) / 0.20), transparent 55%),
+    radial-gradient(ellipse at top right, hsl(198 90% 60% / 0.14), transparent 45%),
+    linear-gradient(180deg, hsl(var(--card) / 0.90), hsl(var(--muted) / 0.45));
+  box-shadow: inset 0 1px 0 hsl(var(--primary) / 0.18);
+}
+
+.processor-board .processor-toolbar {
+  background: linear-gradient(120deg, hsl(var(--primary) / 0.045), hsl(var(--muted) / 0.45));
+  box-shadow: inset 0 1px 0 hsl(var(--foreground) / 0.025);
+}
+
+.processor-board .processor-filter {
+  color: hsl(var(--processor-tone));
+  border-color: hsl(var(--processor-tone) / 0.30);
+  background: hsl(var(--processor-tone) / 0.07);
+  transition: background-color 180ms, border-color 180ms, box-shadow 180ms, transform 180ms;
+}
+
+/* Dark foregrounds retain contrast on the light theme's tinted controls. */
+html:not(.dark) .processor-board .processor-filter {
+  color: hsl(var(--foreground));
+}
+
+.processor-board .processor-filter-count {
+  background: hsl(var(--processor-tone) / 0.16);
+}
+
+.processor-board .processor-filter > span:first-child {
+  background: hsl(var(--processor-tone));
+}
+
+.processor-board .processor-filter[aria-pressed="true"] {
+  background: hsl(var(--processor-tone) / 0.20);
+  border-color: hsl(var(--processor-tone) / 0.75);
+  box-shadow: 0 0 0 2px hsl(var(--processor-tone) / 0.12);
+}
+
+.processor-board .processor-status {
+  box-shadow: inset 0 1px 0 hsl(var(--processor-tone) / 0.10);
+}
+
+.processor-board .processor-row {
+  background-image: linear-gradient(90deg, hsl(var(--processor-tone) / 0.045), transparent 55%);
+  transition: background-color 180ms;
+}
+
+.processor-board .processor-row > td:first-child,
+.processor-board article.processor-row {
+  box-shadow: inset 3px 0 0 hsl(var(--processor-tone) / 0.65);
+}
+
+.processor-board .processor-row:focus-within {
+  background-color: hsl(var(--processor-tone) / 0.07);
+}
+
+@media (hover: hover) {
+  .processor-board .processor-filter:hover {
+    background-color: hsl(var(--processor-tone) / 0.15);
+    transform: translateY(-1px);
+  }
+
+  .processor-board .processor-row:hover {
+    background-color: hsl(var(--processor-tone) / 0.07);
+  }
+
+  .processor-board .processor-review-button:hover svg {
+    transform: translate(1px, -1px);
+  }
+}
+
+.processor-board .processor-review-button svg {
+  transition: transform 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processor-board,
+  .processor-board::before,
+  .processor-board::after,
+  .processor-board *,
+  .processor-board *::before,
+  .processor-board *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+
+  .processor-board button,
+  .processor-board button:hover,
+  .processor-board .processor-review-button svg {
+    transform: none !important;
+  }
+}
