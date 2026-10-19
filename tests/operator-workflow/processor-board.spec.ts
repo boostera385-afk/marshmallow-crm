@@ -47,6 +47,8 @@ for (const width of [1440, 390]) test(`Processor reviews the correct job and evi
   const actions = await isolatedBoard(page); await page.goto("/processor-board");
   await expect(page.getByRole("heading", { name: "Processor Board", exact: true })).toBeVisible();
   await expect(page.getByText("Alex Technician").filter({ visible: true })).toBeVisible();
+  await expect(page.getByText("Not checked yet").filter({ visible: true }).first()).toBeVisible();
+  expect(actions.filter((a) => a.action === "assess")).toHaveLength(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   await page.screenshot({ path: test.info().outputPath(`processor-board-${width}.png`), fullPage: true });
   await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
@@ -57,6 +59,16 @@ for (const width of [1440, 390]) test(`Processor reviews the correct job and evi
   await expect(page.getByRole("dialog")).toContainText("Saved lead status: Scheduled");
   await expect(page.getByRole("dialog")).toContainText("534 conversation events examined");
   expect(actions.filter((a) => a.action === "assess")).toEqual([{ action: "assess", leadId: LEAD, timezone: "America/New_York" }]);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[role=dialog]")).toHaveCount(0);
+  const status = width >= 768 ? page.locator("tbody tr").first().locator("td").nth(2) : page.locator("article").filter({ visible: true }).first();
+  const checked = status.locator("time");
+  await expect(checked).toHaveText("Checked just now");
+  await expect(checked).toHaveAttribute("title", /.+/);
+  const checkedBox = await checked.boundingBox();
+  const statusBox = await status.getByText("Payment Pending", { exact: true }).boundingBox();
+  expect(checkedBox!.y + checkedBox!.height).toBeLessThanOrEqual(statusBox!.y);
+  await page.screenshot({ path: test.info().outputPath(`processor-checked-${width}.png`), fullPage: true });
 });
 test("failed provider review remains explicit and does not advance the job", async ({ page }) => {
   await isolatedBoard(page, "processor", true); await page.goto("/processor-board");

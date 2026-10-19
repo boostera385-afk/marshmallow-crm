@@ -54,6 +54,23 @@ approved deployment**; CRM publication and live-provider QA are separate steps.
 The installed migration/types are unchanged. See `docs/PROCESSOR_BOARD_ROLLOUT.md`
 for read-only findings, synthetic before/after measurements and verification.
 
+### Compact Processor Board view (2026-10-19; local only)
+
+The CRM board now follows the compact urgent-leads table pattern: one panel with
+inline refresh controls, page-local action-count chips, separate Service/Area
+columns, and technician identity grouped with the customer/job. Last-check time
+appears above each advisory status on desktop, mobile and the evidence drawer;
+stale/invalidated evidence and failed retries say Previous check. The header's
+latest check is explicitly scoped to the loaded page, not the whole queue. Exact
+totals, pagination, saved status, error recovery and the role gates are unchanged.
+
+No native Processor Board exists in Donut (confirmed by source search), so no
+extension source, manifest, metadata or ZIP changed. This is presentation-only:
+no SQL, RPC, function, generated-type or production change is needed. The earlier
+local backend reliability follow-up still requires its separately approved
+deployment; this UI change does not deploy it. See the rollout document for
+verification and efficiency boundaries.
+
 ## Copilot feature/role catalogue audit (2026-10-15)
 
 Copilot now describes all 21 current CRM navigation sections, including Processor
