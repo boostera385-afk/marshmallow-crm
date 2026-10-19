@@ -81,6 +81,16 @@ changed. The scoped stylesheet, synthetic light/dark/mobile checks and resource
 comparison are recorded in `docs/PROCESSOR_BOARD_ROLLOUT.md`. This follow-up is
 local, not a claim of publication or backend deployment.
 
+The follow-up **Rows in view** selector defaults to five rows (10/15/25 optional),
+with internal desktop/mobile scrolling and sticky desktop headings. It changes
+viewport height only, not the existing 25-job page, exact totals, filtered matches
+or page-level AI scope. Later jobs remain reachable with keyboard scrolling and
+their evidence drawers; refresh preserves scroll while explicit scope changes
+reset it. Mobile height is capped to the screen. This is also CRM-only with no
+native Donut counterpart; no backend, schema, extension source/release asset,
+permission or schedule change is needed. See the rollout document's synthetic
+resource comparison and verification boundaries.
+
 ## Copilot feature/role catalogue audit (2026-10-15)
 
 Copilot now describes all 21 current CRM navigation sections, including Processor
