@@ -108,6 +108,39 @@ html:not(.dark) .processor-board .processor-filter {
   transition: transform 180ms;
 }
 
+.processor-board .processor-job-viewport {
+  position: relative;
+  max-height: var(--processor-viewport-height, 34rem);
+  overflow: auto;
+  border-radius: 24px 24px 0 0;
+  scrollbar-gutter: stable;
+}
+
+/* One scroll owner keeps both the vertical and horizontal header positions fixed. */
+.processor-board .processor-job-viewport .data-surface {
+  overflow: visible;
+  padding: 0;
+  border-radius: 0;
+}
+
+.processor-board .processor-job-viewport thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.processor-board .processor-job-viewport th {
+  background: hsl(var(--card));
+  box-shadow: 0 1px 0 hsl(var(--border));
+}
+
+@media (max-width: 767px) {
+  .processor-board .processor-job-viewport {
+    max-height: min(var(--processor-viewport-height, 34rem), 70vh);
+    border-radius: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .processor-board,
   .processor-board::before,

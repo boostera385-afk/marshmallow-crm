@@ -17,11 +17,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ProcessorJobViewport } from "@/components/processor-board/ProcessorJobViewport";
 import "./ProcessorBoardPage.css";
 
 const EMPTY_JOBS: ProcessorJob[] = [];
 type ReviewIssue = { message: string; retryable: boolean; revision: string; timezone: string };
 const PAGE_FILTERS = ["all", "setup", "unavailable", "needs_review", "scheduled", "take_job_update", "job_in_progress", "payment_pending", "send_dose"] as const;
+const ROW_LIMITS = [5, 10, 15, 25] as const;
 type PageFilter = typeof PAGE_FILTERS[number];
 const time = (value: string | null) => value ? `${Number(value.slice(0, 2)) % 12 || 12}:${value.slice(3, 5)} ${Number(value.slice(0, 2)) >= 12 ? "PM" : "AM"}` : "Time missing";
 function Schedule({ job }: { job: ProcessorJob }) {
@@ -51,6 +53,7 @@ function ProcessorBoard() {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ offset: 0, search: "", history: false, timezone: "America/New_York" });
   const [statusFilter, setStatusFilter] = useState<PageFilter>("all");
+  const [rowLimit, setRowLimit] = useState<number>(5);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, ReviewIssue>>({});
   const [progress, setProgress] = useState<{ done: number; total: number; job?: string } | null>(null);
@@ -121,6 +124,7 @@ function ProcessorBoard() {
   }
   const selectedAssessment = selected ? currentAssessment(selected, filters.timezone, now) : null;
   const selectedStatus = selected ? displayStatus(selected) : "needs_review";
+  const viewportResetKey = JSON.stringify([filters, statusFilter]);
   return <div className="processor-board mx-auto max-w-[1600px] space-y-3">
     <motion.section variants={pageVariants} initial={reduceMotion ? false : "initial"} animate="animate" className="processor-panel glass-panel overflow-hidden rounded-[26px]" aria-label="Scheduled jobs">
       <div className="processor-titlebar flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3.5 sm:px-5">
@@ -158,10 +162,14 @@ function ProcessorBoard() {
         </button>)}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3">
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">This page
+        <div className="flex flex-wrap items-center gap-3"><label className="flex items-center gap-2 text-xs text-muted-foreground">This page
           <select aria-label="Filter this page" className="h-9 rounded-xl border bg-background px-2 text-xs text-foreground" value={statusFilter} onChange={(e) => { const value = PAGE_FILTERS.find((filter) => filter === e.target.value); if (value) setStatusFilter(value); }}>
             {PAGE_FILTERS.map((filter) => <option key={filter} value={filter}>{filter === "all" ? `All ${rows.length} jobs` : filter === "setup" ? `Setup needed (${setupCount})` : `${PROCESSOR_STATUS_UI[filter].label} (${counts[filter] ?? 0})`}</option>)}
           </select></label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">Rows in view
+            <select aria-label="Rows in view" className="h-9 rounded-xl border bg-background px-2 text-xs text-foreground" value={rowLimit} onChange={(e) => { const value = ROW_LIMITS.find((limit) => limit === Number(e.target.value)); if (value) setRowLimit(value); }}>
+              {ROW_LIMITS.map((limit) => <option key={limit} value={limit}>Show {limit}</option>)}
+            </select></label></div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {!!setupCount && <button className="flex items-center gap-1 text-amber-700 underline-offset-4 hover:underline dark:text-amber-300" onClick={() => setStatusFilter("setup")}><AlertTriangle className="h-3.5 w-3.5" />{setupCount} need setup / saved-record review</button>}
           {!!retryableJobs.length && <Button size="sm" variant="outline" disabled={!!progress || query.isError} onClick={() => void refreshAi(retryableJobs)}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry failed · {retryableJobs.length}</Button>}
@@ -173,8 +181,9 @@ function ProcessorBoard() {
       {notice && <p role="status" className="mx-4 mt-3 rounded-lg border bg-muted/40 p-3 text-xs">{notice}</p>}
       {query.isError && <div role="alert" className="m-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm"><p>{query.error.message}</p><Button className="mt-3" variant="outline" onClick={() => void query.refetch()}>Retry loading board</Button></div>}
       {statusFilter !== "all" && <div className="flex items-center gap-2 px-4 pt-3 text-xs">This page: {statusFilter === "setup" ? "Setup needed" : PROCESSOR_STATUS_UI[statusFilter].label}<Button variant="ghost" size="sm" onClick={() => setStatusFilter("all")}>Clear filter</Button></div>}
+      <p id="processor-scroll-help" className="px-4 py-2 text-[11px] text-muted-foreground">{visible.length} matching jobs on this page · Scroll inside the list to see more. Rows in view only changes its height; AI refresh checks all matching jobs on this page.</p>
       {query.isLoading ? <div aria-label="Loading jobs" className="space-y-3 p-5">{[1, 2, 3, 4].map((n) => <Skeleton key={n} className="h-14 w-full" />)}</div> : !query.isError && <>
-        <div className="processor-table hidden md:block"><Table className="text-xs [&_td]:px-3 [&_td]:py-2.5"><TableHeader className="bg-muted/30"><TableRow>
+        <ProcessorJobViewport rowLimit={rowLimit} resetKey={viewportResetKey} className="processor-table hidden md:block"><Table className="text-xs [&_td]:px-3 [&_td]:py-2.5"><TableHeader className="bg-muted/30"><TableRow>
           {["Customer / job / technician", "Service", "AI status", "Area", "Schedule", "Terms", "Action"].map((label) => <TableHead key={label} className="h-9 px-3 text-[10px] uppercase tracking-wider">{label}</TableHead>)}
         </TableRow></TableHeader><TableBody>{visible.map((job) => <TableRow key={job.id} data-processor-status={displayStatus(job)} className="processor-row">
           <TableCell className="min-w-[160px] max-w-[220px]"><Link className="font-semibold hover:text-primary hover:underline" to={`/leads/${job.id}`}>{job.customer_name}</Link><p className="mt-1 text-[10px] text-muted-foreground">#{job.job_id} · Saved: {STATUS_LABELS[job.status as LeadStatus] ?? job.status}</p><p className="mt-1 font-medium">{job.tech_name || "Not assigned"}</p><p className="text-[10px] tabular-nums text-muted-foreground">{job.tech_number || "Number missing"}</p></TableCell>
@@ -183,15 +192,15 @@ function ProcessorBoard() {
           <TableCell className="max-w-[150px]"><p className="truncate text-muted-foreground" title={[job.city, job.state].filter(Boolean).join(", ")}>{[job.city, job.state].filter(Boolean).join(", ") || "Area missing"}</p></TableCell>
           <TableCell><Schedule job={job} /></TableCell><TableCell className="text-xs capitalize">{job.terms?.replace(/_/g, " ") || "—"}</TableCell>
           <TableCell><Button size="sm" variant="ghost" className="processor-review-button text-primary" aria-label={`Review ${job.job_id}`} onClick={() => setSelectedId(job.id)}>Review<ArrowUpRight className="ml-1 h-3.5 w-3.5" /></Button></TableCell>
-        </TableRow>)}</TableBody></Table></div>
-        <div className="divide-y md:hidden">{visible.map((job) => <article key={job.id} data-processor-status={displayStatus(job)} className="processor-row space-y-3 p-4">
+        </TableRow>)}</TableBody></Table></ProcessorJobViewport>
+        <ProcessorJobViewport rowLimit={rowLimit} resetKey={viewportResetKey} className="md:hidden"><div className="divide-y">{visible.map((job) => <article key={job.id} data-processor-status={displayStatus(job)} className="processor-row space-y-3 p-4">
           <div className="flex items-center justify-between gap-2"><Link className="font-semibold" to={`/leads/${job.id}`}>{job.customer_name}</Link><span className="text-[10px] capitalize text-muted-foreground">{job.terms?.replace(/_/g, " ") || "Terms not set"}</span></div>
           {jobStatus(job)}
           <p className="text-xs text-muted-foreground">#{job.job_id} · {job.service_type} · {[job.city, job.state].filter(Boolean).join(", ")}</p>
           <div className="flex items-start justify-between gap-3 text-sm"><div><p className="font-medium">{job.tech_name || "Not assigned"}</p><p className="mt-1 text-xs text-muted-foreground">{job.tech_number || "Number missing"}</p></div><Schedule job={job} /></div>
           <p className="text-[11px] text-muted-foreground">Saved: {STATUS_LABELS[job.status as LeadStatus] ?? job.status}</p>
           <Button className="w-full" variant="outline" size="sm" aria-label={`Review ${job.job_id}`} onClick={() => setSelectedId(job.id)}>Review job & evidence<ArrowUpRight className="ml-2 h-3.5 w-3.5" /></Button>
-        </article>)}</div>
+        </article>)}</div></ProcessorJobViewport>
         {!visible.length && <div className="px-5 py-14 text-center"><ListChecks className="mx-auto mb-3 h-8 w-8 text-muted-foreground/50" /><p className="font-medium">No jobs in this view</p><p className="mt-1 text-xs text-muted-foreground">Try another search, clear the page filter, or include history.</p></div>}
       </>}
       <div className="flex items-center justify-between gap-3 border-t px-4 py-3 text-xs text-muted-foreground"><span>{query.data?.total ? `${filters.offset + 1}–${Math.min(filters.offset + rows.length, query.data.total)} of ${query.data.total} jobs` : "0 jobs"}</span>

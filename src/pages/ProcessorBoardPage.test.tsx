@@ -17,6 +17,21 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("Processor Board interactions", () => {
+  it("defaults to five rows in view but keeps all matching jobs in the page-level AI review", async () => {
+    const rows = Array.from({ length: 6 }, (_, index) => ({ ...job, id: `synthetic-${index}`, job_id: `JOB-${index}` }));
+    state.hook.mockReturnValue({ data: { rows, total: 26, observed_at: new Date().toISOString() }, refetch: state.refetch });
+    mount();
+    expect(screen.getByLabelText("Rows in view")).toHaveValue("5");
+    expect(screen.getAllByRole("row")).toHaveLength(7);
+    fireEvent.change(screen.getByLabelText("Rows in view"), { target: { value: "10" } });
+    expect(screen.getByLabelText("Rows in view")).toHaveValue("10");
+    expect(state.hook).toHaveBeenLastCalledWith({ offset: 0, search: "", history: false, timezone: "America/New_York" });
+    expect(state.assess).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Rows in view"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("6 reviewed"));
+    expect(state.assess.mock.calls.map(([id]) => id)).toEqual(rows.map(({ id }) => id));
+  });
   it("uses the compact column layout and keeps the exact total separate from page counts", () => {
     mount();
     expect(screen.getAllByRole("columnheader").map((column) => column.textContent)).toEqual(["Customer / job / technician", "Service", "AI status", "Area", "Schedule", "Terms", "Action"]);
