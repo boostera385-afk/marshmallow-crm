@@ -1,6 +1,130 @@
 # Marshmallow Copilot rollout
 
-## Repository handoff — 2026-10-17
+## Current: Copilot pause and previous access view — 2026-10-19
+
+At the user's request, Copilot is excluded until fully tested. Settings restores
+all non-Copilot per-user feature columns in one scrollable table instead of four
+columns per page. Search, role filters, mobile labelled controls, Copy All Details
+inherit/allow/deny, fixed role gates and failed-save handling remain. This is a
+view rollback, **not** a reset of stored grants or a grant of every feature to everyone.
+The unrelated Processor Board, update queues, notepad and existing AI assessments
+are not reverted.
+
+### Five-layer scope and parity
+
+- UI: `AppLayout` no longer mounts the Copilot provider/launcher; the normal Ctrl+K
+  menu remains without Copilot. Settings no longer mounts either Copilot editor.
+- Frontend permissions: existing navigation and profile/copy checks are unchanged.
+  No Copilot access/settings queries, polling or listeners mount in the application.
+- Database/RLS: new `supabase/migrations/20261019111442_pause_marshmallow_copilot.sql`
+  sets global/AI configuration false and the enabled default false. An idempotent
+  check constraint prevents stale Admin clients/direct configuration RPCs from
+  re-enabling either switch. Existing caller-token RPC authorization therefore
+  denies searches/briefs/reports/health and service budget reservations. No lead,
+  role, navigation, approval or RLS policy changes; grants/history remain intact.
+  The state transition records a system migration audit event once.
+- Edge: `marshmallow-copilot` explicitly sets its release gate false. Authentication
+  still precedes the `503 copilot_paused` response; no CRM RPC, budget reservation,
+  provider configuration lookup or AI generation follows it, including Admin actions.
+- Types/enums: only a default/constraint/config state changes, with no API signature
+  or table shape change; generated types require no edits or regeneration.
+- Donut has no native Copilot or permission editor (source search confirmed).
+  No extension source, manifest, release metadata or ZIP change/reinstall is needed.
+
+### Application, verification and rollback
+
+With explicit user approval, the exact migration was applied through Supabase MCP
+to shared project `kxiqholnmhkwhdkhtopp` as **20261019113029 /
+pause_marshmallow_copilot**. Its SHA-256 was
+`4c103b01c3fa240e6c11cfcac5a3a1c445b74ddf9b6c2d1b0f1f85aeda7d1c29`.
+Global Copilot and AI are now false, the enabled default is false, and the validated
+release constraint prevents re-enablement. All **nine** production-safe pause checks
+passed. The exact six-role lead-visibility baseline matched before/after, and role
+grants, user grants, navigation and budgets retained identical fingerprints. One
+system audit event was recorded. Security/performance advisor categories/counts
+were unchanged. No customer/test records, external messages or secrets were changed.
+**The database pause is live; Edge release-gate deployment and CRM publication
+were not authorized or performed.**
+
+1. The migration is already installed on this project. **Do not reapply it manually**,
+   rename migration history, bulk push, reset, or replay old Copilot migrations.
+   Other targets require their own review/approval and manual application of only
+   the exact migration file above.
+2. Deploy only `marshmallow-copilot` and its changed shared handler with explicit
+   approval, preserving the existing gateway configuration and function-level
+   `auth.getUser()` check. This function change is **awaiting deployment**.
+3. Run `supabase/tests/117_copilot_pause_readonly.sql` on the intended target and
+   inspect all nine PASS/FAIL rows. It uses only permission/configuration reads
+   and rolled-back temporary/session state. All nine checks already passed on the
+   shared project. After the separately approved Edge deployment, an authenticated
+   stale-client action should receive `503 copilot_paused`; no/invalid login remains 401.
+4. Publish the CRM separately, refresh existing tabs and verify the full feature
+   table, grant/revoke/failure flows, normal Ctrl+K and absence of Copilot controls.
+5. `supabase/tests/116_copilot_pause.sql` is **write-based, isolated fixture only**.
+   Reproduce with `node scripts/test-copilot-db.mjs <PGlite installation directory>`.
+   The runner applies the pause twice, compares saved grants/records and executes
+   the exact six-role `40_leads_rls_baseline.sql` before/after. No production write
+   harness is authorized by this task.
+
+Rollback requires separate approval after testing: drop only
+`copilot_release_paused` as described at the migration's end. Keep enabled/AI and
+the safe default false; explicitly restore reviewed configuration through the
+authorized RPC. Restore reviewed frontend mounts and the Edge release gate only
+with their own approved publication/deployment. Do not delete grants/history or
+restore the entire old database. Requests already in flight before the pause may
+finish; this is not a cancellation of already-started provider work.
+
+### Efficiency and local evidence
+
+The requested all-feature view renders more cells than the four-column view; it
+does not add reads or writes, truncate options, or change permission authority.
+Existing shared query keys/invalidation and copy settings reads are retained.
+Removing Copilot mounts eliminates its access query/poll and Admin settings reads;
+the paused Edge path performs authentication only, with zero CRM/budget/provider
+work. Database work is a singleton configuration update/check, with no query/RLS
+or index redesign. Realtime for other features, background jobs, storage/bandwidth
+and Donut are unchanged. No billing/invoice savings are inferred.
+
+Local isolated SQL verification: all **16** new pause checks and **9** read-only
+pause smoke checks passed, alongside **160** historical SQL checks. The migration
+was applied twice, an initially enabled AI configuration was disabled, and the
+system audit was written exactly once. Saved grants, budgets, usage/customer
+records and all six lead visibility matrices were unchanged.
+
+Network-isolated Chromium passed **21** checks: six-role Copilot removal, normal
+Ctrl+K recovery, desktop/mobile access, full-table contained scrolling, exact-user
+grant/revoke and persistence, fixed role gates, denied saves and read recovery.
+The focused unit recheck on the rollback-only branch passed **83** changed-behavior
+tests; full lint had **0 errors / 28 existing warnings**, and typecheck/build (including unchanged Donut v1.7.0
+integrity) passed. The first full unit run encountered timeouts in the unchanged
+sidebar tests and is **not a green full-suite result**. Adding the unchanged sidebar
+test file to the branch recheck produced **85 passed / 2 failed**: the Admin badge
+polling test timed out, followed by a missing cancellation-link assertion. Those
+tests and their configuration were not changed or weakened. Final build/typecheck
+and the complete full-run outcome are reported in the handoff. That initial full
+run completed with **814 passed / 3 failed**, all failures in the unchanged sidebar
+file; it included the original working branch's separate Processor Board work.
+
+Reproduce the request comparison with the synthetic Admin `find lead MM-101`
+case in `src/lib/copilot-handler.test.ts`: enabled execution performs three CRM
+RPCs (access, search, final access); paused execution authenticates once and makes
+zero CRM/budget/provider calls. Browser removal makes zero Copilot requests even
+after reload. These are isolated Windows/Node/mock measurements, not production
+usage or invoice savings. Earlier counts below describe historical pilot work only.
+
+### Boostera branch handoff — 2026-10-19
+
+The rollback branch is `fix/restore-user-feature-access-pause-copilot` in
+`boostera385-afk/marshmallow-crm`. It synchronizes that repository's existing
+`main` (`d7961f0`) without modifying main or overwriting its newer Copilot/Processor
+work. Conflict resolution retains the historical rollout records below and the
+newer dormant Copilot component/hook tests. Active browser tests verify the current
+all-role pause instead of requiring the removed launcher or Admin controls. The
+original rollback commit remains `189ab13`; no force push is needed.
+
+---
+
+## Historical repository handoff — 2026-10-17
 
 The latest access/disable and Needs attention fixes are ported to
 `boostera385-afk/marshmallow-crm`, based on its `main` at `73b54c2`, rather than

@@ -39,11 +39,12 @@ Everything is permission-driven at **five layers** — UI, frontend permission h
 database RLS, Edge Functions, and generated types. A role change is not done until all
 five agree.
 
-**Copilot pilot:** the `pilot` branch adds a read-only operational workspace, saved
-lead/daily work briefs, conversational filters and explicitly consented AI drafting,
-with Admin readiness and stale-setting protection. Its backend is installed and
-types regenerated; CRM publication and real signed-in/provider QA remain separate; see
-[Copilot rollout](docs/COPILOT_ROLLOUT.md). No AI action approves or sends anything.
+**Copilot paused pending testing:** local changes remove its header, Ctrl+K and
+Feature Access entries and restore the full per-user feature table. The reversible
+database pause was applied through approved MCP on 2026-10-19. The Edge Function
+release gate still awaits approved deployment; CRM publication is separate.
+Existing user grants are preserved. See
+[Copilot rollout](docs/COPILOT_ROLLOUT.md) for the current pause and earlier pilot history.
 
 > **Note on "Quo AI"** — the earlier Quo AI layer was removed in migration
 > `20260811082959`; Quo remains a webhook-driven chat mirror. Marshmallow Copilot is a
@@ -90,7 +91,7 @@ types regenerated; CRM publication and real signed-in/provider QA remain separat
 | **Map** | Leaflet map view, coverage areas, nearby-urgent clustering, and nearby technician multi-select for workflow reports |
 | **Chat** | Quo/OpenPhone conversation mirror with a triage status axis and per-lead chat |
 | **Admin** | User management, access codes, TOTP status, activity logs, in-app system documentation |
-| **Copilot** | Permission-aware header / Ctrl+K assistant, feature guides, scoped lead and technician searches, personal/team reports, measured health and optional budgeted AI; Admin-only and AI-off defaults |
+| **Copilot** | Database pause active pending testing; CRM entry-point removal and Edge release gate await publication/deployment. Historical pilot code and grants retained |
 | **Realtime** | ~24 Supabase Realtime channels with React Query cache invalidation |
 | **Audit** | Activity log writes on mutations, with denormalised actor names |
 

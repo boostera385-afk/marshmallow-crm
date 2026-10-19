@@ -13,8 +13,6 @@ import { UserPlus, Users, MessageSquare, BarChart3, Settings, Map as MapIcon, Ca
 import AddLeadDialog from "@/components/leads/AddLeadDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAddManualLead } from "@/lib/access";
-import { useCopilot } from "@/lib/copilot-context";
-import CopilotLogo from "@/components/copilot/CopilotLogo";
 
 export function GlobalCommandMenu() {
   const [open, setOpen] = React.useState(false);
@@ -22,7 +20,6 @@ export function GlobalCommandMenu() {
   const navigate = useNavigate();
   const { role, profile } = useAuth();
   const canCreateLead = canAddManualLead(role, profile);
-  const copilot = useCopilot();
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -47,9 +44,6 @@ export function GlobalCommandMenu() {
         <CommandInput placeholder="Type a command or search..." />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
-          {copilot.access && <CommandGroup heading="Assistant"><CommandItem onSelect={() => runCommand(() => copilot.setOpen(true))}>
-            <CopilotLogo className="mr-2 h-6 w-6"/><span>Ask Marshmallow Copilot</span>
-          </CommandItem></CommandGroup>}
           {canCreateLead && (
             <CommandGroup heading="Actions">
               <CommandItem
