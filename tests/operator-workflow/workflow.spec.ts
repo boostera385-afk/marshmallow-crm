@@ -283,28 +283,27 @@ for (const role of ["opr", "opr_admin"] as const) {
   });
 }
 
-test("Admin can change role default and apply user override", async ({ page }) => {
-  await mockSession(page, "admin");
-  // Include a non-admin target in the Settings users query without changing the caller's role query.
-  await page.route("**/rest/v1/user_roles?select=user_id%2Crole", (route) => route.fulfill({ json: [
-    { user_id: USER_ID, role: "admin" }, { user_id: JOB_ID, role: "opr" },
-  ] }));
-  await page.route("**/rest/v1/profiles?select=id%2Cemail%2Cfull_name%2C*", (route) => route.fulfill({ json: [
-    { id: USER_ID, full_name: "Synthetic Admin", email: "admin@example.invalid" },
-    { id: JOB_ID, full_name: "Synthetic Operator", email: "operator@example.invalid" },
-  ] }));
+test("Admin has one Copy Details switch per user after Manual Lead without duplicate panels", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockSettingsUsers(page);
+  const writes: unknown[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/set_lead_copy_permission")) writes.push(request.postDataJSON());
+  });
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
-  const roleSwitch = page.getByRole("switch", { name: "Allow Copy Complete Details for Operator", exact: true });
-  await expect(roleSwitch).toBeChecked();
-  await roleSwitch.click();
-  await expect(roleSwitch).not.toBeChecked();
-  await page.getByRole("button", { name: /User overrides/ }).click();
-  const override = page.getByRole("combobox", { name: "Copy override for Synthetic Operator" });
-  await override.click();
-  await page.getByRole("option", { name: "Allow", exact: true }).click();
-  await expect(override).toContainText("Allow");
-  await expect(page.getByText("Operator · Effective access: Allowed", { exact: true })).toBeVisible();
+  const matrix = page.getByRole("table");
+  expect((await matrix.getByRole("columnheader").allTextContents()).slice(-2)).toEqual(["Manual Lead", "Copy Details"]);
+  await expect(matrix.getByRole("columnheader", { name: "Copy Details", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Copy Complete Details", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /User overrides/ })).toHaveCount(0);
+  const control = matrix.getByRole("switch", { name: "Copy Details for Synthetic Operator With A Long Display Name", exact: true });
+  await expect(control).toBeChecked();
+  expect(writes).toEqual([]);
+  await control.click();
+  await expect(control).not.toBeChecked();
+  await expect(matrix.getByRole("switch", { name: "Copy Details for Synthetic Processor", exact: true })).toBeChecked();
+  expect(writes).toEqual([{ p_role: null, p_user_id: JOB_ID, p_allowed: false }]);
 });
 
 async function mockSettingsUsers(page: Page) {
@@ -326,25 +325,24 @@ for (const width of [1366, 390]) {
     await page.goto("/settings");
     await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
     await page.getByLabel("Find feature", { exact: true }).fill("copy all details");
-    const control = page.getByRole("combobox", { name: "Copy All Details override for Synthetic Operator With A Long Display Name", exact: true }).filter({ visible: true });
-    await expect(control).toContainText("Inherit role default");
+    const control = page.getByRole("switch", { name: "Copy Details for Synthetic Operator With A Long Display Name", exact: true }).filter({ visible: true });
+    await expect(control).toBeChecked();
     const target = width >= 1024
       ? page.getByRole("table").getByRole("row").filter({ hasText: "Synthetic Operator With A Long Display Name" })
       : page.getByRole("region", { name: "Feature access for Synthetic Operator With A Long Display Name" });
-    await expect(target).toContainText("Effective access: Allowed");
+    await expect(target.getByRole("switch")).toHaveCount(1);
     const request = page.waitForRequest((request) => request.url().endsWith("/rpc/set_lead_copy_permission"));
     await control.click();
-    await page.getByRole("option", { name: "Deny", exact: true }).click();
     expect((await request).postDataJSON()).toEqual({ p_role: null, p_user_id: JOB_ID, p_allowed: false });
-    await expect(control).toContainText("Deny");
-    await expect(target).toContainText("Effective access: Denied");
-    await page.getByRole("button", { name: /User overrides/ }).click();
-    await expect(page.getByRole("combobox", { name: "Copy override for Synthetic Operator With A Long Display Name", exact: true })).toContainText("Deny");
+    await expect(control).not.toBeChecked();
     await page.reload();
     await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
     await page.getByLabel("Find feature", { exact: true }).fill("Copy Complete Details");
-    await expect(control).toContainText("Deny");
-    await expect(target).toContainText("Effective access: Denied");
+    await expect(control).not.toBeChecked();
+    const allow = page.waitForRequest((request) => request.url().endsWith("/rpc/set_lead_copy_permission"));
+    await control.click();
+    expect((await allow).postDataJSON()).toEqual({ p_role: null, p_user_id: JOB_ID, p_allowed: true });
+    await expect(control).toBeChecked();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   });
 }
@@ -359,14 +357,32 @@ test("Copy All Details matrix preserves saved access after a backend rejection",
   await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
   await page.getByLabel("Find feature", { exact: true }).fill("copy all details");
   const target = page.getByRole("table").getByRole("row").filter({ hasText: "Synthetic Operator With A Long Display Name" });
-  const control = target.getByRole("combobox");
+  const control = target.getByRole("switch");
   await expect(control).toBeEnabled();
   await control.click();
-  await page.getByRole("option", { name: "Deny", exact: true }).click();
   await expect(page.getByText("Synthetic copy permission denied", { exact: true }).first()).toBeVisible();
-  await expect(control).toContainText("Inherit role default");
-  await expect(target).toContainText("Effective access: Allowed");
+  await expect(control).toBeChecked();
   await expect(page.getByText("Copy Complete Details access updated", { exact: true })).toHaveCount(0);
+});
+
+test("Copy Details switches stay unverified after a read failure and recover through Retry", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await mockSettingsUsers(page);
+  let failed = true;
+  await page.route("**/rest/v1/rpc/get_lead_copy_settings", (route) => route.fulfill(failed
+    ? { status: 403, json: { message: "Synthetic copy settings unavailable", code: "42501" } }
+    : { json: { roles: [], users: [] } }));
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Feature Access", exact: true }).click();
+  await page.getByLabel("Find feature", { exact: true }).fill("Copy Details");
+  const control = page.getByRole("switch", { name: "Copy Details for Synthetic Operator With A Long Display Name", exact: true }).filter({ visible: true });
+  await expect(page.getByRole("alert")).toContainText("Synthetic copy settings unavailable");
+  await expect(control).toBeDisabled();
+  await expect(control).not.toBeChecked();
+  failed = false;
+  await page.getByRole("button", { name: "Retry permissions", exact: true }).click();
+  await expect(control).toBeEnabled();
+  await expect(control).toBeChecked();
 });
 
 for (const width of [1920, 1440, 1366, 1024, 390]) {

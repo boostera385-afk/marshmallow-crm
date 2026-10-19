@@ -32,6 +32,8 @@ describe("preview auth broker timer and origin safety", () => {
     expect(vi.getTimerCount()).toBe(1);
     reply(request.requestId, "synthetic-session-value");
     expect(await pending).toBe("synthetic-session-value");
+    // jsdom schedules storage events separately from the broker's timeout.
+    await vi.advanceTimersByTimeAsync(0);
     expect(vi.getTimerCount()).toBe(0);
   });
 
