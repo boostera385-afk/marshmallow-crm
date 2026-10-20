@@ -9,6 +9,7 @@ import JobInProgressPopup from "./JobInProgressPopup";
 import QuoteUpdatedPopup from "./QuoteUpdatedPopup";
 import IncompleteDetailsPopup from "./IncompleteDetailsPopup";
 import { NotificationPopupProvider } from "./popup-slot";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 type Read = { table: string; columns: string; head: boolean; title: string; filters: Record<string, unknown>; limit?: number; since?: string };
 type Result = { data: unknown[] | null; count?: number; error?: { message: string } | null };
@@ -70,9 +71,9 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
 } }));
 
 function mountAll() {
-  return render(<MemoryRouter><NotificationBell /><NotificationPopupProvider>
+  return render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><NotificationBell /><NotificationPopupProvider>
     <UrgentLeadPopup /><JobInProgressPopup /><QuoteUpdatedPopup /><IncompleteDetailsPopup />
-  </NotificationPopupProvider></MemoryRouter>);
+  </NotificationPopupProvider></MemoryRouter></QueryClientProvider>);
 }
 async function flush() { await act(async () => { await vi.advanceTimersByTimeAsync(1); }); }
 function emit(title: string, eventType: "INSERT" | "UPDATE" = "INSERT") {
@@ -210,7 +211,7 @@ describe("notification request optimization", () => {
     state.respond = (read) => Promise.resolve(read.head ? { data: null, count: 250 } : {
       data: null, error: { message: "Offline" },
     });
-    render(<MemoryRouter><NotificationBell /></MemoryRouter>);
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><NotificationBell /></MemoryRouter></QueryClientProvider>);
     await flush();
     expect(screen.getByRole("button", { name: "Notifications" })).toHaveTextContent("250");
     state.respond = (read) => Promise.resolve(read.head ? { data: null, error: { message: "Offline" } } : {
@@ -228,7 +229,7 @@ describe("notification request optimization", () => {
     state.role = "opr";
     state.respond = (read) => Promise.resolve({ data: read.table === "lead_operator_assignments" ?
       (read.filters.lead_id === "outside-scope" ? [] : [{ lead_id: "assigned-lead" }]) : [], count: 0 });
-    render(<MemoryRouter><NotificationBell /></MemoryRouter>);
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><NotificationBell /></MemoryRouter></QueryClientProvider>);
     await flush();
     expect(notificationReads().every((read) => read.filters.or === "lead_id.is.null,lead_id.in.(assigned-lead)")).toBe(true);
     const send = (lead: string) => state.channels[0].handlers[0].callback({

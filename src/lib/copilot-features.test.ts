@@ -23,7 +23,7 @@ describe("Copilot current feature catalogue", () => {
       if (role.startsWith("opr")) expect(features).toEqual([]);
     }
   });
-  it.each(["Processor Board", "open the Processor Board", "Get CX Update", "Get Tech Update", "update Donut", "install Donut", "Quotes to Send", "Tech Quickchat"])("routes %s to deterministic help", (message) => {
+  it.each(["Processor Board", "open the Processor Board", "Get CX Update", "Get Tech Update", "Notifications", "notification history", "update Donut", "install Donut", "Quotes to Send", "Tech Quickchat"])("routes %s to deterministic help", (message) => {
     expect(routeCopilotMessage(message).intent).toBe("help");
   });
   it.each(["update technician MM-101", "send dose MM-101", "approve paid MM-101", "update Donut and mark MM-101 paid"])("still blocks %s", (message) => {

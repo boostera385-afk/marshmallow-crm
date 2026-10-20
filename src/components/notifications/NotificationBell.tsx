@@ -8,18 +8,22 @@ import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { playAssignmentSound } from '@/lib/notification-sound';
-import { isOperatorRole } from '@/lib/access';
+import { isOperatorRole, canAccessNotifications } from '@/lib/access';
 import { useHoldInbox } from '@/hooks/useOperatorWorkflow';
 import { acknowledgeHoldAlert, acknowledgeHoldInbox, HOLD_REASON_LABELS, type HoldAlert } from '@/lib/operator-workflow';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import HoldJobCard from './HoldJobCard';
-import { subscribeToNotifications } from '@/lib/realtime';
+import { subscribeToNotifications, realtimeBus } from '@/lib/realtime';
 import { useCoalescedRefresh } from '@/hooks/useCoalescedRefresh';
 import { cxNotificationHref } from '@/lib/cx-update-requests';
+import { openInboxNotification } from '@/lib/workflow-inbox';
+import { useQueryClient } from '@tanstack/react-query';
+import { notificationUnreadKey } from '@/hooks/useNotificationInbox';
 
 const NOTIFICATION_POLL_INTERVAL_MS = 15 * 1000;
 const MAX_REMEMBERED_CANCELLATION_POPUPS = 200;
 const NOTIFICATION_LIMIT = 20;
+const EMPTY_NOTIFICATIONS: Notification[] = [];
 
 const popupStorageKey = (kind: string, userId: string) => `shown-${kind}-popups:${userId}`;
 
@@ -78,15 +82,21 @@ const hasOperatorLeadAssignment = async (userId: string, leadId: string | null |
 
 export default function NotificationBell() {
   const { user, role } = useAuth();
+  const scope = `${user?.id}:${role}`;
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const queryClient = useQueryClient();
+  const [notificationState, setNotificationState] = useState<{ scope: string; rows: Notification[] }>({ scope, rows: [] });
+  const notifications = notificationState.scope === scope ? notificationState.rows : EMPTY_NOTIFICATIONS;
   // Counted separately from the displayed page: the list is capped at NOTIFICATION_LIMIT rows
   // regardless of read state, so counting unread within it hid older unread notifications.
   const [regularUnreadCount, setUnreadCount] = useState(0);
+  const [countScope, setCountScope] = useState(scope);
   const holdInbox = useHoldInbox();
   const refetchHoldInbox = holdInbox.refetch;
   const holdAlerts = isOperatorRole(role) ? holdInbox.data?.alerts ?? [] : [];
-  const unreadCount = regularUnreadCount + (isOperatorRole(role) ? holdInbox.data?.unread_count ?? 0 : 0);
+  const unreadCount = (countScope === scope ? regularUnreadCount : 0) + (isOperatorRole(role) ? holdInbox.data?.unread_count ?? 0 : 0);
   const [selectedHoldId, setSelectedHoldId] = useState<string | null>(null);
   const selectedHold = holdAlerts.find((alert) => alert.id === selectedHoldId);
   const [acknowledgingHold, setAcknowledgingHold] = useState(false);
@@ -140,9 +150,12 @@ export default function NotificationBell() {
     const [listResult, countResult] = await Promise.all([listQuery, countQuery]);
     if (!isCurrent()) return;
 
-    if (listResult.data) setNotifications(listResult.data as Notification[]);
-    if (typeof countResult.count === 'number') setUnreadCount(countResult.count);
-  }, [operatorLeadScope, user]);
+    if (listResult.data) setNotificationState({ scope, rows: listResult.data as Notification[] });
+    if (typeof countResult.count === 'number') {
+      setUnreadCount(countResult.count); setCountScope(scope);
+      queryClient.setQueryData(notificationUnreadKey(user.id, role), countResult.count);
+    }
+  }, [operatorLeadScope, user, scope, role, queryClient]);
   const fetchNotifications = useCoalescedRefresh(loadNotifications);
 
   useEffect(() => {
@@ -151,6 +164,9 @@ export default function NotificationBell() {
 
   useEffect(() => {
     void fetchNotifications();
+    const refresh = () => { void fetchNotifications(); };
+    realtimeBus.addEventListener('workflow-inbox-read', refresh);
+    return () => realtimeBus.removeEventListener('workflow-inbox-read', refresh);
   }, [fetchNotifications]);
 
   useEffect(() => {
@@ -267,14 +283,28 @@ export default function NotificationBell() {
   };
 
   const handleClick = async (n: Notification) => {
-    if (!n.read) {
-      await supabase.from('notifications').update({ read: true }).eq('id', n.id);
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+    try {
+      if (canAccessNotifications(role)) {
+        const href = await openInboxNotification(n);
+        if (currentScope.current !== scope) return;
+        setOpen(false);
+        if (href) navigate(href);
+        realtimeBus.dispatchEvent(new Event('workflow-inbox-read'));
+      } else {
+        if (!n.read) {
+          const result = await supabase.from('notifications').update({ read: true }).eq('id', n.id);
+          if (currentScope.current !== scope) return;
+          if (result.error) throw new Error('Could not mark notification read');
+          setUnreadCount((prev) => Math.max(0, prev - 1));
+        }
+        setOpen(false);
+        const cxHref = cxNotificationHref(n.title);
+        if (cxHref) navigate(cxHref);
+        else if (n.lead_id) navigate(`/leads/${n.lead_id}`);
+      }
+    } catch (error) {
+      if (currentScope.current === scope) toast.error(error instanceof Error ? error.message : 'Could not open notification');
     }
-    setOpen(false);
-    const cxHref = cxNotificationHref(n.title);
-    if (cxHref) navigate(cxHref);
-    else if (n.lead_id) navigate(`/leads/${n.lead_id}`);
     void fetchNotifications();
   };
 
@@ -345,6 +375,7 @@ export default function NotificationBell() {
             </div>
           )}
         </div>
+        {canAccessNotifications(role) && <div className="border-t p-2"><Button variant="ghost" className="w-full" onClick={() => { setOpen(false); navigate('/notifications'); }}>View all notifications</Button></div>}
       </PopoverContent>
     </Popover>
     <Dialog open={Boolean(selectedHold)} onOpenChange={(value) => { if (!value) setSelectedHoldId(null); }}>

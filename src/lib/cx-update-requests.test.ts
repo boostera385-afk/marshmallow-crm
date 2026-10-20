@@ -8,6 +8,7 @@ export const syntheticCxRequest = {
   id, lead_id: "00000000-0000-4000-8000-000000000002", requested_by: "processor", requester_name: "Synthetic Processor",
   request_kind: "cx", recipient_cs: "cs", recipient_name: "Synthetic CS", request_text: "Confirm Friday availability", status: "pending", thread: [],
   response_text: null, completed_at: null, completed_by_name: null, created_at: "2026-10-13T00:00:00Z",
+  revision: 1, resolution_owner: "processor", owner_name: "Synthetic Processor", acknowledged_at: null, resolved_by_name: null,
   customer: { job_id: "LD-CX-TEST", customer_name: "Synthetic Customer", customer_phone: "5550100000", customer_landline: null, customer_email: null,
     service_type: "Plumbing", service_details: "Synthetic repair", address: "10 Test St Apt 2", city: "Miami", state: "FL", zip_code: "33101",
     customer_schedule_requirements: "Friday afternoon", scheduled_date: "2026-10-16", scheduled_time_start: "13:00:00", scheduled_time_end: null },
@@ -47,19 +48,19 @@ describe("CX customer-only API contract", () => {
   it("sends request IDs and trimmed text, never job status or schedule changes", async () => {
     invoke.mockResolvedValue({ error: null, data: { saved: true, id } });
     await createCxRequest(syntheticCxRequest.lead_id, id, " Confirm Friday ");
-    await completeCxRequest(id, " Friday confirmed ");
+    await completeCxRequest(id, " Friday confirmed ", 1);
     await createUpdateRequest("tech", syntheticCxRequest.lead_id, id, " Check technician ");
-    await questionMoreUpdateRequest("tech", id, " What time? ");
+    await questionMoreUpdateRequest("tech", id, " What time? ", 2);
     expect(invoke.mock.calls.map((call) => call[1].body)).toEqual([
       { kind: "cx", action: "create", leadId: syntheticCxRequest.lead_id, requestId: id, text: "Confirm Friday" },
-      { kind: "cx", action: "complete", requestId: id, text: "Friday confirmed" },
+      { kind: "cx", action: "complete", requestId: id, text: "Friday confirmed", revision: 1 },
       { kind: "tech", action: "create", leadId: syntheticCxRequest.lead_id, requestId: id, text: "Check technician" },
-      { kind: "tech", action: "question_more", requestId: id, text: "What time?" },
+      { kind: "tech", action: "question_more", requestId: id, text: "What time?", revision: 2 },
     ]);
   });
   it("preserves backend denial and failure without pretending save success", async () => {
     invoke.mockResolvedValue({ data: null, error: { context: new Response(JSON.stringify({ error: "Assigned CS only" }), { status: 403 }) } });
-    await expect(completeCxRequest(id, "Confirmed")).rejects.toThrow("Assigned CS only");
+    await expect(completeCxRequest(id, "Confirmed", 1)).rejects.toThrow("Assigned CS only");
     invoke.mockResolvedValue({ error: null, data: { saved: false, id } });
     await expect(createCxRequest(syntheticCxRequest.lead_id, id, "Confirm")).rejects.toThrow();
   });

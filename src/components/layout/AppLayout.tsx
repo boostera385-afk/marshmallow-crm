@@ -1,6 +1,7 @@
 import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/layout/AppSidebar";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import WorkflowAlerts from "@/components/notifications/WorkflowAlerts";
 import HoldJobPopup from "@/components/notifications/HoldJobPopup";
 import OperatorWorkflowSync from "@/components/notifications/OperatorWorkflowSync";
 import ExtensionUpdateStatus from "@/components/notifications/ExtensionUpdateStatus";
@@ -54,6 +55,7 @@ export default function AppLayout() {
     "/quote-pending": { title: "Quotes to send", subtitle: "Prioritize and complete customer quotations." },
     "/get-cx-update": { title: "Get CX Update", subtitle: "Request customer follow-ups and review returned CS updates." },
     "/get-tech-update": { title: "Get Tech Update", subtitle: "Request technician details and review Processor replies." },
+    "/notifications": { title: "Notifications", subtitle: "Your updates, pending actions, and notification history." },
     "/tech-approvals": { title: "Tech Approvals", subtitle: "Review processor requests to change technician Good Tech or active status." },
     "/lead-cancellation-requests": { title: "Cancellation Requests", subtitle: "Review cancellation reasons and approve or decline requests." },
     "/schedule": { title: "Schedule", subtitle: "Review jobs by day, week, and date range." },
@@ -129,7 +131,7 @@ export default function AppLayout() {
                   <ExtensionUpdateStatus />
                   <HeaderNotepadTrigger />
                   <ThemeToggle />
-                  {!isQuoMonitor && <NotificationBell />}
+                  <NotificationBell />
                 </div>
               </motion.div>
             </header>
@@ -148,6 +150,7 @@ export default function AppLayout() {
               </AnimatePresence>
             </main>
           <NotificationPopupProvider>
+            <WorkflowAlerts />
             <HoldJobPopup />
             {!isQuoMonitor && <UrgentLeadPopup />}
             {!isQuoMonitor && <JobInProgressPopup />}
