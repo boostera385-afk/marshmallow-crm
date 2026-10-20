@@ -164,15 +164,17 @@ Release-branch verification (`bf4a3e4` base; unrelated local changes excluded):
 - `git diff --check`: passed.
 - Earlier original-workspace verification: 103 files / 873 tests passed. Those
   counts included unrelated Processor/Copilot work and do not describe this branch.
-- Network-isolated Playwright in that earlier workspace: latest complete run
-  **18 passed / 1 failed**. Release-branch browser verification is in progress.
-  The CS returned-Tech page intermittently failed to display its queue. An earlier
-  run had a page-load timeout and another CS queue-display failure (17/19 passed).
-  Do not call this browser suite green or assume the root cause is resolved.
-  Desktop/mobile history paging, read failure, responder saves, supervisor/excluded
-  role cases and other requester-resolution cases passed. Screenshots were reviewed
-  at 390px and 1366px. Signed-in production QA, real audio delivery, live provider
-  success, full-schema integration and cron/Vault invocation remain unverified.
+- Release-branch network-isolated Playwright: **19/19 passed** in 1.7 minutes,
+  using `playwright.operator-workflow.config.ts` and `cx-updates.spec.ts`. The run
+  covered 390px/1366px layouts, history paging, read/save failures, requester-owned
+  CX/Tech resolution, responders and excluded Operator roles. All external network
+  requests were intercepted; no production browser actions occurred. Existing
+  react-leaflet prebundle and Browserslist warnings did not fail the run.
+- Earlier original-workspace browser runs had intermittent page-load/CS queue
+  failures (17/19 and 18/19). The clean release-branch run is green, but one passing
+  run does not establish or repair the cause of those earlier intermittent failures.
+  Signed-in production QA, real audio delivery, live provider success, full-schema
+  integration and cron/Vault invocation remain unverified.
 
 `scripts/test-workflow-inbox-db.mjs <external PGlite installation directory>` loads
 only disposable synthetic fixtures, applies BOTH new migrations twice, and runs
