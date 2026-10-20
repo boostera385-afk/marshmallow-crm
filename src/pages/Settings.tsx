@@ -66,6 +66,7 @@ const NAV_SECTION_LABELS: Record<string, string> = {
   quote_approval_requests: "Quote Approval",
   urgent_review_requests: "Urgent Review",
   cx_updates: "CX & Tech Updates",
+  notifications: "Notification History",
   quote_pending_requests: "Quotes to Send",
   map_view: "Map View",
   technicians: "Technicians",
@@ -826,7 +827,7 @@ const Settings = () => {
           ? "Admin only"
           : section === "ai_assistance" ? "Customer Service roles only"
           : section === "processor_board" ? "Admin and Processor roles only"
-          : section === "cx_updates" ? "Admin, Processor, CS Admin and Customer Service roles"
+          : section === "cx_updates" || section === "notifications" ? "Admin, Processor, CS Admin and Customer Service roles"
           : section === "settings" ? "Controlled by Manage CS in Users"
           : section === "quote_pending_requests" ? "Controlled by Quotation Master"
           : section === "cancellation_requests" && canAccessCancellationRequests(target.role) ? "Included with role" : null;

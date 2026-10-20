@@ -3,19 +3,20 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import CxUpdatesPage from "./CxUpdatesPage";
-const mocks = vi.hoisted(() => ({ role: "customer_service", updated: false, complete: vi.fn(), acknowledge: vi.fn(), questionMore: vi.fn(), success: vi.fn(), error: vi.fn(), queueError: false }));
+const mocks = vi.hoisted(() => ({ role: "customer_service", updated: false, revision: 1, owner: "processor", complete: vi.fn(), acknowledge: vi.fn(), questionMore: vi.fn(), success: vi.fn(), error: vi.fn(), queueError: false }));
 const row = {
   id: "request", lead_id: "hidden", requested_by: "processor", requester_name: "Synthetic Processor", recipient_name: "Synthetic CS",
   request_text: "Confirm Friday availability", status: "pending", response_text: null,
+  revision: 1, resolution_owner: "processor", owner_name: "Synthetic Processor", acknowledged_at: null,
   customer: { job_id: "CX-HIDDEN", customer_name: "Synthetic Customer", customer_phone: "5550100000", service_type: "Plumbing", address: "10 Test St Apt 2", customer_schedule_requirements: "Friday afternoon" },
 };
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "processor" }, role: mocks.role }) }));
-vi.mock("@/hooks/useCxUpdates", () => ({ UPDATE_QUERY_KEY: ["lead-update-requests"], useUpdateQueue: () => ({ data: { rows: [mocks.updated ? { ...row, status: "cs_updated", response_text: "Friday confirmed", completed_at: "2026-10-14T01:00:00Z" } : row], total: 1 }, isError: mocks.queueError, error: new Error("Queue unavailable"), isPending: false, isFetching: false }) }));
-vi.mock("@/lib/cx-update-requests", () => ({ completeUpdateRequest: mocks.complete, acknowledgeUpdateRequest: mocks.acknowledge, questionMoreUpdateRequest: mocks.questionMore }));
+vi.mock("@/hooks/useCxUpdates", () => ({ UPDATE_QUERY_KEY: ["lead-update-requests"], useUpdateQueue: () => ({ data: { rows: [{ ...row, revision: mocks.revision, resolution_owner: mocks.owner, ...(mocks.updated ? { status: "cs_updated", response_text: "Friday confirmed", completed_at: "2026-10-14T01:00:00Z" } : {}) }], total: 1 }, isError: mocks.queueError, error: new Error("Queue unavailable"), isPending: false, isFetching: false }) }));
+vi.mock("@/lib/cx-update-requests", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/cx-update-requests")>(), completeUpdateRequest: mocks.complete, acknowledgeUpdateRequest: mocks.acknowledge, questionMoreUpdateRequest: mocks.questionMore }));
 vi.mock("sonner", () => ({ toast: { success: mocks.success, error: mocks.error } }));
 const mount = (path = "/get-cx-update") => render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={[path]}><CxUpdatesPage /></MemoryRouter></QueryClientProvider>);
 afterEach(cleanup);
-beforeEach(() => { mocks.role = "customer_service"; mocks.updated = false; mocks.queueError = false; mocks.complete.mockReset(); mocks.acknowledge.mockReset(); mocks.questionMore.mockReset(); mocks.success.mockReset(); mocks.error.mockReset(); });
+beforeEach(() => { mocks.role = "customer_service"; mocks.updated = false; mocks.revision = 1; mocks.owner = "processor"; mocks.queueError = false; mocks.complete.mockReset(); mocks.acknowledge.mockReset(); mocks.questionMore.mockReset(); mocks.success.mockReset(); mocks.error.mockReset(); });
 it("offers customer-only details without full-lead navigation to both CS roles", () => {
   for (const role of ["customer_service", "cs_admin"]) {
     mocks.role = role; const view = mount();
@@ -33,7 +34,7 @@ it("saves the typed response once and removes the request only on acknowledged s
   fireEvent.change(screen.getByLabelText("Customer update"), { target: { value: "Friday confirmed" } });
   fireEvent.click(screen.getByRole("button", { name: "Save CS Updated" }));
   await waitFor(() => expect(screen.queryByText("Synthetic Customer")).toBeNull());
-  expect(mocks.complete).toHaveBeenCalledWith("cx", "request", "Friday confirmed");
+  expect(mocks.complete).toHaveBeenCalledWith("cx", "request", "Friday confirmed", 1);
   expect(mocks.success).toHaveBeenCalledTimes(1);
 });
 it("retains request and response when completion is denied", async () => {
@@ -65,5 +66,31 @@ it("lets the requesting Processor ask a follow-up instead of acknowledging", asy
   fireEvent.click(screen.getByRole("button", { name: "Question More" }));
   fireEvent.change(screen.getByLabelText("Follow-up question"), { target: { value: "Can you confirm the exact time?" } });
   fireEvent.click(screen.getByRole("button", { name: "Send question" }));
-  await waitFor(() => expect(mocks.questionMore).toHaveBeenCalledWith("cx", "request", "Can you confirm the exact time?"));
+  await waitFor(() => expect(mocks.questionMore).toHaveBeenCalledWith("cx", "request", "Can you confirm the exact time?", 1));
+});
+
+it("keeps an answer pending until its owner explicitly resolves it", async () => {
+  mocks.role = "processor"; mocks.updated = true; mocks.acknowledge.mockResolvedValue({ saved: true });
+  mount("/get-cx-update?tab=updated");
+  expect(screen.getByText("Pending resolution by Synthetic Processor")).toBeInTheDocument();
+  expect(mocks.acknowledge).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Mark Resolved" }));
+  await waitFor(() => expect(mocks.acknowledge).toHaveBeenCalledWith("cx", "request", 1));
+});
+it("does not let a supervising Admin resolve someone else's request", () => {
+  mocks.role = "admin"; mocks.owner = "anotherProcessor"; mocks.updated = true; mount("/get-cx-update?tab=updated");
+  expect(screen.queryByRole("button", { name: "Mark Resolved" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reassign resolution owner" })).toBeInTheDocument();
+});
+it("shows a reopened revision of the same request after a successful response", async () => {
+  mocks.complete.mockResolvedValue({ saved: true });
+  const view = mount();
+  fireEvent.click(screen.getByRole("button", { name: "Mark CS Updated" }));
+  fireEvent.change(screen.getByLabelText("Customer update"), { target: { value: "Friday confirmed" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save CS Updated" }));
+  await waitFor(() => expect(screen.queryByText("Synthetic Customer")).toBeNull());
+  mocks.revision = 3;
+  view.rerender(<QueryClientProvider client={new QueryClient()}><MemoryRouter><CxUpdatesPage /></MemoryRouter></QueryClientProvider>);
+  expect(screen.getByText("Synthetic Customer")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Mark CS Updated" })).toBeEnabled();
 });
