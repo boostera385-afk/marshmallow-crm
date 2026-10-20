@@ -9,3 +9,7 @@ verify_jwt = true
 # Preserve the deployed gateway setting; index.ts independently verifies getUser.
 [functions.cx-update-requests]
 verify_jwt = false
+
+# This worker accepts only a distinct server-side cron secret, not user JWTs.
+[functions.schedule-confirmation-monitor]
+verify_jwt = false

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import NotificationSoundControls from "@/components/notifications/NotificationSoundControls";
+import ScheduleMonitorPanel from "@/components/notifications/ScheduleMonitorPanel";
 
 const initial: InboxFilters = { view: "all", category: "all", search: "" };
 export default function NotificationsPage() {
@@ -74,5 +75,6 @@ export default function NotificationsPage() {
           </button>)}</div>}
         <nav aria-label="Notification pages" className="flex items-center justify-center gap-3"><Button variant="outline" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 20))}>Previous</Button><span className="text-sm">Page {Math.floor(offset / 20) + 1}</span><Button variant="outline" disabled={offset + 20 >= query.data.total} onClick={() => setOffset(offset + 20)}>Next</Button></nav>
       </>}
+    {role === "admin" && <ScheduleMonitorPanel />}
   </section>;
 }
