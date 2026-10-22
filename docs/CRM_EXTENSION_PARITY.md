@@ -43,6 +43,28 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## Processor Board evidence accuracy follow-up (2026-10-22; local)
+
+CRM-only; no native Donut job board/job-specific assessment counterpart was found.
+No extension source, prompt, metadata or ZIP changed. The new follow-up separates
+successful checks from verified technician updates, surfaces unassigned reply counts
+and opens only the exact verified chat for manual review. Equivalent complete
+street/unit spellings and exact factual spans from the same uniquely identified
+source message are supported; generic replies never inherit a neighboring job's
+identity. Dispatch-only history avoids pointless extraction while all history still
+checks silence timing. Tracking state is explicit; both manual and automatic checks
+require timezone confirmation, and unconfirmed schedule rules remain Needs Review.
+The existing Schedule page has no authoritative saved-job timezone to adopt.
+
+No schema/type/RLS/grant/worker change. The user approved deployment/push; the
+nine-file function bundle is **v5 ACTIVE** (JWT verification preserved, all deployed
+files verified against tested source; prior v4 backed up outside the repo), and the
+branch `fix/processor-board-evidence-accuracy-2026-10-22` is pushed. CRM publication
+and merging are the user's next steps. Three malformed phone numbers and ambiguous
+real replies still need verified human information. See the rollout's newest section
+for the measured read-only diagnostic, synthetic tests, release status and
+efficiency boundaries.
+
 ## Processor Board open-board tracking (2026-10-22; Edge v4 installed, CRM pending)
 
 No native Donut board/job-specific assessment was found; its technician-wide

@@ -15,6 +15,7 @@ export type ProcessorChatSetup = {
   state: "ready" | "blocked" | "unavailable"; code: string; message: string;
   fingerprint: string; conversation_id: string | null; last_message_at: string | null;
   source: "saved_link" | "verified_mirror" | null;
+  chat_url?: string;
 };
 export type ProcessorChat = {
   setup: ProcessorChatSetup;
@@ -84,7 +85,7 @@ export async function resolveProcessorChat(phone: string, directory: DirectoryRo
   }
   const chatLink = `https://my.quo.com/inbox/${link.phoneNumberId}/c/${link.conversationId}`;
   return { setup: { state: "ready", code: "ready", message: source === "verified_mirror" ? "Exact technician number and saved Technician Communications conversation verified." : "Saved technician Quo link verified.", fingerprint: revision,
-    conversation_id: mirror?.id ?? null, last_message_at: mirror?.last_message_time ?? null, source }, link: { ...link, chatLink }, mirror: mirror ?? null };
+    conversation_id: mirror?.id ?? null, last_message_at: mirror?.last_message_time ?? null, source, chat_url: chatLink }, link: { ...link, chatLink }, mirror: mirror ?? null };
 }
 
 /** Two batched reads per loaded page, not one directory/conversation lookup per row. */

@@ -9,10 +9,16 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "actor"
 vi.mock("@/hooks/useProcessorBoard", () => ({ PROCESSOR_QUERY_KEY: ["processor-board"], useProcessorBoard: state.hook }));
 vi.mock("@/lib/processor-board", async (load) => ({ ...await load<object>(), assessProcessorJob: state.assess }));
 const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1001", customer_name: "John Sample", customer_phone: null, address: "10 Sample St", city: "Miami", state: "FL", service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: null, assessment: null };
-function mount() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>); }
+const reviewResult = () => ({ status: "take_job_update", evidence: [], messages_reviewed: 10, matched_messages: 1, source: "Quo current history", history_complete: true, ai_used: false, timezone: "America/New_York", lead_updated_at: job.updated_at, checked_at: new Date().toISOString(), summary: "No verified technician update" });
+function mount() {
+  const view = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>);
+  const confirm = screen.queryByLabelText("Confirm schedule timezone");
+  if (confirm) fireEvent.click(confirm);
+  return view;
+}
 beforeEach(() => {
   vi.clearAllMocks(); state.role = "processor";
-  state.assess.mockResolvedValue({ result: {} });
+  state.assess.mockResolvedValue({ result: reviewResult() });
   state.hook.mockReturnValue({ data: { rows: [job, { ...job, id: "00000000-0000-4000-8000-000000000002", job_id: "JOB-1002", customer_name: "Jane Example", status: "paid" }], total: 26, observed_at: "2026-10-15T18:00:00Z" }, isLoading: false, isFetching: false, isError: false, refetch: state.refetch });
 });
 afterEach(cleanup);
@@ -149,7 +155,7 @@ describe("Processor Board interactions", () => {
   });
   it("bulk checks only eligible jobs and guards repeated clicks", async () => {
     let resolve!: () => void;
-    state.assess.mockImplementation(() => new Promise((done) => { resolve = () => done({ result: {} }); })); mount();
+    state.assess.mockImplementation(() => new Promise((done) => { resolve = () => done({ result: reviewResult() }); })); mount();
     const button = screen.getByRole("button", { name: "Refresh AI · this page" });
     fireEvent.click(button); fireEvent.click(button);
     expect(state.assess).toHaveBeenCalledTimes(1); resolve();
@@ -188,7 +194,7 @@ describe("Processor Board interactions", () => {
   it("retries failed jobs only, leaving successful jobs and setup problems untouched", async () => {
     const second = { ...job, id: "00000000-0000-4000-8000-000000000003", job_id: "JOB-1003" };
     state.hook.mockReturnValue({ data: { rows: [job, second], total: 2 }, refetch: state.refetch });
-    state.assess.mockResolvedValueOnce({ result: {} }).mockRejectedValueOnce(new ProcessorReviewFailure("Synthetic Quo timeout")); mount();
+    state.assess.mockResolvedValueOnce({ result: reviewResult() }).mockRejectedValueOnce(new ProcessorReviewFailure("Synthetic Quo timeout")); mount();
     fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 reviewed · 1 failed"));
     expect(screen.getAllByText("Synthetic Quo timeout").length).toBeGreaterThan(0);
@@ -216,7 +222,7 @@ describe("Processor Board interactions", () => {
   });
   it("stops after the in-flight job and does not start remaining requests", async () => {
     let finish!: () => void;
-    state.assess.mockImplementation(() => new Promise((done) => { finish = () => done({ result: {} }); }));
+    state.assess.mockImplementation(() => new Promise((done) => { finish = () => done({ result: reviewResult() }); }));
     state.hook.mockReturnValue({ data: { rows: [job, { ...job, id: "second", job_id: "JOB-SECOND" }], total: 2 }, refetch: state.refetch }); mount();
     fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "2");

@@ -23,6 +23,26 @@ describe("Processor job isolation", () => {
     expect(evidence(messages)).toHaveLength(1);
     expect(deriveJobStatus(job, evidence(messages), messages, true, now, "America/New_York")).toBe("payment_pending");
   });
+  it("grounds a factual substring in its uniquely identified full source message, not a nearby dispatch", () => {
+    const quote = "I have finished the installation and cleaned up.";
+    const messages = [message(`JOB-1001\n${quote}`)];
+    const result = verifyJobEvidence([{ signal: "completed", message_id: "m1", quote }], job, [job, peer], messages, "America/New_York", now);
+    expect(result).toMatchObject([{ quote, identity_basis: "source_message" }]);
+    expect(deriveJobStatus(job, result, messages, true, now, "America/New_York")).toBe("payment_pending");
+    const generic = [message("Please update JOB-1001", "agent", "2026-10-15T15:00:00Z", "dispatch"), message(quote)];
+    expect(verifyJobEvidence([{ signal: "completed", message_id: "m1", quote }], job, [job, peer], generic, "America/New_York", now)).toEqual([]);
+    expect(verifyJobEvidence([{ signal: "completed", message_id: "m1", quote }], job, [job, peer], [message(`JOB-1001 and JOB-1002\n${quote}`)], "America/New_York", now)).toEqual([]);
+  });
+  it("recognizes equivalent street/unit spellings without dropping or guessing units", () => {
+    expect(belongsToJob("10 Sample Street Apartment 2 is completed", job, [job, peer])).toBe(true);
+    expect(belongsToJob("10 Sample St #2 is completed", job, [job, peer])).toBe(true);
+    expect(belongsToJob("10 Sample Street Unit 22 is completed", job, [job, peer])).toBe(false);
+    expect(belongsToJob("10 Sample Street is completed", job, [job, peer])).toBe(false);
+    expect(belongsToJob("10 Sample Street Unit 2 is completed", { ...job, address: "10 Sample St" }, [peer])).toBe(false);
+    const duplicate = { ...peer, address: "10 Sample Street Unit 2" };
+    expect(belongsToJob("10 Sample St Apt 2 is completed", job, [job, duplicate])).toBe(false);
+    expect(belongsToJob("JOB-1001 and 12 Example Street are completed", job, [job, peer])).toBe(false);
+  });
   it("rejects an agent's completion claim, fabricated quote, wrong message ID and old visit", () => {
     expect(evidence([message("JOB-1001 is completed and ready for payment.", "agent")])).toEqual([]);
     expect(evidence([message("JOB-1001 is completed and ready for payment.", "customer", "2026-10-12T16:00:00Z")])).toEqual([]);

@@ -19,10 +19,12 @@ const nullableText = z.string().nullable();
 export const processorChatSetupSchema = z.object({
   state: z.enum(["ready", "blocked", "unavailable"]), code: z.string(), message: z.string(), fingerprint: z.string(),
   conversation_id: nullableText, last_message_at: nullableText, source: z.enum(["saved_link", "verified_mirror"]).nullable(),
+  chat_url: z.string().regex(/^https:\/\/my\.quo\.com\/inbox\/PN[A-Za-z0-9_-]{6,}\/c\/CN[A-Za-z0-9_-]{6,}$/).optional(),
 });
 export const processorAssessmentSchema = z.object({
-  status: z.enum(PROCESSOR_STATUSES), evidence: z.array(z.object({ signal: z.enum(["accepted", "progress", "completed", "update_request"]), quote: z.string(), message_id: z.string(), message_time: z.string(), sender: z.string() })),
+  status: z.enum(PROCESSOR_STATUSES), evidence: z.array(z.object({ signal: z.enum(["accepted", "progress", "completed", "update_request"]), quote: z.string(), message_id: z.string(), message_time: z.string(), sender: z.string(), identity_basis: z.literal("source_message").optional() })),
   messages_reviewed: z.number().int().nonnegative(), matched_messages: z.number().int().nonnegative(),
+  matched_technician_messages: z.number().int().nonnegative().optional(), unattributed_technician_messages: z.number().int().nonnegative().optional(), extraction_messages: z.number().int().nonnegative().optional(),
   source: z.string(), history_complete: z.boolean(), ai_used: z.boolean().optional(), chat_fingerprint: z.string().optional(), chat_source: z.enum(["saved_link", "verified_mirror"]).optional(), timezone: z.string(), checked_at: z.string(), summary: z.string(), lead_updated_at: z.string(),
 });
 export const processorJobSchema = z.object({
@@ -61,6 +63,11 @@ export function currentAssessment(job: ProcessorJob, timezone: string, now: Date
 }
 export function processorSetupIssue(job: ProcessorJob): string | null {
   return processorReadiness(job) || (job.chat_setup && job.chat_setup.state !== "ready" ? job.chat_setup.message : null);
+}
+export function processorAttributionMessage(job: ProcessorJob, timezone: string, now: Date): string | null {
+  const a = currentAssessment(job, timezone, now);
+  if (a?.matched_technician_messages === undefined) return null;
+  return `${a.matched_technician_messages} technician messages identify this job; ${a.unattributed_technician_messages ?? 0} other replies not assigned to it. ${a.matched_technician_messages ? "Only identified source messages can verify an outcome." : "No technician outcome is verified. Review the chat manually."}`;
 }
 export const processorReviewSignature = (job: ProcessorJob, timezone: string) => `${job.updated_at}:${timezone}:${job.chat_setup?.fingerprint ?? "legacy"}`;
 export function processorStatus(job: ProcessorJob, timezone: string, now: Date): ProcessorStatus {

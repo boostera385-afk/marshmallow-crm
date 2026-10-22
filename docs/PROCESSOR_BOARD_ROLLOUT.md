@@ -1,5 +1,118 @@
 # Processor Board
 
+## Evidence accuracy follow-up (2026-10-22) — Edge v5 installed; CRM publish pending
+
+This section supersedes the earlier manual-check timezone behavior. The user
+approved deployment and push, which are now done, on
+`fix/processor-board-evidence-accuracy-2026-10-22`, based on merged Boostera `main`
+`d8aa85b`. This release does not include CRM publication, migrations, customer-data
+repair, outbound messages or running paid/live assessments.
+
+`processor-board` is **v5 ACTIVE** on `kxiqholnmhkwhdkhtopp` with JWT verification
+preserved; all nine deployed files were read back and match the tested source
+exactly. Unauthenticated/invalid-credential probes returned 401 as configured.
+Prior live v4 remains backed up outside the repository for rollback.
+
+### Defects and bounded fixes
+
+- A review completing is not a verified technician outcome. The batch notice and
+  page evidence-quality summary now separately count successful checks and checks
+  with verified technician acceptance/progress/completion. A delivered outbound
+  request alone is not a verified technician update. Saved In Progress / Payment
+  Pending remains labelled as saved status, never newly AI-confirmed.
+- New result diagnostics count technician source messages that uniquely identify
+  the job, other technician text messages that cannot be assigned to it, and text
+  submitted for extraction. Zero attributed replies is exposed, not described as
+  a confirmed outcome. Unassigned replies may concern other jobs; this is not a
+  non-response finding. The drawer offers the exact verified saved Quo chat for
+  manual review; opening it sends nothing.
+- Equivalent complete address spellings (`Street`/`St`, `Apartment`/`Unit`/`#`)
+  now match without dropping house numbers, directionals or unit values. Shared
+  canonical addresses remain ambiguous. Missing/different units cannot silently
+  become matches, and mentioning another peer address still blocks evidence.
+- Exact factual quote spans may omit the identifier when their **same full source
+  message** uniquely identifies this job. Source ID, exact substring, sender,
+  appointment-date and peer-exclusion checks remain. The drawer identifies this
+  provenance. A generic reply never inherits identity from an adjacent dispatch.
+  Cache policy version is bumped; prior extraction is not reused under new rules.
+- Pure outbound dispatch cannot establish technician acceptance/progress/completion.
+  With no uniquely identified technician text there is no possible Send Dose
+  outcome, so AI extraction is skipped. If identified technician text exists, ALL
+  identified delivered agent messages remain eligible for extraction; update
+  questions do not need an English keyword. All history, including generic/media
+  replies, still participates in non-response timing; fresh history is never skipped.
+- The tracking state now explicitly says **not started**, **paused**, **unavailable**
+  or **enabled**, separate from the requested-tracking checkbox. Both manual and
+  automatic checks require timezone confirmation. Unconfirmed schedule rules show
+  Needs Review rather than an unsupported Scheduled/Take Job Update judgement;
+  existing saved progress/payment statuses are preserved. Changing timezone resets
+  confirmation. The page remains bounded to the loaded 25 jobs, not every page.
+
+### System timezone investigation and remaining data limits
+
+`src/pages/SchedulePage.tsx` displays the browser's GMT offset (lines 640–641) and
+places saved `scheduled_time_start` values directly on its hours grid. Saved lead
+date/time fields have no timezone. Copilot's business timezone and the separate
+schedule-confirmation monitor configuration are not proof of an individual job's
+appointment timezone. The user's instruction to follow the existing system was
+investigated; **no authoritative all-job timezone was found**. Do not infer it from
+the operator's browser, customer state, ZIP or an unrelated AI setting. The operator
+must verify the saved convention before confirming a timezone; mixed conventions
+need a separately designed per-job timezone workflow, not a guessed conversion.
+
+The three malformed technician numbers remain blocked pending verified corrections:
+`LD-EFM7FS`, `LD-BLYIQ8`, `LD-SHALGR`. The new matching must not be described as
+recovering generic replies automatically or as verifying all real job outcomes.
+
+### Read-only evidence and efficiency review
+
+After the screenshots, a caller-independent, privileged diagnostic examined the same
+bounded first-page mirrored message workload under old/new pure matching functions
+locally (no provider call, assessment save or transcript output): 22 assessed jobs,
+914 per-job mirrored message events, **1 identified technician message before and
+after**. The new address aliases did not invent any additional live matches.
+The old extraction planner selected 22 jobs; the new planner selects 1 on that same
+input. This is **prospective extraction eligibility**, not measured production
+provider requests or invoice savings. The earlier 524 current-Quo review events and
+this 914-event mirror snapshot are different datasets, not before/after usage.
+Aggregate diagnostics alone cannot establish what an unanchored reply means.
+
+- UI/cache: bounded existing page, clock and query keys; no new timer, query or
+  global state. Evidence counts reuse loaded results. Confirmation does not alter
+  saved schedule values or query filters. Manual chat opening downloads nothing.
+- API/database: only optional JSON metadata added to the existing result and chat
+  setup. No table/column/type/RLS/index/RPC change and no new database read per check.
+  No SQL migration or write-based harness is needed. Authorization remains in the
+  existing UI/helper/Edge/caller-RLS/service-only advisory-save chain.
+- Provider/history: skip extraction that cannot possibly establish a technician
+  outcome; retain full current-history reads, delivered-request checks, independent
+  failures, audit saves, retry/backoff and evidence-hash reuse. Identity indexes
+  compile once per review; canonical matching retains the bounded text scan.
+- Realtime/background/storage: existing shared transport, recovery reads, hidden-tab
+  pause, cleanup and worker-free design unchanged. No uploads, cron or new feeds.
+- Donut: source audit reconfirmed no native board/job-assessment counterpart. Its
+  technician-wide intelligence is separate. No extension source/version/ZIP changes.
+  No dependency or generated database type changed.
+
+### Verification and release record
+
+Initial focused tests passed **118 tests across 8 files**; initial app/node
+typechecking passed. Final `npm run validate` passed: lint (zero errors / 28 existing
+warnings), app/node typechecks, **958 tests across 108 files**, and production build
+including unchanged Donut v1.7.0 source/ZIP integrity. No assertions/configuration
+were weakened or skipped. Existing Browserslist, Router future-flag, unrelated
+Quo-dashboard DOM nesting, mixed-import and bundle-size warnings remain. The board
+route is 41.65 kB JS (13.18 kB gzip), versus the prior 38.44 kB (12.25 kB gzip); CSS
+remains 3.82 kB (0.98 kB gzip). Browser verification passed: **23/23**
+Playwright operator-workflow tests, including the new zero-verified-outcome and
+timezone-gating cases at 1440px and 390px, with no horizontal overflow and
+attribution/chat-link assertions verified in both screenshots.
+Deployment used the existing eight files **plus
+`supabase/functions/_shared/processor-review-diagnostics.ts`** (nine files total),
+with JWT verification preserved and deployed content verified against the tested
+source. CRM publication and real signed-in/provider accuracy checks are
+separate from deployment/build success. No new live assessment was invoked here.
+
 ## Open-board tracking follow-up (2026-10-22) — Edge v4 installed; CRM pending
 
 This section supersedes the on-demand-only and execution-status-only descriptions
