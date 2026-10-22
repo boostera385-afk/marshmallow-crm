@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ProcessorBoardPage from "./ProcessorBoardPage";
 import { ProcessorReviewFailure, type ProcessorJob } from "@/lib/processor-board";
 const state = vi.hoisted(() => ({ role: "processor", user: "actor", rows: [] as ProcessorJob[], assess: vi.fn(), hook: vi.fn(), configured: true }));
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: state.user }, role: state.role }) }));
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: state.user }, role: state.role, canAccess: () => true }) }));
 vi.mock("@/hooks/useProcessorBoard", () => ({ PROCESSOR_QUERY_KEY: ["processor-board"], useProcessorBoard: state.hook }));
 vi.mock("@/lib/processor-board", async (load) => ({ ...await load<object>(), assessProcessorJob: state.assess }));
 const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-AUTO-1", customer_name: "Synthetic Customer", customer_phone: null, service_type: "Repair", address: "10 Sample St", city: "Synthetic", state: "FL", tech_name: "Synthetic Tech", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: null, customer_schedule_requirements: null, terms: null, status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: null, assessment: null,
@@ -73,7 +73,8 @@ describe("automatic tracking while the board is open", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 reviewed"));
     expect(screen.getAllByText(/7 technician replies were not tied to this job/)).toHaveLength(2);
     fireEvent.click(screen.getAllByRole("button", { name: /Review/ })[0]);
-    expect(screen.getByRole("link", { name: "Open verified technician chat" })).toHaveAttribute("href", state.rows[0].chat_setup!.chat_url);
+    expect(screen.getByRole("button", { name: "Open technician chat in CRM" })).toBeEnabled();
+    expect(screen.queryByRole("link", { name: "Open verified technician chat" })).not.toBeInTheDocument();
     expect(state.assess).toHaveBeenCalledTimes(1);
   });
   it("counts an attributed reply even when it establishes no progress or completion", async () => {

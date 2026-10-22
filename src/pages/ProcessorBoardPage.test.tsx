@@ -4,8 +4,9 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ProcessorBoardPage from "./ProcessorBoardPage";
 import { ProcessorReviewFailure, type ProcessorJob } from "@/lib/processor-board";
-const state = vi.hoisted(() => ({ role: "processor", assess: vi.fn(), hook: vi.fn(), refetch: vi.fn() }));
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "actor" }, role: state.role }) }));
+const state = vi.hoisted(() => ({ role: "processor", canTechChat: true, chat: vi.fn(), assess: vi.fn(), hook: vi.fn(), refetch: vi.fn() }));
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "actor" }, role: state.role, canAccess: () => state.canTechChat }) }));
+vi.mock("@/lib/quo-chat", () => ({ fetchQuoChatThread: state.chat, sendQuoChatMessage: vi.fn() }));
 vi.mock("@/hooks/useProcessorBoard", () => ({ PROCESSOR_QUERY_KEY: ["processor-board"], useProcessorBoard: state.hook }));
 vi.mock("@/lib/processor-board", async (load) => ({ ...await load<object>(), assessProcessorJob: state.assess }));
 const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1001", customer_name: "John Sample", customer_phone: null, address: "10 Sample St", city: "Miami", state: "FL", service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: null, assessment: null };
@@ -17,12 +18,62 @@ function mount() {
   return view;
 }
 beforeEach(() => {
-  vi.clearAllMocks(); state.role = "processor";
+  vi.clearAllMocks(); state.role = "processor"; state.canTechChat = true;
+  state.chat.mockResolvedValue({ phoneNumber: { id: "PN12345678", number: "+17475887812", formattedNumber: "+17475887812", name: "Technician Communications" }, conversation: null, messages: [{ id: "stored", text: "Synthetic stored technician update", direction: "incoming", createdAt: "2026-10-22T15:00:00Z" }] });
   state.assess.mockResolvedValue({ result: reviewResult() });
   state.hook.mockReturnValue({ data: { rows: [job, { ...job, id: "00000000-0000-4000-8000-000000000002", job_id: "JOB-1002", customer_name: "Jane Example", status: "paid" }], total: 26, observed_at: "2026-10-15T18:00:00Z" }, isLoading: false, isFetching: false, isError: false, refetch: state.refetch });
 });
 afterEach(cleanup);
 describe("Processor Board interactions", () => {
+  it("opens the verified technician conversation inside CRM without AI, external navigation or a Quo login", async () => {
+    const conversationId = "00000000-0000-4000-8000-000000000123";
+    state.hook.mockReturnValue({ data: { rows: [{ ...job, chat_setup: { state: "ready", conversation_id: conversationId, source: "verified_mirror", fingerprint: "saved-chat" } }], total: 1 } });
+    mount();
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    expect(state.chat).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Open technician chat in CRM" }));
+    expect(await screen.findByText("Synthetic stored technician update")).toBeInTheDocument();
+    expect(state.chat).toHaveBeenCalledExactlyOnceWith("+14155550199", "tech", conversationId);
+    const chat = screen.getByRole("dialog", { name: "Tech Quick Chat: Alex" });
+    expect(chat).toHaveTextContent("No Quo login is needed");
+    expect(within(chat).queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open verified technician chat" })).toBeNull();
+    expect(state.assess).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Close Chat" }));
+    expect(await screen.findByRole("button", { name: "Check this job" })).toBeInTheDocument();
+  });
+  it("does not bypass a missing chat grant", () => {
+    state.canTechChat = false;
+    mount();
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    expect(screen.getByRole("button", { name: "Open technician chat in CRM" })).toBeDisabled();
+    expect(screen.getByText(/Tech Quick Chat access is required/)).toBeInTheDocument();
+    expect(state.chat).not.toHaveBeenCalled();
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it("does not guess an external chat when the verified CRM mirror is absent", () => {
+    mount();
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    expect(screen.getByRole("button", { name: "Open technician chat in CRM" })).toBeDisabled();
+    expect(screen.getByText(/No verified CRM conversation is available/)).toBeInTheDocument();
+    expect(state.chat).not.toHaveBeenCalled();
+  });
+  it.each(["technician", "conversation", "permission", "scope"])("retires an open CRM chat after a %s change", async (change) => {
+    const conversationId = "00000000-0000-4000-8000-000000000123";
+    const saved = { ...job, chat_setup: { state: "ready", conversation_id: conversationId, source: "verified_mirror", fingerprint: "saved-chat" } };
+    state.hook.mockReturnValue({ data: { rows: [saved], total: 1 } });
+    const view = mount();
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Open technician chat in CRM" }));
+    await screen.findByText("Synthetic stored technician update");
+    if (change === "permission") state.canTechChat = false;
+    const next = change === "technician" ? { ...saved, tech_number: "4155550123" } : change === "conversation" ? { ...saved, chat_setup: { ...saved.chat_setup, conversation_id: "00000000-0000-4000-8000-000000000124" } } : saved;
+    state.hook.mockReturnValue({ data: { rows: change === "scope" ? [] : [next], total: 1 } });
+    view.rerender(<QueryClientProvider client={new QueryClient()}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>);
+    expect(screen.queryByRole("dialog", { name: "Tech Quick Chat: Alex" })).not.toBeInTheDocument();
+    expect(state.chat).toHaveBeenCalledTimes(1);
+    expect(state.assess).not.toHaveBeenCalled();
+  });
   it("shows exact check dates and distinguishes AI use from schedule rules without a request", () => {
     const checked_at = new Date().toISOString();
     const assessment = { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1001 completed" }], checked_at, timezone: "America/New_York", lead_updated_at: job.updated_at };

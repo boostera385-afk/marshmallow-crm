@@ -19,6 +19,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ProcessorJobViewport } from "@/components/processor-board/ProcessorJobViewport";
+import QuoPhoneTrigger from "@/components/leads/QuoPhoneTrigger";
+import { phoneKey } from "../../supabase/functions/_shared/processor-job-status";
 import "./ProcessorBoardPage.css";
 
 const EMPTY_JOBS: ProcessorJob[] = [];
@@ -50,7 +52,7 @@ export default function ProcessorBoardPage() {
   return <ProcessorBoard key={`${user?.id}:${role}`} />;
 }
 function ProcessorBoard() {
-  const { user, role } = useAuth();
+  const { user, role, canAccess } = useAuth();
   const reduceMotion = useReducedMotion();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ offset: 0, search: "", history: false, timezone: "America/New_York" });
@@ -58,6 +60,7 @@ function ProcessorBoard() {
   const [savedStatusFilter, setSavedStatusFilter] = useState("all");
   const [rowLimit, setRowLimit] = useState<number>(5);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [chatReview, setChatReview] = useState<{ jobId: string; phone: string; conversationId: string } | null>(null);
   const [errors, setErrors] = useState<Record<string, ReviewIssue>>({});
   const [progress, setProgress] = useState<{ done: number; total: number; job?: string; automatic?: boolean } | null>(null);
   const [autoTracking, setAutoTracking] = useState(true);
@@ -86,6 +89,10 @@ function ProcessorBoard() {
   const rows = query.data?.rows ?? EMPTY_JOBS;
   latestRows.current = rows;
   const selected = rows.find((job) => job.id === selectedId);
+  const canReadTechChat = role === "admin" || canAccess?.("tech_quick_chat") === true;
+  const chatJob = canReadTechChat && chatReview ? rows.find((job) => job.id === chatReview.jobId &&
+    phoneKey(job.tech_number) === chatReview.phone && job.chat_setup?.state === "ready" && job.chat_setup.conversation_id === chatReview.conversationId) : null;
+  useEffect(() => { if (chatReview && !chatJob) setChatReview(null); }, [chatReview, chatJob]);
   const issues = useMemo(() => new Map(rows.flatMap((job) => {
     const error = errors[job.id];
     return error?.signature === processorReviewSignature(job, filters.timezone) ? [[job.id, error] as const] : [];
@@ -101,7 +108,7 @@ function ProcessorBoard() {
   const setupCount = rows.filter((job) => !!processorSetupIssue(job)).length;
   const retryableJobs = rows.filter((job) => !processorSetupIssue(job) && issues.get(job.id)?.retryable);
   const latestCheck = rows.reduce<string | null>((latest, job) => job.checked_at && Number.isFinite(Date.parse(job.checked_at)) && (!latest || Date.parse(job.checked_at) > Date.parse(latest)) ? job.checked_at : latest, null);
-  const reviewNote = (job: ProcessorJob) => processorSetupIssue(job) || issues.get(job.id)?.message || (!timezoneConfirmed ? "Schedule timezone not confirmed. Saved status is unchanged; confirm before checking evidence or relying on due/overdue rules." : processorStatusOrigin(job, filters.timezone, now));
+  const reviewNote = (job: ProcessorJob) => processorSetupIssue(job) || issues.get(job.id)?.message || (!timezoneConfirmed ? `${["job_in_progress", "payment_pending", "partial_paid"].includes(job.status) ? "Saved lead status · not a fresh AI finding. " : ""}Schedule timezone not confirmed. Saved status is unchanged; confirm before checking evidence or relying on due/overdue rules.` : processorStatusOrigin(job, filters.timezone, now));
   const freshChecks = timezoneConfirmed ? rows.flatMap((job) => { const a = currentAssessment(job, filters.timezone, now); return a && !processorSetupIssue(job) && !issues.has(job.id) ? [a] : []; }) : [];
   const verifiedUpdates = freshChecks.filter(processorHasTechnicianReply).length;
   const contextUpdates = freshChecks.filter((a) => (a.context_technician_messages ?? 0) > 0 && !(a.matched_technician_messages ?? 0)).length;
@@ -192,6 +199,7 @@ function ProcessorBoard() {
         <label className="flex items-center gap-2"><input type="checkbox" aria-label="Confirm schedule timezone" checked={timezoneConfirmed} disabled={!!progress} onChange={(e) => setTimezoneConfirmed(e.target.checked)} />Schedules on this page use {filters.timezone.replace(/_/g, " ")}</label>
         <p>{!autoTracking ? "Paused. Manual checks remain available." : !pageVisible ? "Paused while this tab is hidden." : !timezoneConfirmed ? "Confirm the schedule timezone to start automatic checks; no timezone is inferred from the state." : !query.data?.monitoring ? "Automatic checks need the updated Processor Board backend." : !query.data.monitoring.ai_configured ? "AI is not configured; ask Admin to check server setup." : `Watching ${rows.length} loaded jobs · fresh checks reused for 5 minutes · retries use backoff.`}</p>
         {query.data?.monitoring && !query.data.monitoring.current_history_configured && <p>Current Quo access is unavailable. Mirror-only checks cannot establish non-response or Send Dose.</p>}
+        {query.data?.monitoring && (query.data.monitoring.evidence_policy ?? 0) < 5 && <p className="text-amber-700 dark:text-amber-300">The job-context AI update is not active on this backend. Ask Admin to deploy the latest Processor Board function; existing checks may not attribute replies that omit job identifiers.</p>}
       </div>
       <div aria-label="Evidence quality on this page" className="px-4 py-2 text-[11px] text-muted-foreground">{freshChecks.length} fresh successful checks · {verifiedUpdates} with a technician reply tied to the job · {freshChecks.length - verifiedUpdates} without a tied technician reply.{contextUpdates ? ` ${contextUpdates} rely on this job's saved dispatch; verify in Quo before acting.` : ""} Saved In Progress / Payment Pending labels alone are not AI findings.</div>
       <div aria-label="Action counts on this page" className="flex flex-wrap items-center gap-2 px-4 pt-3">
@@ -270,8 +278,14 @@ function ProcessorBoard() {
           </div>
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs leading-relaxed text-muted-foreground"><ShieldCheck className="mb-2 h-4 w-4 text-primary" />A technician can have multiple jobs. A reply is used only when it names this job or follows this job's saved dispatch before another job's dispatch; those context-attributed replies are marked and must be verified in Quo. Replies after another dispatch, reactions, call recordings and call transcripts are excluded. Send Dose requires a directly identified acceptance, an unanswered job-specific update request, and a 60-minute wait. Review in Quo before sending anything.</div>
           {selected.chat_setup?.source === "verified_mirror" && <p className="text-xs text-muted-foreground">Chat matched by the saved technician's exact number and verified Technician Communications line. No directory or conversation link was changed.</p>}
-          <div className="flex flex-wrap gap-2"><Button disabled={!timezoneConfirmed || !!progress || !!processorSetupIssue(selected)} onClick={() => void refreshAi([selected])}>{progress ? <Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Check this job</Button><Button variant="outline" asChild><Link to={`/leads/${selected.id}`}>Open saved lead<ArrowUpRight className="ml-2 h-4 w-4" /></Link></Button>{selected.chat_setup?.state === "ready" && selected.chat_setup.chat_url && <Button variant="outline" asChild><a href={selected.chat_setup.chat_url} target="_blank" rel="noopener noreferrer">Open verified technician chat<ArrowUpRight className="ml-2 h-4 w-4" /></a></Button>}</div>
+          <div className="flex flex-wrap gap-2"><Button disabled={!timezoneConfirmed || !!progress || !!processorSetupIssue(selected)} onClick={() => void refreshAi([selected])}>{progress ? <Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Check this job</Button><Button variant="outline" asChild><Link to={`/leads/${selected.id}`}>Open saved lead<ArrowUpRight className="ml-2 h-4 w-4" /></Link></Button><Button variant="outline" disabled={!canReadTechChat || selected.chat_setup?.state !== "ready" || !selected.chat_setup.conversation_id || !phoneKey(selected.tech_number)} onClick={() => {
+            if (!selected.chat_setup?.conversation_id || !phoneKey(selected.tech_number)) return;
+            setChatReview({ jobId: selected.id, phone: phoneKey(selected.tech_number)!, conversationId: selected.chat_setup.conversation_id });
+            setSelectedId(null);
+          }}><MessageSquareText className="mr-2 h-4 w-4" />Open technician chat in CRM</Button></div>
+          {!canReadTechChat ? <p className="text-xs text-muted-foreground">Tech Quick Chat access is required. Ask Admin to verify your existing chat permission.</p> : !selected.chat_setup?.conversation_id && <p className="text-xs text-muted-foreground">No verified CRM conversation is available. Sync or verify the saved technician chat; no external Quo tab will be opened.</p>}
         </div></>}
     </SheetContent></Sheet>
+    {chatJob && chatReview && <QuoPhoneTrigger key={`${chatJob.id}:${chatReview.conversationId}:${chatReview.phone}`} contactName={chatJob.tech_name || "Technician"} phone={chatJob.tech_number} chatType="tech" conversationId={chatReview.conversationId} defaultOpen hideTrigger readOnly onClose={() => { setChatReview(null); setSelectedId(chatJob.id); }} />}
   </div>;
 }

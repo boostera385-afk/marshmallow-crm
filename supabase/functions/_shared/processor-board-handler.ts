@@ -42,7 +42,7 @@ export function createProcessorBoardHandler(deps: {
       if (error || !data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.rows) || !data.rows.every(isQueueJob)) return json({ error: "Processor Board database setup is unavailable. Ask Admin to check the reviewed migration." }, 503);
       const rows = data.rows;
       const phones = rows.flatMap((row) => { const phone = phoneKey(row.tech_number); return phone ? [phone] : []; });
-      const monitoring = { ai_configured: Boolean(deps.env("OPENAI_API_KEY")), current_history_configured: Boolean(deps.env("QUO_API_KEY")) };
+      const monitoring = { ai_configured: Boolean(deps.env("OPENAI_API_KEY")), current_history_configured: Boolean(deps.env("QUO_API_KEY")), evidence_policy: 5 };
       try {
         const chats = await readProcessorChats(caller, phones, monitoring.current_history_configured);
         return json({ ...data, monitoring, rows: rows.map((row) => ({ ...row, chat_setup: chats.get(phoneKey(row.tech_number) ?? "")?.setup ?? null })) });

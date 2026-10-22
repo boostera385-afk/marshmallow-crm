@@ -1,16 +1,92 @@
 # Processor Board
 
-## Verified Tech Quick Chat attribution (2026-10-22) — local source; Edge v6 deployment awaiting approval
+## Internal CRM technician chat (2026-10-22; Edge v6 installed, frontend publication pending)
+
+The board's external Quo link was incorrect for operators who read the webhook
+mirror inside CRM without a separate Quo login. The board now opens the existing
+`QuoPhoneTrigger` as one root-level, read-only Tech Quick Chat, pinned to the
+backend-verified CRM conversation UUID, technician number and Technician
+Communications line. It never guesses a newer/customer conversation, launches an
+external tab, composes, queues, schedules or sends. The review Sheet closes while
+chat is open and returns on Close/Escape; desktop and mobile stay on-screen.
+The existing saved-lead Quick Chat sending workflow is unchanged.
+
+The independent `tech_quick_chat` grant is retained alongside the Admin/Processor
+board gate. Reads still use the authenticated CRM client and existing table RLS;
+no role, grant, schema, RPC, generated enum/type or migration changed. Missing or
+mismatched mirror/line/participant fails visibly without a fallback. Changes to
+the job's technician, conversation, permission or loaded scope retire the viewer.
+Pinned history is paginated in stable 500-row pages; over 10,000 rows is an
+explicit error, not a silently truncated conversation. Unpinned lead Quick Chat
+keeps its existing lookup and 500-row viewport.
+
+Backend list metadata now reports `monitoring.evidence_policy: 5`; older backends
+produce a visible attribution-update warning rather than silently implying the
+new rules are installed. Unconfirmed-timezone saved progress/payment labels are
+explicitly described as saved status, not a fresh AI finding. AI still requires
+timezone confirmation; no schedule, status, approval or outbound message changed.
+
+The user explicitly approved backend deployment with “deploy it”. The function is
+now **v6 ACTIVE**, `verify_jwt: true`, on `kxiqholnmhkwhdkhtopp`, bundle SHA
+`f93ed4a57916bf8beebf1381070e418ae4773d98038af7323931d1db121df939`.
+All nine deployed files were downloaded again and match local source byte for
+byte. Post-deployment no-credential and invalid-bearer probes both returned 401;
+CORS preflight returned 200, matching the v5 baseline. No authenticated assessment
+or paid provider call was made. These probes verify the boundary, not AI accuracy.
+The supplied screenshots
+already show provenance-capable UI; this newest internal-chat button still needs
+CRM publication. No native Donut job-board/viewer counterpart exists; the separate
+technician-wide intelligence flow and Donut v1.7.0 artifacts are unchanged.
+
+Before deployment, all nine live v5 files were downloaded to
+`C:\Users\User 1\AppData\Local\Temp\opencode\processor-board-v5-rollback-20261022`
+and compared with `ea68547`; all matched. Its `ROLLBACK.md` records metadata and
+the approved-target-only redeployment procedure. Rollback is a separate production
+operation requiring approval, not automatic cleanup.
+
+### Efficiency / verification boundaries
+
+- Local validation so far: typecheck passed; full lint passed with 0 errors and
+  28 existing warnings; all 29 mocked Chromium browser cases passed, including
+  internal chat, desktop/mobile bounds, permission denial, failed reads, no
+  external navigation and no AI calls on open. The initial failure fixture used
+  a retryable 503 and remained loading during SDK retries; the browser denial
+  case now uses a realistic 403 without changing any timeout/assertion. Unit
+  coverage separately verifies propagated read failures. A concurrent focused
+  run hit two 5-second page-test timeouts under load (95/97 passed). The first
+  full one-worker run overlapped Chromium and passed 996/998 across 109 files;
+  only the same two page tests timed out. The entire page file then passed 34/34
+  alone, unchanged. The final full run, without overlapping browser/build work,
+  passed **998/998 across 109 files**. No timeout, assertion or test configuration
+  was relaxed. `npm run build` passed, including unchanged Donut v1.7.0 source/ZIP
+  integrity. Board JS is now 45.01 kB / 14.09 kB gzip versus 44.05 / 13.83 before
+  this chat fix; board CSS remains 3.82 / 0.98 kB. Existing bundle/import warnings
+  and outdated Browserslist data were not hidden or fixed through unrelated changes.
+- UI/hooks/cache: one chat mounts only after an explicit click, not one per row;
+  no AI check is triggered by chat opening and no hidden-trigger unread watcher
+  is registered. Existing board query keys, freshness and automatic-check limits
+  remain unchanged. The viewer uses the existing chat recovery/realtime transport.
+- API/database/bandwidth: for a synthetic 501-message pinned chat on Windows/Vitest,
+  the old reader used one conversation + one message request but hid message 501;
+  the new reader uses one exact conversation + two message requests and returns
+  all 501. General Quick Chat still makes one message request/500-row viewport.
+  No schema/RLS/index changes, N+1 board lookup or provider calls were added.
+  History pagination deliberately increases reads to preserve complete review.
+- Realtime/background/storage: existing mounted-chat realtime and fallback polling
+  are reused, with cleanup on close/scope retirement; no new worker, cron, upload,
+  storage object or extension download. This is not a measured invoice saving.
+- Production billing/usage, signed-in RLS behavior, current mirror completeness and
+  real-model accuracy remain unverified. Mocked browser tests cannot establish them.
+
+## Verified Tech Quick Chat attribution (2026-10-22) — Edge v6 installed
 
 This section records the follow-up to the live complaint that the board said
 “0 technician messages identify this job” while the saved Tech Quick Chat on the
-lead clearly contained technician replies. It is **source-only, not deployed**:
-Edge **v5** remains ACTIVE. The user requested an immediate commit on the new
-`processor-fix` branch while the final serial test run continues in the background.
-The resulting commit/push status is recorded in the handoff, not proof of publication.
-No CRM publication, migration, provider call, assessment, lead/status write,
-schedule edit or outbound message occurred. Edge deployment requires separate
-explicit approval after the matching CRM UI is published.
+lead clearly contained technician replies. Commit `b92ae0b` is pushed on
+`boostera/processor-fix`; the final serial run passed 980/980 tests across 108 files.
+The latest complaint separately approved backend deployment. No CRM publication,
+migration, provider call, assessment, lead/status write, schedule edit or outbound
+message occurred during this fix. See the newest section for its release state.
 
 ### Live read-only diagnosis
 
@@ -85,7 +161,7 @@ malformed saved numbers (`LD-EFM7FS`, `LD-BLYIQ8`, `LD-SHALGR`), the unconfirmed
 schedule-timezone convention and live real-conversation accuracy remain unresolved
 data/manual steps. No schema, RLS, generated type, migration or SQL harness change
 is needed; no Donut source/version/ZIP changed because Donut has no native board or
-job-specific assessment counterpart. Edge v6 is **awaiting approved deployment**;
+job-specific assessment counterpart. Edge v6 is **installed**;
 CRM Publish and signed-in/provider QA remain the user's separate steps.
 
 **Release order matters:** publish the new frontend before deploying the new Edge
@@ -159,8 +235,7 @@ but do not themselves rewrite list results. Any live rechecks require approval.
   `npm test -- --maxWorkers=1` passed **975/975 across 108 files**, including those
   sidebar tests. After the final shared-identity/unit safeguards, the two-worker
   full run passed **978/980**; only the same sidebar timeout/teardown pair failed.
-  The final serial run continues in the background; the user requested committing
-  without waiting for it. Its outcome must be reported separately. No test timeout,
+   The final serial run passed **980/980 across 108 files**. No test timeout,
   assertion or repository configuration was changed to hide these failures.
   `npm run lint` passed with **0 errors / 28 existing warnings**;
   `npm run typecheck` and `npm run build` passed, including unchanged Donut v1.7.0
@@ -184,9 +259,9 @@ unrelated production change was made. These need their own authorization/grant
 review, not blindly revoked access or speculative indexes. See the
 [security-definer advisory guidance](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)
 and [database advisor reference](https://supabase.com/docs/guides/database/database-linter).
-Unified log source counts were readable; the targeted Processor Board status query
-failed at the MCP service, so this task does not claim clean function-specific
-production logs or complete health/billing evidence.
+The subsequent targeted last-day Processor Board logs query succeeded: 621 responses
+were 200, 11 were 422, 12 were 401 and 2 were 405. These counts do not establish
+model accuracy, error-free production behavior or complete health/billing evidence.
 
 ## Evidence accuracy follow-up (2026-10-22) — Edge v5 installed; CRM publish pending
 
