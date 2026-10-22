@@ -74,6 +74,7 @@ export function subscribeToProcessorBoard(onChange: () => void) {
     };
     processorBoardChannel = supabase.channel(`processor-board:${generation}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, dispatch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "technicians" }, dispatch)
       .subscribe((status) => { if (status === "SUBSCRIBED") dispatch(); });
   }
   let released = false;
@@ -85,6 +86,42 @@ export function subscribeToProcessorBoard(onChange: () => void) {
       ++processorBoardGeneration;
       void supabase.removeChannel(processorBoardChannel);
       processorBoardChannel = null;
+    }
+  };
+}
+
+type ProcessorActivitySubscription = { channel: ReturnType<typeof supabase.channel>; consumers: number };
+const processorActivitySubscriptions = new Map<string, ProcessorActivitySubscription>();
+let processorActivityGeneration = 0;
+/** Only the loaded page's saved conversation IDs; no global chat/message subscription. */
+export function subscribeToProcessorActivity(conversationIds: string[], onChange: () => void) {
+  const ids = [...new Set(conversationIds)].filter((id) => /^[0-9a-f-]{36}$/i.test(id)).sort();
+  if (!ids.length) return () => {};
+  const key = ids.join(",");
+  const eventName = `processor_activity:${key}`;
+  realtimeBus.addEventListener(eventName, onChange);
+  let entry = processorActivitySubscriptions.get(key);
+  if (!entry) {
+    const channel = supabase.channel(`processor-activity:${++processorActivityGeneration}`);
+    const created = { channel, consumers: 0 };
+    processorActivitySubscriptions.set(key, created);
+    channel.on("postgres_changes", { event: "UPDATE", schema: "public", table: "quo_conversations", filter: `id=in.(${key})` }, () => {
+      if (processorActivitySubscriptions.get(key) === created) realtimeBus.dispatchEvent(new Event(eventName));
+    }).subscribe((status) => {
+      if (status === "SUBSCRIBED" && processorActivitySubscriptions.get(key) === created) realtimeBus.dispatchEvent(new Event(eventName));
+    });
+    entry = created;
+  }
+  entry.consumers++;
+  const current = entry;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    realtimeBus.removeEventListener(eventName, onChange);
+    if (--current.consumers === 0) {
+      processorActivitySubscriptions.delete(key);
+      void supabase.removeChannel(current.channel);
     }
   };
 }

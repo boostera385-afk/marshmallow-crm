@@ -19,20 +19,20 @@ afterEach(cleanup);
 describe("Processor Board interactions", () => {
   it("shows exact check dates and distinguishes AI use from schedule rules without a request", () => {
     const checked_at = new Date().toISOString();
-    const assessment = { status: "payment_pending", evidence: [{ quote: "JOB-1001 completed" }], checked_at, timezone: "America/New_York", lead_updated_at: job.updated_at };
+    const assessment = { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1001 completed" }], checked_at, timezone: "America/New_York", lead_updated_at: job.updated_at };
     state.hook.mockReturnValue({ data: { rows: [
       { ...job, checked_at, assessment: { ...assessment, ai_used: true } },
-      { ...job, id: "second", job_id: "JOB-1002", checked_at, assessment: { ...assessment, ai_used: false } },
+      { ...job, id: "second", job_id: "JOB-1002", checked_at, assessment: { ...assessment, status: "scheduled", evidence: [], ai_used: false } },
     ], total: 2, observed_at: checked_at } });
     mount();
     const cells = screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[2]);
-    expect(cells[0]).toHaveTextContent("AI reviewed · job-specific evidence verified");
-    expect(cells[1]).toHaveTextContent("Schedule / saved-status rule · no AI used");
+    expect(cells[0]).toHaveTextContent("AI evidence · technician completion verified");
+    expect(cells[1]).toHaveTextContent("Schedule rule · no AI used");
     expect(within(cells[0]).getByLabelText("Last checked date and time")).toHaveTextContent(new Date(checked_at).getUTCFullYear().toString());
     expect(within(cells[0]).getByLabelText("Last checked date and time").textContent).toMatch(/\d{1,2}:\d{2}/);
     expect(state.assess).not.toHaveBeenCalled();
   });
-  it("filters by saved status independently of AI actions and keeps approval jobs read-only", () => {
+  it("filters by saved status independently of AI actions and reviews approval evidence without changing the saved workflow", async () => {
     state.hook.mockReturnValue({ data: { rows: [job, { ...job, id: "reschedule", job_id: "JOB-RESCHEDULE", status: "needs_reschedule" }, { ...job, id: "approval", job_id: "JOB-APPROVAL", status: "cancellation_requested" }], total: 3 } });
     mount();
     fireEvent.change(screen.getByLabelText("Saved status on this page"), { target: { value: "needs_reschedule" } });
@@ -41,12 +41,17 @@ describe("Processor Board interactions", () => {
     expect(screen.getAllByLabelText("Review JOB-RESCHEDULE")).toHaveLength(2);
     fireEvent.change(screen.getByLabelText("Saved status on this page"), { target: { value: "cancellation_requested" } });
     fireEvent.click(screen.getAllByLabelText("Review JOB-APPROVAL")[0]);
-    expect(screen.getByRole("button", { name: "Check this job" })).toBeDisabled();
-    expect(screen.getByRole("dialog")).toHaveTextContent("another approval workflow");
+    expect(screen.getByRole("button", { name: "Check this job" })).toBeEnabled();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Cancellation approval pending. AI evidence cannot approve or cancel this job.");
+    fireEvent.click(screen.getByRole("button", { name: "Check this job" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Check this job" })).toBeEnabled());
+    expect(state.assess).toHaveBeenCalledExactlyOnceWith("approval", "America/New_York");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Saved lead status: Cancellation Pending");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("status")).toHaveTextContent("1 reviewed");
     fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
     expect(screen.getAllByRole("row")).toHaveLength(4);
-    expect(state.assess).not.toHaveBeenCalled();
+    expect(state.assess).toHaveBeenCalledTimes(1);
   });
   it("defaults to five rows in view but keeps all matching jobs in the page-level AI review", async () => {
     const rows = Array.from({ length: 6 }, (_, index) => ({ ...job, id: `synthetic-${index}`, job_id: `JOB-${index}` }));
@@ -111,7 +116,7 @@ describe("Processor Board interactions", () => {
     mount();
     const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[2];
     expect(cell).toHaveTextContent("Previous check");
-    expect(cell).toHaveTextContent("Review stale · refresh AI");
+    expect(cell).toHaveTextContent("previous check stale · refresh AI");
     expect(within(cell).queryByText("Payment Pending")).not.toBeInTheDocument();
     expect(state.assess).not.toHaveBeenCalled();
   });

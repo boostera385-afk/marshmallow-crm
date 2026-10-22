@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { canAccessNavItem } from "./access";
-import { currentAssessment, processorStatus, processorReadiness, assessProcessorJob, fetchProcessorJobs, type ProcessorJob } from "./processor-board";
+import { currentAssessment, processorStatus, processorStatusOrigin, processorWorkflowMessage, processorReadiness, assessProcessorJob, fetchProcessorJobs, type ProcessorJob } from "./processor-board";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke } } }));
 const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1", customer_name: "John Sample", customer_phone: null, address: null, city: null, state: null, service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-10-15", scheduled_time_start: "10:00:00", scheduled_time_end: null, customer_schedule_requirements: null, terms: null, status: "scheduled", updated_at: "2026-10-15T10:00:00Z", checked_at: null, assessment: null };
@@ -20,8 +20,16 @@ describe("Processor Board contract", () => {
   it("keeps done/history and approval workflows read-only", () => {
     for (const status of ["job_done", "paid", "cancelled", "needs_reschedule", "payment_requested"]) {
       expect(processorStatus({ ...job, status }, "America/New_York", now)).toBe("needs_review");
-      expect(processorReadiness({ ...job, status })).toContain("closed or in another approval workflow");
+      if (["job_done", "paid", "cancelled"].includes(status)) expect(processorReadiness({ ...job, status })).toContain("Closed job");
+      else expect(processorReadiness({ ...job, status })).toBeNull();
     }
+  });
+  it("never describes saved progress as AI-confirmed when the AI found no verified update", () => {
+    const assessment: NonNullable<ProcessorJob["assessment"]> = { status: "job_in_progress", evidence: [], messages_reviewed: 65, matched_messages: 3, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: now.toISOString(), lead_updated_at: job.updated_at, summary: "No verified update" };
+    expect(processorStatusOrigin({ ...job, status: "job_in_progress", assessment }, "America/New_York", now)).toBe("Saved lead status · AI found no verified job update");
+    expect(processorStatusOrigin({ ...job, assessment: { ...assessment, status: "take_job_update" } }, "America/New_York", now)).toBe("Schedule rule · AI found no verified job update");
+    expect(processorWorkflowMessage("needs_reschedule")).toContain("confirm the customer's new agreement");
+    expect(processorWorkflowMessage("waiting_customer_response")).not.toContain("Closed");
   });
   it("retires old, changed-job and wrong-timezone AI evidence", () => {
     const reviewed = { ...job, assessment: { status: "payment_pending" as const, evidence: [], messages_reviewed: 4, matched_messages: 1, source: "mirror", history_complete: false, timezone: "America/New_York", checked_at: now.toISOString(), summary: "Reviewed", lead_updated_at: job.updated_at } };

@@ -1,5 +1,123 @@
 # Processor Board
 
+## Open-board tracking follow-up (2026-10-22) — Edge v4 installed; CRM pending
+
+This section supersedes the on-demand-only and execution-status-only descriptions
+below. The earlier active-radar migration and Edge v3 deployment remain installed;
+**the follow-up backend is deployed; the CRM is not published by this task**. No new SQL migration,
+generated database type, grant or secret is required.
+
+### Behavior and safety
+
+- Automatic AI tracking is selected by default but starts only after the operator
+  explicitly confirms the displayed schedule timezone. It covers the **loaded page,
+  up to 25 jobs**, independent of page-local filters and the five-row viewport.
+  Changing timezone requires confirmation again. It is not an all-pages worker.
+- Hiding/unmounting the board stops starting jobs; the current request may finish.
+  Pausing tracking or Stop after current job preserves completed evidence. The
+  existing manual page/job checks and failed-only retry remain available.
+- Five-minute freshness is invalidated by changed saved job/chat metadata. The
+  existing 30-second clock plans reviews; transient failures back off at 1, 2, 4,
+  then 5 minutes. Nonretryable failures wait for changed setup or explicit recheck.
+  Caller/role changes remount the board and reset confirmation/retry state.
+- Missing technician-directory entries/links can use **one exact-number saved
+  conversation on Technician Communications**. No newest-chat/name guess is used;
+  conflicting/invalid links, wrong participants/lines and ambiguous mirrors remain
+  blocked. No directory, conversation link or customer record is repaired.
+- The read-only first-page audit found ten missing-link/directory failures with a
+  unique valid saved technician-line conversation. Three malformed saved numbers
+  (`LD-EFM7FS`, `LD-BLYIQ8`, `LD-SHALGR`) still require verified correction. Never
+  infer their missing digits. Do not treat the audit snapshot as permanent data.
+- Active reschedule/customer/approval workflows may receive advisory evidence
+  checks, but keep their saved workflow and explicit guidance. A date alone cannot
+  advance those workflows. Terminal jobs remain history-only and unreviewable.
+- Status labels distinguish verified AI progress/completion, saved lead status,
+  schedule rules, and AI checks with **no verified target-job update**. Generic
+  replies cannot identify one job among several. Full current-history verification,
+  delivered-request/acceptance/timing guards and manual Send Dose remain intact.
+  Mirror-only history cannot establish non-response.
+- UI/helper/Edge Admin/Processor gates, caller-token lead/status/chat reads,
+  service-only leases/revision-checked advisory save and atomic audit are unchanged.
+  No RLS/enums, approvals, lead statuses, schedules or outbound messages are changed.
+
+### Efficiency review and reproducible evidence
+
+- UI/hooks/cache: one bounded page, one existing clock, serial guarded reviews,
+  shared query keys and immediate per-job cache updates. No per-row timer. Lead,
+  technician-setup and page-conversation changes share a coalesced refresh; in-flight
+  bursts retain a trailing read. Reconnect and 30-second polling remain recovery.
+- API/database: page readiness adds two batched caller-scoped metadata reads (plus
+  additional 500-row pages if required), not two reads per job. Only required
+  columns are selected. Exact list totals/pagination/RLS remain unchanged; no new
+  indexes or speculative query tuning. No production-after query-plan claim.
+- Realtime: one shared board transport adds technician-setup changes; one shared
+  activity channel filters to loaded saved conversation UUIDs. Retired scopes cannot
+  invoke replacement callbacks; unmount releases consumers. No global message feed.
+- Provider/history: current history is still reread for identity and silence timing.
+  A target-job evidence hash reuses verified extraction when only another job's
+  message changes; it never reuses non-response timing without reading history.
+- Local synthetic comparisons (Windows, mocked Vitest backend): a 25-job page adds
+  **2 metadata reads** to the prior list path (previously zero), zero provider calls
+  or leases for listing. This is two batched reads, not 50 reads from a naive
+  two-lookups-per-job implementation. Two reviews with only another job's message
+  added use **2 current-history
+  reads / 1 AI extraction**, rather than 2 extractions. Ten unchanged 30-second
+  planning ticks start only one successful check before five-minute expiry.
+  Run `src/lib/processor-board-handler.test.ts`, `processor-chat.test.ts` and
+  `processor-auto.test.ts` to reproduce. These are request/resource tests, not
+  production usage or invoice savings; normalized billing/health evidence is absent.
+- Background jobs and storage: no cron/worker, uploads or release downloads added.
+  Donut has no native job board/job-specific assessment counterpart (source search
+  reconfirmed); technician-wide intelligence is separate. No extension source,
+  manifest, ZIP or release version changed; no Donut installation is needed.
+
+### Release and remaining verification
+
+With the user's explicit **Deploy and push branch** approval, Supabase MCP deployed
+`processor-board` **v4 ACTIVE** on `kxiqholnmhkwhdkhtopp`, with JWT verification kept
+enabled. All eight retrieved files match the tested LF-normalized source: the
+existing seven bundle files **plus `supabase/functions/_shared/processor-chat.ts`**.
+Six non-mutating checks passed: preflight 200; missing authorization, invalid JWT,
+API-key-only and anonymous-JWT requests 401; gateway-authenticated unsupported method
+405. An initial unauthenticated GET returned gateway 401 as expected once gateway
+authorization was considered; the anon-JWT retry verified the handler's 405.
+These are boot/authentication checks, not signed-in/provider accuracy verification.
+The previous v3 bundle is backed up outside the repository for approved rollback.
+No migration should be reapplied. Publish CRM separately after review.
+Rollback is the prior CRM and the previously deployed v3 function bundle; retain
+advisory/audit history. No data repair is required for rollback.
+
+Local verification: **950/950 unit tests across 107 files** and **21/21 isolated
+Chromium workflow tests** passed, including desktop/mobile automatic confirmation,
+fresh-result reuse, pause/setup handling, excluded roles and the existing viewport.
+App/node typechecks passed. Full lint passed with zero errors / 28 existing
+warnings; `git diff --check` passed. The first full-unit command hit its 240-second
+shell limit without a test failure; the 600-second-limit rerun finished in 282s.
+Tests/configuration were not weakened or skipped. The 1440px/390px automatic-check
+screenshots were inspected: controls, exact check times, source labels, saved status,
+technician identity and schedules are readable without horizontal page overflow.
+Production build passed, including unchanged Donut v1.7.0 source/ZIP integrity.
+Existing Browserslist, mixed-import and bundle-size warnings remain. The board route
+is 38.44 kB JS (12.25 kB gzip), versus 31.65 kB (10.13 kB gzip) in the prior release;
+CSS remains 3.82 kB (0.98 kB gzip). No SQL harness rerun was required: schema/RLS and
+migrations are unchanged. Native Deno typecheck was not run (Deno unavailable).
+
+Signed-in production/provider checks remain unverified, especially manually confirmed
+started/completed/non-response examples across several jobs in one real chat.
+No production AI invocation, data correction, secret/ingestion change or outbound
+message was performed. Only the approved function was deployed; CRM Publish remains
+the user's step after merging the release branch.
+
+Release branch: `feat/processor-board-live-tracking-2026-10-22`, based on merged
+Boostera `main` `6aedb99`. The user requested commit/push, but retains merging and
+publication. The original dirty workspace remains untouched. Preflight confirmed
+the project ACTIVE_HEALTHY; existing security/performance advisor findings remain
+outside this scoped release (including private/service-only RLS tables, function
+search paths, executable definer functions and query/index advisories). The
+15-minute preflight function log query returned no matching events, not proof of
+live workflow health. See [function search path guidance](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable)
+and [anonymous definer-function guidance](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable).
+
 ## Active radar requirements audit (2026-10-22) — database/Edge installed; CRM pending
 
 This section supersedes the older default-queue description below. The existing

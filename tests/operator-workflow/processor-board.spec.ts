@@ -3,12 +3,13 @@ import { readFileSync } from "node:fs";
 const version = JSON.parse(readFileSync(new URL("../../public/extension-release.json", import.meta.url), "utf8")).version;
 const USER = "00000000-0000-4000-8000-000000000001";
 const LEAD = "00000000-0000-4000-8000-000000000002";
-async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean } = {}) {
+async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean } = {}) {
   const actions: Record<string, unknown>[] = [];
   let reviewed = false;
   let failures = 0;
   const row = () => ({ id: LEAD, job_id: "JOB-1001", customer_name: "John Sample", customer_phone: "4155550101", service_type: "Garage Door Service", address: "10 Sample St Apt 2", city: "Miami", state: "FL", tech_name: "Alex Technician", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only; call before arrival", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: reviewed ? new Date().toISOString() : null,
-    assessment: reviewed ? { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer" }], messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
+    assessment: reviewed ? { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer" }], messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, ai_used: true, chat_fingerprint: options.auto ? "verified-setup" : undefined, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
+    chat_setup: options.auto ? { state: "ready", code: "ready", message: "Exact saved technician chat verified", fingerprint: "verified-setup", conversation_id: "00000000-0000-4000-8000-000000000010", last_message_at: null, source: "verified_mirror" } : undefined,
     ...(options.setup ? { tech_number: null, scheduled_date: null, scheduled_time_start: null } : {}) });
   const rows = () => {
     const base = row();
@@ -30,7 +31,7 @@ async function isolatedBoard(page: Page, role = "processor", fail = false, optio
     if (!url.hostname.endsWith("supabase.co")) return route.abort();
     if (url.pathname.endsWith("/functions/v1/processor-board")) {
       const body = route.request().postDataJSON(); actions.push(body);
-      if (body.action === "list") { const jobs = rows(); return route.fulfill({ json: { rows: jobs, total: jobs.length, observed_at: new Date().toISOString(), timezone: body.timezone } }); }
+      if (body.action === "list") { const jobs = rows(); return route.fulfill({ json: { rows: jobs, total: jobs.length, observed_at: new Date().toISOString(), timezone: body.timezone, monitoring: options.auto ? { ai_configured: true, current_history_configured: true } : undefined } }); }
       if (fail || (options.retryOnce && failures++ === 0)) return route.fulfill({ status: 503, json: { error: "Synthetic AI provider unavailable. Previous review retained.", code: "ai_provider", retryable: true } });
       reviewed = true; return route.fulfill({ json: { result: row().assessment, cached: false } });
     }
@@ -79,7 +80,7 @@ for (const width of [1440, 390]) test(`Processor reviews the correct job and evi
   await expect(checked).toHaveText("Checked just now");
   await expect(checked).toHaveAttribute("title", /.+/);
   await expect(status.getByLabel("Last checked date and time")).toContainText(new Date().getUTCFullYear().toString());
-  await expect(status).toContainText("AI reviewed · job-specific evidence verified");
+  await expect(status).toContainText("AI evidence · technician completion verified");
   const checkedBox = await checked.boundingBox();
   const statusBox = await status.getByText("Payment Pending", { exact: true }).boundingBox();
   expect(checkedBox!.y + checkedBox!.height).toBeLessThanOrEqual(statusBox!.y);
@@ -91,6 +92,33 @@ test("failed provider review remains explicit and does not advance the job", asy
   await page.getByRole("button", { name: "Check this job" }).click();
   await expect(page.getByRole("alert")).toContainText("Synthetic AI provider unavailable");
   await expect(page.getByRole("dialog")).toContainText("Saved lead status: Scheduled");
+});
+for (const width of [1440, 390]) test(`automatic tracking requires timezone confirmation and preserves saved status at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const actions = await isolatedBoard(page, "processor", false, { auto: true });
+  await page.goto("/processor-board");
+  await expect(page.getByLabel("Automatic AI tracking")).toBeChecked();
+  await expect(page.getByLabel("Confirm schedule timezone")).not.toBeChecked();
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
+  await page.getByLabel("Confirm schedule timezone").check();
+  await expect(page.getByRole("status")).toContainText("Automatic check: 1 reviewed");
+  await expect(page.getByText("AI evidence · technician completion verified").filter({ visible: true })).toBeVisible();
+  await expect(page.getByText("Saved: Scheduled", { exact: false }).filter({ visible: true })).toBeVisible();
+  await page.getByRole("button", { name: "Refresh AI · this page" }).click();
+  await expect(page.getByRole("status")).toContainText("0 reviewed · 0 failed · 1 skipped");
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(1);
+  await page.screenshot({ path: test.info().outputPath(`processor-auto-${width}.png`), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+});
+test("automatic tracking can be paused before starting and setup problems never invoke the provider", async ({ page }) => {
+  const actions = await isolatedBoard(page, "processor", false, { auto: true, setup: true });
+  await page.goto("/processor-board");
+  await page.getByLabel("Automatic AI tracking").uncheck();
+  await page.getByLabel("Confirm schedule timezone").check();
+  await expect(page.getByText("Paused. Manual checks remain available.")).toBeVisible();
+  await page.getByLabel("Automatic AI tracking").check();
+  await expect(page.getByText(/Save a valid technician number/).filter({ visible: true })).toBeVisible();
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
 });
 for (const width of [1440, 390]) test(`saved-status filtering preserves the board and makes no AI calls at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createJobMatcher, deriveJobStatus, phoneKey, verifyJobEvidence, type JobPeer, type JobMessage } from "./processor-job-status.ts";
-import { processorReadiness, ProcessorReviewError, PROCESSOR_ACTIVE } from "./processor-review.ts";
-import { parseTechnicianQuoLink } from "./technician-quo-link.ts";
+import { processorReadiness, ProcessorReviewError, PROCESSOR_TERMINAL } from "./processor-review.ts";
+import { readProcessorChats, readProcessorRows, type ProcessorChatSetup } from "./processor-chat.ts";
 import { readProcessorHistory } from "./processor-history.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS", "Cache-Control": "no-store" };
@@ -12,17 +12,8 @@ async function hash(value: unknown) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
   return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
 }
-/** No silent PostgREST truncation. Limits are reported as unavailable, never non-response. */
-async function readPages<T>(query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>, max = 10000): Promise<T[]> {
-  const rows: T[] = [];
-  for (let from = 0; from <= max; from += 500) {
-    const { data, error } = await query(from, from + 499);
-    if (error || !data) throw new ProcessorReviewError("Conversation data could not be read. Retry after syncing Quo.", "history_read", true);
-    rows.push(...data);
-    if (rows.length > max) throw new ProcessorReviewError("History exceeds the safe review limit. No full-history assessment was made; review the job manually.", "history_limit", false, 422);
-    if (data.length < 500) return rows;
-  }
-  throw new Error("History is incomplete; review the job manually.");
+function isQueueJob(value: unknown): value is Record<string, unknown> & { id: string; tech_number: string | null } {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && "id" in value && typeof value.id === "string" && "tech_number" in value && (typeof value.tech_number === "string" || value.tech_number === null));
 }
 
 export function createProcessorBoardHandler(deps: {
@@ -47,7 +38,19 @@ export function createProcessorBoardHandler(deps: {
     if (body.action === "list") {
       if ((body.offset !== undefined && (!Number.isInteger(body.offset) || body.offset < 0)) || (body.search !== undefined && (typeof body.search !== "string" || body.search.length > 100)) || (body.history !== undefined && typeof body.history !== "boolean")) return json({ error: "Invalid filters." }, 400);
       const { data, error } = await caller.rpc("list_processor_jobs", { p_offset: body.offset ?? 0, p_search: body.search ?? "", p_history: body.history ?? false, p_timezone: timezone });
-      return error ? json({ error: "Processor Board database setup is unavailable. Ask Admin to apply the reviewed migration." }, 503) : json(data);
+      if (error || !data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.rows) || !data.rows.every(isQueueJob)) return json({ error: "Processor Board database setup is unavailable. Ask Admin to check the reviewed migration." }, 503);
+      const rows = data.rows;
+      const phones = rows.flatMap((row) => { const phone = phoneKey(row.tech_number); return phone ? [phone] : []; });
+      const monitoring = { ai_configured: Boolean(deps.env("OPENAI_API_KEY")), current_history_configured: Boolean(deps.env("QUO_API_KEY")) };
+      try {
+        const chats = await readProcessorChats(caller, phones, monitoring.current_history_configured);
+        return json({ ...data, monitoring, rows: rows.map((row) => ({ ...row, chat_setup: chats.get(phoneKey(row.tech_number) ?? "")?.setup ?? null })) });
+      } catch (error) {
+        const message = error instanceof ProcessorReviewError ? error.message : "Technician/chat setup is unavailable. Retry after reconnecting.";
+        const setup: ProcessorChatSetup = { state: "unavailable", code: "chat_lookup", message, fingerprint: "lookup-unavailable", conversation_id: null, last_message_at: null, source: null };
+        // List/count success is independent of chat lookup availability. Never hide saved jobs.
+        return json({ ...data, monitoring, rows: rows.map((row) => ({ ...row, chat_setup: setup })) });
+      }
     }
     if (body.action !== "assess" || typeof body.leadId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.leadId)) return json({ error: "A saved job ID is required." }, 400);
     // Saved lead is read with caller JWT, never a browser snapshot or unrestricted service lookup.
@@ -57,11 +60,18 @@ export function createProcessorBoardHandler(deps: {
     if (visibilityError) return json({ error: "Processor Board migration is not installed." }, 503);
     if (!visible) return json({ error: "Job is not available in your status scope." }, 404);
     const readiness = processorReadiness(job);
-    if (readiness) return json({ error: readiness, code: "job_setup", retryable: false }, PROCESSOR_ACTIVE.includes(job.status) ? 422 : 409);
+    if (readiness) return json({ error: readiness, code: "job_setup", retryable: false }, PROCESSOR_TERMINAL.includes(job.status) ? 409 : 422);
     const key = deps.env("SB_SERVICE_ROLE_KEY") ?? deps.env("SUPABASE_SERVICE_ROLE_KEY");
     if (!key) return json({ error: "Processor Board server setup is unavailable." }, 503);
     const service = deps.createClient(deps.env("SUPABASE_URL") ?? "", key, { auth: { persistSession: false } });
     const token = crypto.randomUUID();
+    let chat;
+    try {
+      chat = (await readProcessorChats(caller, [phoneKey(job.tech_number)!], Boolean(deps.env("QUO_API_KEY")))).get(phoneKey(job.tech_number)!);
+    } catch (error) {
+      return json({ error: error instanceof ProcessorReviewError ? error.message : "Technician chat lookup is unavailable.", code: "chat_lookup", retryable: true }, 503);
+    }
+    if (!chat?.link || chat.setup.state !== "ready") return json({ error: chat?.setup.message ?? "Verify the technician's saved chat.", code: chat?.setup.code ?? "chat_setup", retryable: false }, 422);
     const { data: claimed, error: claimError } = await service.rpc("claim_processor_job_refresh", { p_lead_id: job.id, p_token: token });
     if (claimError) return json({ error: "Processor Board migration is not installed." }, 503);
     if (!claimed) return json({ error: "This job is already refreshing. Retry shortly." }, 429);
@@ -69,27 +79,17 @@ export function createProcessorBoardHandler(deps: {
       const now = deps.now?.() ?? new Date();
       const phone = phoneKey(job.tech_number);
       if (!phone) return json({ error: "Save a valid technician number on this job before checking its conversation." }, 422);
-      const peers = (await readPages<JobPeer>((from, to) => caller.from("leads").select("id,job_id,customer_name,customer_phone,address,tech_number").ilike("tech_number", `%${phone.slice(-4)}%`).order("id").range(from, to)))
+      const peers = (await readProcessorRows<JobPeer>((from, to) => caller.from("leads").select("id,job_id,customer_name,customer_phone,address,tech_number").ilike("tech_number", `%${phone.slice(-4)}%`).order("id").range(from, to)))
         .filter((p) => phoneKey(p.tech_number) === phone);
-      const technicians = (await readPages<{ phone_number: string | null; chat_link: string | null }>((from, to) => caller.from("technicians").select("phone_number,chat_link").ilike("phone_number", `%${phone.slice(-4)}%`).order("id").range(from, to)))
-        .filter((t) => phoneKey(t.phone_number) === phone);
-      const links = [...new Map(technicians.flatMap((t) => {
-        const link = parseTechnicianQuoLink(t.chat_link);
-        return link ? [[`${link.phoneNumberId}:${link.conversationId}`, { ...link, chatLink: t.chat_link! }] as const] : [];
-      })).values()];
-      if (links.length !== 1) return json({ error: "A unique saved technician Quo chat is required. Verify the technician directory link; no conversation was guessed.", code: "chat_setup", retryable: false }, 422);
-      const { data: conversations, error: conversationError } = await caller.from("quo_conversations").select("id,customer_number,last_message_time").eq("quo_conversation_id", links[0].conversationId);
-      if (conversationError) throw new Error("Technician conversation could not be loaded.");
       const directKey = deps.env("QUO_API_KEY");
-      if ((conversations?.length ?? 0) > 1 || (conversations?.length && phoneKey(conversations[0].customer_number) !== phone) || (!conversations?.length && !directKey)) return json({ error: "The saved technician chat does not match the assigned technician number or is missing from the mirror. Sync and verify it first." }, 422);
-      const conversation = conversations?.[0];
+      const conversation = chat.mirror;
       let messages: JobMessage[];
       let source = "Quo CRM mirror";
       if (directKey) {
-        messages = await readProcessorHistory({ chatLink: links[0].chatLink, phone: job.tech_number, since: job.created_at, until: now.toISOString(), apiKey: directKey, apiBase: deps.env("QUO_API_BASE_URL"), fetcher: deps.fetcher });
+        messages = await readProcessorHistory({ chatLink: chat.link.chatLink, phone: job.tech_number, since: job.created_at, until: now.toISOString(), apiKey: directKey, apiBase: deps.env("QUO_API_BASE_URL"), fetcher: deps.fetcher });
         source = "Quo current history";
       } else {
-        messages = await readPages<JobMessage>((from, to) => caller.from("quo_messages")
+        messages = await readProcessorRows<JobMessage>((from, to) => caller.from("quo_messages")
           .select("id,conversation_id,sender,text,message_time,status").eq("conversation_id", conversation!.id)
           .gte("message_time", job.created_at).lte("message_time", now.toISOString())
           .in("sender", ["customer", "agent"]).order("message_time").order("id").range(from, to));
@@ -98,13 +98,17 @@ export function createProcessorBoardHandler(deps: {
       // Do not claim mirror completeness/freshness if latest metadata is ahead of the available messages.
       if (!directKey && conversation?.last_message_time && Date.parse(conversation.last_message_time) > Date.parse(messages.at(-1)?.message_time ?? "")) return json({ error: "The conversation mirror is behind its latest activity. Sync Quo before reviewing non-response." }, 422);
       const peerIdentities = peers.map((p) => ({ id: p.id, job_id: p.job_id, customer_name: p.customer_name, customer_phone: p.customer_phone, address: p.address }));
-      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, policy: 2 });
+      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, chat: chat.setup.fingerprint, policy: 3 });
       const { data: cache, error: cacheError } = await service.from("processor_job_assessments").select("input_hash,result,checked_at").eq("lead_id", job.id).maybeSingle();
       if (cacheError) throw new Error("Saved assessment could not be read.");
       if (cache?.input_hash === inputHash && now.getTime() - Date.parse(cache.checked_at) < 60_000) return json({ result: cache.result, cached: true });
       const matches = createJobMatcher(job, peers);
       const relevant = messages.filter((m) => m.text && matches(m.text));
-      let evidence = cache?.input_hash === inputHash ? cache.result.evidence : null;
+      // Another job/generic reply changes silence timing, not this job's AI facts.
+      // Re-read all current history, but reuse extraction when target text is identical.
+      const evidenceHash = await hash({ job, peers: peerIdentities, relevant, timezone, source, link: chat.link, policy: 3 });
+      let evidence = cache?.result?.evidence_hash === evidenceHash
+        ? verifyJobEvidence(cache.result.evidence, job, peers, messages, timezone, now, matches) : null;
       if (!evidence) {
         // All mirrored history is examined for identity and response timing; only job-anchored text leaves the server.
         if (relevant.length && !deps.env("OPENAI_API_KEY")) return json({ error: "AI is not configured. Ask Admin to check OPENAI_API_KEY in Edge Function secrets.", code: "ai_setup", retryable: false }, 503);
@@ -132,7 +136,7 @@ export function createProcessorBoardHandler(deps: {
       let status = deriveJobStatus(job, evidence, messages, true, now, timezone);
       // A complete mirror read is not proof of complete Quo ingestion. Never accuse non-response from it.
       if (status === "send_dose" && !directKey) status = "needs_review";
-      const result = { status, evidence, ai_used: relevant.length > 0, messages_reviewed: messages.length, matched_messages: relevant.length,
+      const result = { status, evidence, evidence_hash: evidenceHash, ai_used: relevant.length > 0, chat_fingerprint: chat.setup.fingerprint, chat_source: chat.setup.source, messages_reviewed: messages.length, matched_messages: relevant.length,
         source, history_complete: Boolean(directKey), timezone, checked_at: now.toISOString(),
         summary: `${directKey ? "All available Quo text-history pages were read." : "Only the available CRM mirror was read; completeness is not verified. Non-response cannot be established without QUO_API_KEY."} ${evidence.length ? "Job-specific source quotes verified. Review before taking action." : "No unambiguous technician update identifies this job. Generic replies and other jobs were excluded."}`,
         lead_updated_at: job.updated_at, mirror_conversation_id: conversation?.id ?? null, mirror_last_message_at: conversation?.last_message_time ?? null };

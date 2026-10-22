@@ -86,5 +86,7 @@ export function deriveJobStatus(job: JobIdentity, evidence: JobEvidence[], messa
       now.getTime() - Date.parse(request.message_time) >= 60 * 60_000 &&
       !messages.some((m) => m.sender === "customer" && (!m.message_time || m.message_time > request.message_time))) return "send_dose";
   if (latest?.signal === "progress" || job.status === "job_in_progress") return "job_in_progress";
+  // Other active workflows can be reviewed, but a date alone cannot override them.
+  if (job.status !== "scheduled") return "needs_review";
   return schedulePassed(job, now, timezone) ? "take_job_update" : job.scheduled_date && job.scheduled_time_start ? "scheduled" : "needs_review";
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { subscribeToNotifications, subscribeToProcessorBoard, type NotificationChange } from "./realtime";
+import { subscribeToNotifications, subscribeToProcessorActivity, subscribeToProcessorBoard, type NotificationChange } from "./realtime";
 
 const state = vi.hoisted(() => ({
   channels: [] as {
@@ -95,5 +95,27 @@ describe("mounted Processor Board transport", () => {
     const replacement = vi.fn(); releases.push(subscribeToProcessorBoard(replacement));
     retired.handlers[0].callback(insert); expect(replacement).not.toHaveBeenCalled();
     state.channels[1].handlers[0].callback(insert); expect(replacement).toHaveBeenCalledOnce();
+  });
+  it("shares a filtered saved-conversation channel and retires callbacks on page changes", () => {
+    const a = "00000000-0000-4000-8000-000000000001";
+    const b = "00000000-0000-4000-8000-000000000002";
+    const first = vi.fn(); const second = vi.fn();
+    const releaseA = subscribeToProcessorActivity([b, a, a], first);
+    const releaseB = subscribeToProcessorActivity([a, b], second);
+    releases.push(releaseA, releaseB);
+    expect(state.channels).toHaveLength(1);
+    expect(state.channels[0].handlers[0].filter).toBe(`id=in.(${a},${b})`);
+    state.channels[0].handlers[0].callback(insert);
+    expect(first).toHaveBeenCalledOnce(); expect(second).toHaveBeenCalledOnce();
+    releaseA(); expect(state.remove).not.toHaveBeenCalled();
+    releaseB(); expect(state.remove).toHaveBeenCalledOnce();
+    const replacement = vi.fn(); releases.push(subscribeToProcessorActivity([a], replacement));
+    state.channels[0].handlers[0].callback(insert);
+    expect(replacement).not.toHaveBeenCalled();
+    state.channels[1].handlers[0].callback(insert); expect(replacement).toHaveBeenCalledOnce();
+  });
+  it("does not open an unfiltered chat subscription for an empty/invalid page", () => {
+    const release = subscribeToProcessorActivity(["not-a-saved-uuid"], vi.fn()); releases.push(release);
+    expect(state.channels).toHaveLength(0);
   });
 });
