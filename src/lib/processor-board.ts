@@ -56,7 +56,19 @@ async function call(body: object, signal?: AbortSignal): Promise<unknown> {
   return data;
 }
 export const fetchProcessorJobs = async (filters: ProcessorFilters, signal?: AbortSignal) => processorQueueSchema.parse(await call({ action: "list", ...filters }, signal));
-export const assessProcessorJob = async (leadId: string, timezone: string) => z.object({ result: processorAssessmentSchema, cached: z.boolean() }).parse(await call({ action: "assess", leadId, timezone }));
+export const PROCESSOR_REVIEW_TIMEOUT_MS = 120_000;
+export const assessProcessorJob = async (leadId: string, timezone: string) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROCESSOR_REVIEW_TIMEOUT_MS);
+  try {
+    return z.object({ result: processorAssessmentSchema, cached: z.boolean() }).parse(await call({ action: "assess", leadId, timezone }, controller.signal));
+  } catch (error) {
+    if (controller.signal.aborted) throw new ProcessorReviewFailure("The check timed out. The server may still finish it; refresh the board before retrying. No new result was confirmed.", true, "review_timeout");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 export function currentAssessment(job: ProcessorJob, timezone: string, now: Date) {
   const a = job.assessment;
   return a && (!job.chat_setup || a.chat_fingerprint === job.chat_setup.fingerprint) && a.timezone === timezone && Date.parse(a.lead_updated_at) === Date.parse(job.updated_at) && now.getTime() - Date.parse(a.checked_at) < 5 * 60_000 ? a : null;

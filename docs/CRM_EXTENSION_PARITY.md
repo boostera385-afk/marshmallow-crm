@@ -43,6 +43,19 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## Processor Board tracking controls (2026-10-22; frontend publication pending)
+
+CRM remembers explicit timezone confirmation and tracking pause for the same caller,
+role and sign-in in the same browser tab. No guessed timezone/default confirmation.
+Manual checks can queue behind the active automatic job, pause the automatic batch,
+and explicitly re-read even fresh history without duplicate concurrent requests.
+Hidden/scope/stop/unmount transitions retire queued work. Completed checks no longer
+wait for a recovery list read to unlock controls; a 120-second client deadline
+reports uncertain completion honestly. Existing authenticated `processor-board`
+v6, leases, scope, permissions, schedules and advisory-only behavior are unchanged.
+No native Donut board/tracking counterpart, Edge source, schema, migration or ZIP
+change. Details and actual tests are in the newest rollout section.
+
 ## Processor Board internal CRM chat (2026-10-22; frontend publication pending)
 
 The board now reuses CRM Tech Quick Chat in pinned read-only mode instead of

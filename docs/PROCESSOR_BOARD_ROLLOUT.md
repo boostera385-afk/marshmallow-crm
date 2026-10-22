@@ -1,5 +1,55 @@
 # Processor Board
 
+## Tracking startup and manual controls (2026-10-22; CRM publication pending)
+
+The next screenshot exposed three UI defects: timezone confirmation was lost on
+every board mount, an automatic batch disabled the manual page/job controls, and
+explicit page refresh silently skipped all fresh evidence. A recovery list read
+was also awaited while keeping completed AI controls locked, and an assessment
+request had no client deadline.
+
+- `src/lib/processor-tracking.ts` remembers only explicit timezone confirmation,
+  selected timezone and tracking pause in same-tab `sessionStorage`, scoped by
+  caller, role and sign-in timestamp. Another caller/login/role starts unconfirmed;
+  changing timezone clears confirmation. Invalid or blocked storage falls back
+  safely to usable in-memory controls. No timezone is inferred from browser/state.
+- The top AI action now explains/focuses confirmation when needed rather than
+  appearing inert. Once confirmed, reopening the board resumes tracking without
+  another checkbox click (unless deliberately paused). Drawer checks explain why
+  first-time confirmation is required.
+- During automatic work, manual page/job/failed-only actions queue after the active
+  job and pause automatic tracking. There is still one review in flight. Jobs just
+  attempted are not duplicated; removed/reassigned jobs are retired from the queue.
+  Stop, unmount and hidden-tab transitions prevent queued work from starting.
+- Explicit manual refresh re-reads history even for fresh results. Automatic work
+  still reuses five-minute freshness/backoff; server extraction hashes/leases remain
+  authoritative. Recovery invalidation no longer holds the UI batch open. Each
+  assessment has a cleaned-up 120-second abort deadline and an honest timeout error:
+  the server may still finish, so refresh before retrying. No fake successful result.
+
+Five permission layers are unchanged: fixed Admin/Processor UI/helper access,
+authenticated server checks, existing caller/table RLS and generated types/enums.
+No migration, Edge source/deployment, grants, status, schedule, approval or outbound
+message changed. This is CRM-only; Donut has no native job-board tracking controls.
+No extension release is required. CRM Publish remains separate from committing.
+
+Efficiency review: existing query keys/cache, shared realtime, serial processing,
+loaded-page limit and background-free design remain. Only tiny non-customer UI
+preferences enter session storage; no new payload, database query/index/RLS, worker,
+storage upload or channel. The one in-flight request deadline is cleared on settle.
+Windows/Vitest synthetic two-job auto-to-manual takeover makes two total sequential
+assessment calls, not three (no repeat of the active job). Fresh explicit page
+refresh changes from zero calls to one per eligible job intentionally, while
+automatic fresh re-render remains zero additional calls. This fixes the requested
+action, not a measured billing reduction; live usage/accuracy are unverified.
+
+Pre-commit checks: **75/75 focused tests across four files**, **6/6 targeted mocked
+desktop/mobile browser cases**, typecheck and full lint (0 errors/28 existing
+warnings). Test contracts now assert explicit manual rechecks, unchanged automatic
+freshness, confirmation recovery, caller isolation, queued takeover/cancellation,
+backend failures and timeout cleanup. Repository-wide post-commit gates are
+reported separately; no assertion, timeout or configuration was weakened.
+
 ## Internal CRM technician chat (2026-10-22; Edge v6 installed, frontend publication pending)
 
 The board's external Quo link was incorrect for operators who read the webhook

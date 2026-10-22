@@ -108,7 +108,9 @@ for (const width of [1440, 390]) test(`automatic tracking requires timezone conf
   await expect(page.getByLabel("Automatic AI tracking")).toBeChecked();
   await expect(page.getByLabel("Confirm schedule timezone")).not.toBeChecked();
   await expect(page.getByLabel("Automatic tracking state")).toContainText("Tracking not started");
-  await expect(page.getByRole("button", { name: "Refresh AI · this page" })).toBeDisabled();
+  await page.getByRole("button", { name: "Refresh AI · this page" }).click();
+  await expect(page.getByRole("status")).toContainText("Confirm the saved schedules' timezone below once");
+  await expect(page.getByLabel("Confirm schedule timezone")).toBeFocused();
   expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
   await page.getByLabel("Confirm schedule timezone").check();
   await expect(page.getByRole("status")).toContainText("Automatic check: 1 reviewed");
@@ -116,8 +118,12 @@ for (const width of [1440, 390]) test(`automatic tracking requires timezone conf
   await expect(page.getByText("AI evidence · technician completion verified").filter({ visible: true })).toBeVisible();
   await expect(page.getByText("Saved: Scheduled", { exact: false }).filter({ visible: true })).toBeVisible();
   await page.getByRole("button", { name: "Refresh AI · this page" }).click();
-  await expect(page.getByRole("status")).toContainText("0 reviewed · 0 failed · 1 skipped");
-  expect(actions.filter((action) => action.action === "assess")).toHaveLength(1);
+  await expect(page.getByRole("status")).toContainText("1 reviewed · 0 failed · 0 skipped");
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(2);
+  await page.reload();
+  await expect(page.getByLabel("Confirm schedule timezone")).toBeChecked();
+  await expect(page.getByLabel("Automatic tracking state")).toContainText("Tracking enabled");
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(2);
   await page.screenshot({ path: test.info().outputPath(`processor-auto-${width}.png`), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
@@ -126,9 +132,11 @@ for (const width of [1440, 390]) test(`zero-verified-outcome checks stay explici
   const actions = await isolatedBoard(page, "processor", false, { auto: true, noEvidence: true });
   await page.goto("/processor-board");
   await expect(page.getByLabel("Automatic tracking state")).toContainText("Tracking not started");
-  await expect(page.getByRole("button", { name: "Refresh AI · this page" })).toBeDisabled();
+  await page.getByRole("button", { name: "Refresh AI · this page" }).click();
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
   await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
   await expect(page.getByRole("button", { name: "Check this job" })).toBeDisabled();
+  await expect(page.getByRole("dialog")).toContainText("Close this review and confirm the schedule timezone");
   await page.keyboard.press("Escape");
   await page.getByLabel("Confirm schedule timezone").check();
   await expect(page.getByRole("status")).toContainText("1 reviewed · 0 failed");
@@ -238,7 +246,7 @@ for (const width of [1440, 390]) {
     expect(actions.filter((action) => action.action === "assess")).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   });
-  test(`failed-only retry recovers and fresh page reviews avoid repeat requests at ${width}px`, async ({ page }) => {
+  test(`failed-only retry recovers and explicit page reviews recheck fresh history at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     const actions = await isolatedBoard(page, "processor", false, { retryOnce: true }); await page.goto("/processor-board");
     await page.getByLabel("Confirm schedule timezone").check();
@@ -249,8 +257,8 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole("status")).toContainText("1 reviewed · 0 failed");
     await expect(page.getByRole("button", { name: /Retry failed/ })).toHaveCount(0);
     await page.getByRole("button", { name: "Refresh AI · this page" }).click();
-    await expect(page.getByRole("status")).toContainText("0 reviewed · 0 failed · 1 skipped");
-    expect(actions.filter((action) => action.action === "assess")).toHaveLength(2);
+    await expect(page.getByRole("status")).toContainText("1 reviewed · 0 failed · 0 skipped");
+    expect(actions.filter((action) => action.action === "assess")).toHaveLength(3);
     await page.screenshot({ path: test.info().outputPath(`processor-recovery-${width}.png`), fullPage: true });
   });
 }

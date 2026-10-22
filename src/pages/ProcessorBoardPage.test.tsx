@@ -18,13 +18,22 @@ function mount() {
   return view;
 }
 beforeEach(() => {
+  sessionStorage.clear();
   vi.clearAllMocks(); state.role = "processor"; state.canTechChat = true;
   state.chat.mockResolvedValue({ phoneNumber: { id: "PN12345678", number: "+17475887812", formattedNumber: "+17475887812", name: "Technician Communications" }, conversation: null, messages: [{ id: "stored", text: "Synthetic stored technician update", direction: "incoming", createdAt: "2026-10-22T15:00:00Z" }] });
   state.assess.mockResolvedValue({ result: reviewResult() });
   state.hook.mockReturnValue({ data: { rows: [job, { ...job, id: "00000000-0000-4000-8000-000000000002", job_id: "JOB-1002", customer_name: "Jane Example", status: "paid" }], total: 26, observed_at: "2026-10-15T18:00:00Z" }, isLoading: false, isFetching: false, isError: false, refetch: state.refetch });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("Processor Board interactions", () => {
+  it("unlocks AI controls after a completed review even while recovery list invalidation is pending", async () => {
+    vi.spyOn(QueryClient.prototype, "invalidateQueries").mockImplementationOnce(() => new Promise(() => {}));
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 reviewed"));
+    expect(screen.getByRole("button", { name: "Refresh AI · this page" })).toBeEnabled();
+    expect(state.assess).toHaveBeenCalledTimes(1);
+  });
   it("opens the verified technician conversation inside CRM without AI, external navigation or a Quo login", async () => {
     const conversationId = "00000000-0000-4000-8000-000000000123";
     state.hook.mockReturnValue({ data: { rows: [{ ...job, chat_setup: { state: "ready", conversation_id: conversationId, source: "verified_mirror", fingerprint: "saved-chat" } }], total: 1 } });
@@ -276,15 +285,15 @@ describe("Processor Board interactions", () => {
     expect(screen.queryByRole("button", { name: /Retry failed/ })).not.toBeInTheDocument();
     expect(screen.getAllByText("Verify saved technician chat").length).toBeGreaterThan(0);
   });
-  it("skips fresh evidence during page refresh while permitting an explicit single-job recheck", async () => {
+  it("explicitly rechecks fresh history from both the page button and single-job button", async () => {
     const reviewed = { ...job, checked_at: new Date().toISOString(), assessment: { status: "payment_pending", evidence: [], timezone: "America/New_York", checked_at: new Date().toISOString(), lead_updated_at: job.updated_at } };
     state.hook.mockReturnValue({ data: { rows: [reviewed], total: 1 }, refetch: state.refetch }); mount();
     fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("0 reviewed · 0 failed · 1 skipped"));
-    expect(state.assess).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 reviewed · 0 failed · 0 skipped"));
+    expect(state.assess).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getAllByLabelText("Review JOB-1001")[0]);
     fireEvent.click(screen.getByRole("button", { name: "Check this job" }));
-    await waitFor(() => expect(state.assess).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(state.assess).toHaveBeenCalledTimes(2));
   });
   it("stops after the in-flight job and does not start remaining requests", async () => {
     let finish!: () => void;

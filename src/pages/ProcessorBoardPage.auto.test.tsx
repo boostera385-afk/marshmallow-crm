@@ -24,17 +24,55 @@ function mount() {
   return { ...view, update: () => view.rerender(tree()) };
 }
 beforeEach(() => {
+  sessionStorage.clear();
   vi.clearAllMocks(); state.role = "processor"; state.user = "actor"; state.rows = [structuredClone(job)]; state.configured = true;
   state.assess.mockImplementation(async (id: string) => reviewed(id));
   state.hook.mockImplementation(() => ({ data: { rows: state.rows, total: state.rows.length, observed_at: new Date().toISOString(), monitoring: { ai_configured: state.configured, current_history_configured: true } }, isFetching: false, isError: false }));
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("automatic tracking while the board is open", () => {
+  it("remembers explicit confirmation on reopening without sharing it with another caller", async () => {
+    const first = mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 reviewed"));
+    first.unmount();
+    state.rows = [structuredClone(job)];
+    const second = mount();
+    expect(screen.getByLabelText("Confirm schedule timezone")).toBeChecked();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 reviewed"));
+    expect(state.assess).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByLabelText("Automatic AI tracking"));
+    second.unmount();
+    const paused = mount();
+    expect(screen.getByLabelText("Automatic AI tracking")).not.toBeChecked();
+    paused.unmount();
+    state.user = "another-user";
+    mount();
+    expect(screen.getByLabelText("Confirm schedule timezone")).not.toBeChecked();
+    expect(state.assess).toHaveBeenCalledTimes(2);
+  });
+  it("queues a manual check behind the automatic job without duplicate or concurrent requests", async () => {
+    state.rows.push({ ...structuredClone(job), id: "second", job_id: "JOB-AUTO-2" });
+    let finish!: () => void;
+    state.assess.mockImplementationOnce((id: string) => new Promise((resolve) => { finish = () => resolve(reviewed(id)); }));
+    mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    expect(state.assess).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI next · this page" }));
+    expect(screen.getByRole("button", { name: "Manual check queued" })).toBeDisabled();
+    expect(screen.getByLabelText("Automatic AI tracking")).not.toBeChecked();
+    expect(state.assess).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh AI · this page" })).toBeEnabled());
+    expect(state.assess.mock.calls.map(([id]) => id)).toEqual([job.id, "second"]);
+  });
   it("requires explicit schedule-timezone confirmation, checks once and reuses fresh evidence", async () => {
     const view = mount();
     expect(screen.getByLabelText("Automatic AI tracking")).toBeChecked();
     expect(screen.getByLabelText("Automatic tracking state")).toHaveTextContent("Tracking not started");
-    expect(screen.getByRole("button", { name: "Refresh AI · this page" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Confirm the saved schedules' timezone below once");
+    expect(screen.getByLabelText("Confirm schedule timezone")).toHaveFocus();
     expect(state.assess).not.toHaveBeenCalled();
     fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Automatic check: 1 reviewed"));
@@ -44,13 +82,35 @@ describe("automatic tracking while the board is open", () => {
     expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 fresh successful checks · 0 with a technician reply tied to the job");
     view.update(); expect(state.assess).toHaveBeenCalledTimes(1);
   });
+  it.each(["hidden", "scope", "stop"])("retires a queued manual batch after %s without starting another request", async (reason) => {
+    state.rows.push({ ...structuredClone(job), id: "second", job_id: "JOB-AUTO-2" });
+    let finish!: () => void;
+    state.assess.mockImplementationOnce((id: string) => new Promise((resolve) => { finish = () => resolve(reviewed(id)); }));
+    const view = mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI next · this page" }));
+    if (reason === "hidden") {
+      const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      fireEvent(document, new Event("visibilitychange"));
+      visibility.mockReturnValue("visible");
+      fireEvent(document, new Event("visibilitychange"));
+    } else if (reason === "scope") {
+      state.rows = [state.rows[0]];
+      view.update();
+    } else fireEvent.click(screen.getByRole("button", { name: "Stop after current job" }));
+    await act(async () => finish());
+    expect(state.assess).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
   it("gates manual checks and schedule-derived actions until timezone confirmation even when automatic tracking is off", async () => {
     mount(); fireEvent.click(screen.getByLabelText("Automatic AI tracking"));
     expect(screen.getByLabelText("Automatic tracking state")).toHaveTextContent("Tracking paused");
-    expect(screen.getByRole("button", { name: "Refresh AI · this page" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
+    expect(state.assess).not.toHaveBeenCalled();
     expect(screen.getAllByText("Needs Review", { exact: true })).toHaveLength(2);
     fireEvent.click(screen.getAllByRole("button", { name: /Review/ })[0]);
     expect(screen.getByRole("button", { name: "Check this job" })).toBeDisabled();
+    expect(screen.getByText(/Close this review and confirm the schedule timezone/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
     fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
@@ -58,7 +118,8 @@ describe("automatic tracking while the board is open", () => {
     expect(state.assess).toHaveBeenCalledTimes(1);
     fireEvent.change(screen.getByLabelText("Schedule timezone"), { target: { value: "America/Chicago" } });
     expect(screen.getByLabelText("Confirm schedule timezone")).not.toBeChecked();
-    expect(screen.getByRole("button", { name: "Refresh AI · this page" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
+    expect(state.assess).toHaveBeenCalledTimes(1);
   });
   it("exposes unattributed replies and opens only the verified chat for manual checking", async () => {
     state.rows = [{ ...job, chat_setup: { ...job.chat_setup!, chat_url: "https://my.quo.com/inbox/PN12345678/c/CN12345678" } }];
