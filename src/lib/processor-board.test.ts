@@ -13,6 +13,16 @@ describe("Processor Board contract", () => {
     expect(processorStatus(job, "America/New_York", now)).toBe("take_job_update");
     expect(currentAssessment(job, "America/New_York", now)).toBeNull();
   });
+  it.each(["payment_pending", "partial_paid", "job_in_progress"])("does not regress saved %s from an older rule-only check", (status) => {
+    const assessment: NonNullable<ProcessorJob["assessment"]> = { status: "take_job_update", evidence: [], messages_reviewed: 1, matched_messages: 0, source: "Quo current history", history_complete: true, ai_used: false, timezone: "America/New_York", checked_at: now.toISOString(), lead_updated_at: job.updated_at, summary: "No job update" };
+    expect(processorStatus({ ...job, status, assessment }, "America/New_York", now)).toBe(status === "job_in_progress" ? status : "payment_pending");
+  });
+  it("keeps done/history and approval workflows read-only", () => {
+    for (const status of ["job_done", "paid", "cancelled", "needs_reschedule", "payment_requested"]) {
+      expect(processorStatus({ ...job, status }, "America/New_York", now)).toBe("needs_review");
+      expect(processorReadiness({ ...job, status })).toContain("closed or in another approval workflow");
+    }
+  });
   it("retires old, changed-job and wrong-timezone AI evidence", () => {
     const reviewed = { ...job, assessment: { status: "payment_pending" as const, evidence: [], messages_reviewed: 4, matched_messages: 1, source: "mirror", history_complete: false, timezone: "America/New_York", checked_at: now.toISOString(), summary: "Reviewed", lead_updated_at: job.updated_at } };
     expect(processorStatus(reviewed, "America/New_York", now)).toBe("payment_pending");

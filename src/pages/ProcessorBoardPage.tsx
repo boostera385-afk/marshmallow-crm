@@ -40,7 +40,8 @@ function CheckTime({ value, now, timezone, previous = false }: { value: string |
   if (!Number.isFinite(timestamp)) return <span className="block text-[10px] text-muted-foreground">Not checked yet</span>;
   const minutes = Math.max(0, Math.floor((now.getTime() - timestamp) / 60_000));
   const relative = minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
-  return <time dateTime={value ?? undefined} title={new Date(timestamp).toLocaleString([], { timeZone: timezone, timeZoneName: "short" })} className="block text-[10px] text-muted-foreground">{previous ? "Previous check" : "Checked"} {relative}</time>;
+  const exact = new Date(timestamp).toLocaleString([], { timeZone: timezone, year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+  return <div className="text-[10px] text-muted-foreground"><time dateTime={value ?? undefined} title={exact} className="block">{previous ? "Previous check" : "Checked"} {relative}</time><span className="block" aria-label="Last checked date and time">{exact}</span></div>;
 }
 export default function ProcessorBoardPage() {
   const { user, role } = useAuth();
@@ -53,6 +54,7 @@ function ProcessorBoard() {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ offset: 0, search: "", history: false, timezone: "America/New_York" });
   const [statusFilter, setStatusFilter] = useState<PageFilter>("all");
+  const [savedStatusFilter, setSavedStatusFilter] = useState("all");
   const [rowLimit, setRowLimit] = useState<number>(5);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, ReviewIssue>>({});
@@ -80,7 +82,8 @@ function ProcessorBoard() {
     return error?.revision === job.updated_at && error.timezone === filters.timezone ? [[job.id, error] as const] : [];
   })), [rows, errors, filters.timezone]);
   const displayStatus = (job: ProcessorJob): ProcessorStatus => processorReadiness(job) ? "needs_review" : issues.has(job.id) ? "unavailable" : processorStatus(job, filters.timezone, now);
-  const visible = rows.filter((job) => statusFilter === "all" || (statusFilter === "setup" ? !!processorReadiness(job) : displayStatus(job) === statusFilter));
+  const savedStatuses = [...new Set([...rows.map((job) => job.status), ...(savedStatusFilter === "all" ? [] : [savedStatusFilter])])].sort();
+  const visible = rows.filter((job) => (savedStatusFilter === "all" || job.status === savedStatusFilter) && (statusFilter === "all" || (statusFilter === "setup" ? !!processorReadiness(job) : displayStatus(job) === statusFilter)));
   const counts = useMemo(() => {
     const result: Partial<Record<ProcessorStatus, number>> = {};
     for (const job of rows) { const s = processorReadiness(job) ? "needs_review" : issues.has(job.id) ? "unavailable" : processorStatus(job, filters.timezone, now); result[s] = (result[s] ?? 0) + 1; }
@@ -89,7 +92,13 @@ function ProcessorBoard() {
   const setupCount = rows.filter((job) => !!processorReadiness(job)).length;
   const retryableJobs = rows.filter((job) => !processorReadiness(job) && issues.get(job.id)?.retryable);
   const latestCheck = rows.reduce<string | null>((latest, job) => job.checked_at && Number.isFinite(Date.parse(job.checked_at)) && (!latest || Date.parse(job.checked_at) > Date.parse(latest)) ? job.checked_at : latest, null);
-  const reviewNote = (job: ProcessorJob) => processorReadiness(job) || issues.get(job.id)?.message || (currentAssessment(job, filters.timezone, now) ? "Evidence checked · review source quotes" : job.checked_at ? "Review stale · refresh AI" : "Saved record / schedule rule · not AI checked");
+  const reviewNote = (job: ProcessorJob) => {
+    const assessment = currentAssessment(job, filters.timezone, now);
+    return processorReadiness(job) || issues.get(job.id)?.message || (assessment
+      ? assessment.ai_used === true ? `AI reviewed · ${assessment.evidence.length ? "job-specific evidence verified" : "no verified job update"}`
+        : assessment.ai_used === false ? "Schedule / saved-status rule · no AI used" : "Conversation checked · AI usage not recorded"
+      : job.checked_at ? "Review stale · refresh AI" : "Saved record / schedule rule · not AI checked");
+  };
   const jobStatus = (job: ProcessorJob) => <div className="space-y-1.5">
     <CheckTime value={job.checked_at} now={now} timezone={filters.timezone} previous={!!processorReadiness(job) || issues.has(job.id) || !currentAssessment(job, filters.timezone, now)} />
     <StatusPill status={displayStatus(job)} />
@@ -124,15 +133,15 @@ function ProcessorBoard() {
   }
   const selectedAssessment = selected ? currentAssessment(selected, filters.timezone, now) : null;
   const selectedStatus = selected ? displayStatus(selected) : "needs_review";
-  const viewportResetKey = JSON.stringify([filters, statusFilter]);
+  const viewportResetKey = JSON.stringify([filters, statusFilter, savedStatusFilter]);
   return <div className="processor-board mx-auto max-w-[1600px] space-y-3">
     <motion.section variants={pageVariants} initial={reduceMotion ? false : "initial"} animate="animate" className="processor-panel glass-panel overflow-hidden rounded-[26px]" aria-label="Scheduled jobs">
       <div className="processor-titlebar flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3.5 sm:px-5">
         <div className="flex min-w-0 items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary" aria-hidden="true"><ListChecks className="h-4 w-4" /></span>
-          <div><h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Processor Board</h1><p className="mt-0.5 text-[11px] text-muted-foreground">Scheduled jobs · clear next actions</p></div>
+          <div><h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Processor Board</h1><p className="mt-0.5 text-[11px] text-muted-foreground">Assigned jobs · newest schedules first</p></div>
           <Badge variant="secondary" className="border-primary/20 bg-primary/10 tabular-nums text-primary" aria-label="Total matching jobs">{query.data?.total ?? "—"}</Badge></div>
         <div className="flex flex-wrap items-center gap-2">
-          <div aria-label="Latest AI check on this page" className="hidden items-center gap-1 text-[10px] text-muted-foreground sm:flex">Latest on page · <CheckTime value={latestCheck} now={now} timezone={filters.timezone} /></div>
+          <div aria-label="Latest job check on this page" className="hidden items-center gap-1 text-[10px] text-muted-foreground sm:flex">Latest on page · <CheckTime value={latestCheck} now={now} timezone={filters.timezone} /></div>
           <Button size="sm" variant="ghost" className="h-8 text-xs" disabled={query.isFetching || !!progress} onClick={() => void query.refetch()}><RefreshCw className={cn("mr-1.5 h-3 w-3", query.isFetching && "motion-safe:animate-spin")} />Refresh board</Button>
           <Button size="sm" variant="outline" className="processor-ai-button h-8 border-primary/30 bg-primary/10 text-xs text-primary hover:bg-primary/20 hover:text-primary" disabled={!!progress || query.isError || !visible.some((j) => !processorReadiness(j))} onClick={() => void refreshAi(visible, true)}>
             {progress ? <Loader2 className="mr-1.5 h-3 w-3 motion-safe:animate-spin" /> : <Sparkles className="mr-1.5 h-3 w-3" />}
@@ -152,7 +161,7 @@ function ProcessorBoard() {
           <select aria-label="Schedule timezone" className="block h-10 w-full rounded-xl border bg-background px-3 text-xs text-foreground" disabled={!!progress} value={filters.timezone} onChange={(e) => { setErrors({}); setFilters({ ...filters, timezone: e.target.value, offset: 0 }); }}>
             {PROCESSOR_TIMEZONES.map((zone) => <option key={zone} value={zone}>{zone.replace(/_/g, " ")}</option>)}
           </select></label>
-        <label className="flex h-10 items-center gap-2 whitespace-nowrap text-xs"><input type="checkbox" checked={filters.history} disabled={!!progress} onChange={(e) => { setSelectedId(null); setFilters({ ...filters, history: e.target.checked, offset: 0 }); }} />Include closed/history</label>
+        <label className="flex h-10 items-center gap-2 whitespace-nowrap text-xs"><input type="checkbox" checked={filters.history} disabled={!!progress} onChange={(e) => { setSelectedId(null); setSavedStatusFilter("all"); setFilters({ ...filters, history: e.target.checked, offset: 0 }); }} />Include closed/history</label>
       </div>
       <div aria-label="Action counts on this page" className="flex flex-wrap items-center gap-2 px-4 pt-3">
         <span className="text-[10px] text-muted-foreground">On this page</span>
@@ -166,6 +175,10 @@ function ProcessorBoard() {
           <select aria-label="Filter this page" className="h-9 rounded-xl border bg-background px-2 text-xs text-foreground" value={statusFilter} onChange={(e) => { const value = PAGE_FILTERS.find((filter) => filter === e.target.value); if (value) setStatusFilter(value); }}>
             {PAGE_FILTERS.map((filter) => <option key={filter} value={filter}>{filter === "all" ? `All ${rows.length} jobs` : filter === "setup" ? `Setup needed (${setupCount})` : `${PROCESSOR_STATUS_UI[filter].label} (${counts[filter] ?? 0})`}</option>)}
           </select></label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">Saved status · this page
+            <select aria-label="Saved status on this page" className="h-9 rounded-xl border bg-background px-2 text-xs text-foreground" value={savedStatusFilter} onChange={(e) => setSavedStatusFilter(e.target.value)}>
+              <option value="all">All saved statuses</option>{savedStatuses.map((status) => <option key={status} value={status}>{STATUS_LABELS[status as LeadStatus] ?? status}</option>)}
+            </select></label>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">Rows in view
             <select aria-label="Rows in view" className="h-9 rounded-xl border bg-background px-2 text-xs text-foreground" value={rowLimit} onChange={(e) => { const value = ROW_LIMITS.find((limit) => limit === Number(e.target.value)); if (value) setRowLimit(value); }}>
               {ROW_LIMITS.map((limit) => <option key={limit} value={limit}>Show {limit}</option>)}
@@ -177,10 +190,11 @@ function ProcessorBoard() {
       </div>
       <details className="px-4 py-3 text-[11px] text-muted-foreground"><summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">How checks, freshness & timezone work</summary>
         <div className="mt-2 space-y-1.5 leading-relaxed"><p>Schedule times use the timezone above, not the customer's state. AI reads the saved Quo chat (CRM mirror if direct access is unavailable). Calls need manual review.</p>
-          <p>Page refresh skips incomplete jobs and evidence checked within 5 minutes. Open a job to recheck it explicitly. Filters and counts apply to this page only.</p></div></details>
+          <p>Only jobs with a saved technician name or number appear. Assigned dated jobs stay on the active radar until paid, cancelled or job done/completed; other workflow statuses require saved-record review. Undated scheduled jobs remain visible for repair. Newest appointment date/time comes first; ties use newest job creation.</p>
+          <p>AI is used to interpret job-identified technician messages, not to authorize changes. Each row identifies AI review versus a saved-status/schedule rule. Checks run on demand, not automatically. Page refresh skips incomplete jobs and evidence checked within 5 minutes. Open a job to recheck it explicitly. Filters and counts apply to this page only.</p></div></details>
       {notice && <p role="status" className="mx-4 mt-3 rounded-lg border bg-muted/40 p-3 text-xs">{notice}</p>}
       {query.isError && <div role="alert" className="m-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm"><p>{query.error.message}</p><Button className="mt-3" variant="outline" onClick={() => void query.refetch()}>Retry loading board</Button></div>}
-      {statusFilter !== "all" && <div className="flex items-center gap-2 px-4 pt-3 text-xs">This page: {statusFilter === "setup" ? "Setup needed" : PROCESSOR_STATUS_UI[statusFilter].label}<Button variant="ghost" size="sm" onClick={() => setStatusFilter("all")}>Clear filter</Button></div>}
+      {(statusFilter !== "all" || savedStatusFilter !== "all") && <div className="flex items-center gap-2 px-4 pt-3 text-xs">This page: {statusFilter === "all" ? "All actions" : statusFilter === "setup" ? "Setup needed" : PROCESSOR_STATUS_UI[statusFilter].label}{savedStatusFilter !== "all" ? ` · ${STATUS_LABELS[savedStatusFilter as LeadStatus] ?? savedStatusFilter}` : ""}<Button variant="ghost" size="sm" onClick={() => { setStatusFilter("all"); setSavedStatusFilter("all"); }}>Clear filter</Button></div>}
       <p id="processor-scroll-help" className="px-4 py-2 text-[11px] text-muted-foreground">{visible.length} matching jobs on this page · Scroll inside the list to see more. Rows in view only changes its height; AI refresh checks all matching jobs on this page.</p>
       {query.isLoading ? <div aria-label="Loading jobs" className="space-y-3 p-5">{[1, 2, 3, 4].map((n) => <Skeleton key={n} className="h-14 w-full" />)}</div> : !query.isError && <>
         <ProcessorJobViewport rowLimit={rowLimit} resetKey={viewportResetKey} className="processor-table hidden md:block"><Table className="text-xs [&_td]:px-3 [&_td]:py-2.5"><TableHeader className="bg-muted/30"><TableRow>

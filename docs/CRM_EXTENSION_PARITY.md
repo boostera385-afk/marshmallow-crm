@@ -6,7 +6,7 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Flow | CRM | Donut | Shared authority / verification |
 | --- | --- | --- | --- |
 | Technician intelligence | Technicians → Processing Workflow; map selection up to 8 | Native Technician Intelligence panel for the captured phone, reviewed-label saving, full-workflow link for batch selection/flag approvals/chat actions | `technician-chat-assessment`: Admin/Processor only; identical AI prompt, evidence checks, counts and labels. Missing history is unavailable, not misconduct. |
-| Processor Board | `/processor-board`: scheduled-job queue with technician identity, four advisory action labels, explicit timezone, job-specific evidence and on-demand current-history checks | No native scheduled-job board/job-specific assessment action; existing technician-wide intelligence is not this flow. Donut sources and v1.7.0 artifacts unchanged | Authenticated `processor-board` function, caller-token lead/status scope, per-job leases/revision-checked advisory save and atomic audit. No lead status changes, approvals or outbound messages. Database installed and function v1 deployed through approved MCP on 2026-10-15; generated types refreshed, 18 read-only production checks passed and six-role baseline unchanged. Initial v1 source matched all six reviewed files; five live auth/runtime smoke checks passed. The subsequent reliability/CPU optimization is local and awaiting approved Edge deployment and CRM publication; signed-in/provider QA remains separate. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
+| Processor Board | `/processor-board`: assigned-job radar, newest schedules first, four advisory actions, saved-status filters, exact check date/time and explicit AI-versus-rule labels | No native scheduled-job board/job-specific assessment action; existing technician-wide intelligence is separate. Donut sources and v1.7.0 artifacts unchanged | Authenticated `processor-board` v3 ACTIVE after approved MCP deployment on 2026-10-22; JWT, caller-token lead/status scope, leases, revision-checked advisory save and atomic audit preserved. Active-radar migration installed with approval; 28 live read-only checks passed and six-role visibility unchanged. All seven deployed files match; six live auth/runtime smoke checks passed. No lead/status/approval writes or messages. CRM merge/Publish and signed-in/provider QA remain pending. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
 | Technician flags | Admin applies; Processor requests review | Opens full workflow for the same reviewed actions | Existing `request_technician_change` approval RPC and technician flag trigger; never write flags directly in Donut. |
 | Urgent lead review | Latest customer agreement, corrections and missing details | Same check; displays issues, corrections and flags; opens saved-lead review for confirmed corrections/approval | `check-urgent-lead`, urgent verification/review RPCs and database status gate. No duplicate prompt or approval bypass. |
 | Address lookup / map coordinates | Authenticated Census-only lookup and preserved units | Same function for Find Address, coverage preview and submission coordinates | `geocode-lead-address`: only Census coordinates may be cached/persisted for the free map. Google or unlabelled points are rejected by both clients. Preserve Apt/Suite/Unit/#. |
@@ -42,6 +42,30 @@ prompt, manifest or ZIP changed. With user approval, the pilot RPC migration and
 Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
+
+## Processor Board active-radar audit (2026-10-22; database/Edge installed)
+
+Existing CRM interface retained. New migration sorts newest appointments before
+pagination, excludes unassigned jobs before counts and keeps assigned dated
+unfinished statuses on radar; terminal jobs are history-only. Saved-status filters
+are page-local. Exact check date/time/timezone and explicit AI-used versus rule-only
+labels replace ambiguity without new polling/provider work. Missing target-job
+updates cannot regress saved progress/payment states. Approval workflows remain
+read-only; AI remains advisory and on demand. No NSS status/tag was found, so none
+was fabricated. See the newest `docs/PROCESSOR_BOARD_ROLLOUT.md` section for tests,
+efficiency review, diagnostics and rollback.
+
+Donut has no native board/job assessment counterpart; extension sources/release/ZIP
+unchanged. With explicit user approval, MCP installed the exact
+`20261022041621_processor_board_active_radar.sql` on `kxiqholnmhkwhdkhtopp`, recording
+`20261022044310 / processor_board_active_radar`. All 28 read-only production checks
+passed, the installed RPC body matches the file and the six-role lead visibility
+baseline is unchanged. Do not reapply or repair history. With additional explicit
+approval, MCP deployed `processor-board` **v3 ACTIVE** with JWT verification kept
+enabled. All seven source files match and six live non-mutating auth/runtime smoke
+checks passed. No secrets, ingestion settings, customer data or messages changed.
+CRM merge/Publish and signed-in/provider QA remain **separate pending release
+steps**. Existing grants, lead RLS, API signatures and generated types are unchanged.
 
 ## Processor Board reliability follow-up (2026-10-15; local only)
 

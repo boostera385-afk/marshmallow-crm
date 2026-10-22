@@ -14,7 +14,7 @@ INSERT INTO processor_readonly_checks VALUES
  ('authenticated cannot read leases',CASE WHEN NOT has_table_privilege('authenticated','public.processor_job_refresh_locks','SELECT') THEN 'PASS' ELSE 'FAIL' END);
 SET LOCAL ROLE authenticated;
 DO $$
-DECLARE r record; payload jsonb; expected bigint;
+DECLARE r record; payload jsonb; history_payload jsonb; expected bigint; expected_ids jsonb;
 BEGIN
   FOR r IN SELECT * FROM (VALUES
     ('admin','9ac11fa9-72e9-4ac8-8c6f-c1a4f413e203'),
@@ -28,9 +28,27 @@ BEGIN
     PERFORM set_config('request.jwt.claims',json_build_object('sub',r.user_id,'role','authenticated')::text,true);
     IF r.role_name IN ('admin','processor') THEN
       payload:=public.list_processor_jobs();
-      SELECT count(*) INTO expected FROM public.leads l WHERE (l.scheduled_date IS NOT NULL OR l.status='scheduled') AND l.status IN ('scheduled','job_in_progress','job_done','payment_pending','partial_paid') AND public.processor_can_view_status(l.status);
+      SELECT count(*) INTO expected FROM public.leads l
+        WHERE (nullif(btrim(l.tech_name),'') IS NOT NULL OR nullif(btrim(l.tech_number),'') IS NOT NULL)
+          AND (l.scheduled_date IS NOT NULL OR l.status='scheduled')
+          AND l.status NOT IN ('paid','cancelled','job_done','done','completed') AND public.processor_can_view_status(l.status);
       INSERT INTO processor_readonly_checks VALUES(r.role_name||' exact scoped total',CASE WHEN (payload->>'total')::bigint=expected THEN 'PASS' ELSE 'FAIL' END);
       INSERT INTO processor_readonly_checks VALUES(r.role_name||' bounded page',CASE WHEN jsonb_array_length(payload->'rows')=least(expected,25) THEN 'PASS' ELSE 'FAIL' END);
+      SELECT coalesce(jsonb_agg(p.id::text ORDER BY p.scheduled_date DESC NULLS LAST,p.scheduled_time_start DESC NULLS LAST,p.created_at DESC,p.id DESC),'[]'::jsonb) INTO expected_ids
+        FROM (SELECT l.id,l.scheduled_date,l.scheduled_time_start,l.created_at FROM public.leads l
+          WHERE (nullif(btrim(l.tech_name),'') IS NOT NULL OR nullif(btrim(l.tech_number),'') IS NOT NULL)
+            AND (l.scheduled_date IS NOT NULL OR l.status='scheduled')
+            AND l.status NOT IN ('paid','cancelled','job_done','done','completed') AND public.processor_can_view_status(l.status)
+          ORDER BY l.scheduled_date DESC NULLS LAST,l.scheduled_time_start DESC NULLS LAST,l.created_at DESC,l.id DESC LIMIT 25) p;
+      INSERT INTO processor_readonly_checks VALUES(r.role_name||' newest-first page matches scoped records',CASE WHEN expected_ids=(SELECT coalesce(jsonb_agg(e->>'id' ORDER BY ord),'[]'::jsonb) FROM jsonb_array_elements(payload->'rows') WITH ORDINALITY a(e,ord)) THEN 'PASS' ELSE 'FAIL' END);
+      INSERT INTO processor_readonly_checks VALUES(r.role_name||' active page excludes unassigned',CASE WHEN NOT EXISTS(SELECT 1 FROM jsonb_array_elements(payload->'rows') a(e) WHERE nullif(btrim(e->>'tech_name'),'') IS NULL AND nullif(btrim(e->>'tech_number'),'') IS NULL) THEN 'PASS' ELSE 'FAIL' END);
+      INSERT INTO processor_readonly_checks VALUES(r.role_name||' active page excludes terminal jobs',CASE WHEN NOT EXISTS(SELECT 1 FROM jsonb_array_elements(payload->'rows') a(e) WHERE e->>'status' IN ('paid','cancelled','job_done','done','completed')) THEN 'PASS' ELSE 'FAIL' END);
+      history_payload:=public.list_processor_jobs(0,'',true);
+      SELECT count(*) INTO expected FROM public.leads l
+        WHERE (nullif(btrim(l.tech_name),'') IS NOT NULL OR nullif(btrim(l.tech_number),'') IS NOT NULL)
+          AND (l.scheduled_date IS NOT NULL OR l.status='scheduled') AND public.processor_can_view_status(l.status);
+      INSERT INTO processor_readonly_checks VALUES(r.role_name||' history exact scoped total',CASE WHEN (history_payload->>'total')::bigint=expected THEN 'PASS' ELSE 'FAIL' END);
+      INSERT INTO processor_readonly_checks VALUES(r.role_name||' history page excludes unassigned',CASE WHEN NOT EXISTS(SELECT 1 FROM jsonb_array_elements(history_payload->'rows') a(e) WHERE nullif(btrim(e->>'tech_name'),'') IS NULL AND nullif(btrim(e->>'tech_number'),'') IS NULL) THEN 'PASS' ELSE 'FAIL' END);
       BEGIN
         PERFORM public.list_processor_jobs(-1);
         INSERT INTO processor_readonly_checks VALUES(r.role_name||' invalid offset denied','FAIL');

@@ -98,7 +98,7 @@ export function createProcessorBoardHandler(deps: {
       // Do not claim mirror completeness/freshness if latest metadata is ahead of the available messages.
       if (!directKey && conversation?.last_message_time && Date.parse(conversation.last_message_time) > Date.parse(messages.at(-1)?.message_time ?? "")) return json({ error: "The conversation mirror is behind its latest activity. Sync Quo before reviewing non-response." }, 422);
       const peerIdentities = peers.map((p) => ({ id: p.id, job_id: p.job_id, customer_name: p.customer_name, customer_phone: p.customer_phone, address: p.address }));
-      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, policy: 1 });
+      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, policy: 2 });
       const { data: cache, error: cacheError } = await service.from("processor_job_assessments").select("input_hash,result,checked_at").eq("lead_id", job.id).maybeSingle();
       if (cacheError) throw new Error("Saved assessment could not be read.");
       if (cache?.input_hash === inputHash && now.getTime() - Date.parse(cache.checked_at) < 60_000) return json({ result: cache.result, cached: true });
@@ -132,7 +132,7 @@ export function createProcessorBoardHandler(deps: {
       let status = deriveJobStatus(job, evidence, messages, true, now, timezone);
       // A complete mirror read is not proof of complete Quo ingestion. Never accuse non-response from it.
       if (status === "send_dose" && !directKey) status = "needs_review";
-      const result = { status, evidence, messages_reviewed: messages.length, matched_messages: relevant.length,
+      const result = { status, evidence, ai_used: relevant.length > 0, messages_reviewed: messages.length, matched_messages: relevant.length,
         source, history_complete: Boolean(directKey), timezone, checked_at: now.toISOString(),
         summary: `${directKey ? "All available Quo text-history pages were read." : "Only the available CRM mirror was read; completeness is not verified. Non-response cannot be established without QUO_API_KEY."} ${evidence.length ? "Job-specific source quotes verified. Review before taking action." : "No unambiguous technician update identifies this job. Generic replies and other jobs were excluded."}`,
         lead_updated_at: job.updated_at, mirror_conversation_id: conversation?.id ?? null, mirror_last_message_at: conversation?.last_message_time ?? null };

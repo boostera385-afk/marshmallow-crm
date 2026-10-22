@@ -1,6 +1,6 @@
 import { phoneKey } from "./processor-job-status.ts";
 
-export const PROCESSOR_ACTIVE = ["scheduled", "job_in_progress", "job_done", "payment_pending", "partial_paid"];
+export const PROCESSOR_ACTIVE = ["scheduled", "job_in_progress", "payment_pending", "partial_paid"];
 /** Readiness is not authorization. Both callers still enforce their role and record scope. */
 export function processorReadiness(job: { status?: string; tech_number?: string | null; scheduled_date?: string | null; scheduled_time_start?: string | null }): string | null {
   if (!PROCESSOR_ACTIVE.includes(job.status ?? "")) return "This job is closed or in another approval workflow. Open its saved record.";
