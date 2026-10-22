@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { schedulePassed } from "../../supabase/functions/_shared/processor-job-status";
-export { processorReadiness } from "../../supabase/functions/_shared/processor-review";
+import { PROCESSOR_ACTIVE, PROCESSOR_TERMINAL, processorReadiness } from "../../supabase/functions/_shared/processor-review";
+export { processorReadiness, processorWorkflowMessage } from "../../supabase/functions/_shared/processor-review";
 
 export const PROCESSOR_STATUSES = ["take_job_update", "job_in_progress", "payment_pending", "send_dose", "needs_review", "unavailable", "scheduled"] as const;
 export type ProcessorStatus = typeof PROCESSOR_STATUSES[number];
@@ -15,10 +16,14 @@ export const PROCESSOR_STATUS_UI: Record<ProcessorStatus, { label: string; actio
   scheduled: { label: "Scheduled", action: "The saved appointment has not started in the selected timezone.", color: "border-border bg-muted text-muted-foreground" },
 };
 const nullableText = z.string().nullable();
+export const processorChatSetupSchema = z.object({
+  state: z.enum(["ready", "blocked", "unavailable"]), code: z.string(), message: z.string(), fingerprint: z.string(),
+  conversation_id: nullableText, last_message_at: nullableText, source: z.enum(["saved_link", "verified_mirror"]).nullable(),
+});
 export const processorAssessmentSchema = z.object({
   status: z.enum(PROCESSOR_STATUSES), evidence: z.array(z.object({ signal: z.enum(["accepted", "progress", "completed", "update_request"]), quote: z.string(), message_id: z.string(), message_time: z.string(), sender: z.string() })),
   messages_reviewed: z.number().int().nonnegative(), matched_messages: z.number().int().nonnegative(),
-  source: z.string(), history_complete: z.boolean(), ai_used: z.boolean().optional(), timezone: z.string(), checked_at: z.string(), summary: z.string(), lead_updated_at: z.string(),
+  source: z.string(), history_complete: z.boolean(), ai_used: z.boolean().optional(), chat_fingerprint: z.string().optional(), chat_source: z.enum(["saved_link", "verified_mirror"]).optional(), timezone: z.string(), checked_at: z.string(), summary: z.string(), lead_updated_at: z.string(),
 });
 export const processorJobSchema = z.object({
   id: z.string().uuid(), job_id: z.string(), customer_name: z.string(), customer_phone: nullableText,
@@ -26,9 +31,10 @@ export const processorJobSchema = z.object({
   tech_name: nullableText, tech_number: nullableText, scheduled_date: nullableText, scheduled_time_start: nullableText, scheduled_time_end: nullableText,
   customer_schedule_requirements: nullableText, terms: nullableText, status: z.string(), updated_at: z.string(),
   assessment: processorAssessmentSchema.nullable(), checked_at: nullableText,
+  chat_setup: processorChatSetupSchema.nullable().optional(),
 });
 export type ProcessorJob = z.infer<typeof processorJobSchema>;
-export const processorQueueSchema = z.object({ rows: z.array(processorJobSchema), total: z.number().int().nonnegative(), observed_at: z.string(), timezone: z.string() });
+export const processorQueueSchema = z.object({ rows: z.array(processorJobSchema), total: z.number().int().nonnegative(), observed_at: z.string(), timezone: z.string(), monitoring: z.object({ ai_configured: z.boolean(), current_history_configured: z.boolean() }).optional() });
 export type ProcessorQueue = z.infer<typeof processorQueueSchema>;
 export type ProcessorFilters = { offset: number; search: string; history: boolean; timezone: string };
 export class ProcessorReviewFailure extends Error {
@@ -51,10 +57,14 @@ export const fetchProcessorJobs = async (filters: ProcessorFilters, signal?: Abo
 export const assessProcessorJob = async (leadId: string, timezone: string) => z.object({ result: processorAssessmentSchema, cached: z.boolean() }).parse(await call({ action: "assess", leadId, timezone }));
 export function currentAssessment(job: ProcessorJob, timezone: string, now: Date) {
   const a = job.assessment;
-  return a && a.timezone === timezone && Date.parse(a.lead_updated_at) === Date.parse(job.updated_at) && now.getTime() - Date.parse(a.checked_at) < 5 * 60_000 ? a : null;
+  return a && (!job.chat_setup || a.chat_fingerprint === job.chat_setup.fingerprint) && a.timezone === timezone && Date.parse(a.lead_updated_at) === Date.parse(job.updated_at) && now.getTime() - Date.parse(a.checked_at) < 5 * 60_000 ? a : null;
 }
+export function processorSetupIssue(job: ProcessorJob): string | null {
+  return processorReadiness(job) || (job.chat_setup && job.chat_setup.state !== "ready" ? job.chat_setup.message : null);
+}
+export const processorReviewSignature = (job: ProcessorJob, timezone: string) => `${job.updated_at}:${timezone}:${job.chat_setup?.fingerprint ?? "legacy"}`;
 export function processorStatus(job: ProcessorJob, timezone: string, now: Date): ProcessorStatus {
-  if (!["scheduled", "job_in_progress", "payment_pending", "partial_paid"].includes(job.status)) return "needs_review";
+  if (PROCESSOR_TERMINAL.includes(job.status)) return "needs_review";
   if (job.status === "payment_pending" || job.status === "partial_paid") return "payment_pending";
   const assessment = currentAssessment(job, timezone, now);
   if (assessment) {
@@ -62,6 +72,22 @@ export function processorStatus(job: ProcessorJob, timezone: string, now: Date):
     return assessment.status === "scheduled" && schedulePassed(job, now, timezone) ? "take_job_update" : assessment.status;
   }
   if (job.status === "job_in_progress") return "job_in_progress";
+  if (!PROCESSOR_ACTIVE.includes(job.status)) return "needs_review";
   return schedulePassed(job, now, timezone) ? "take_job_update" : job.scheduled_date && job.scheduled_time_start ? "scheduled" : "needs_review";
+}
+/** The status's authority is separate from whether an AI request ran. */
+export function processorStatusOrigin(job: ProcessorJob, timezone: string, now: Date): string {
+  const assessment = currentAssessment(job, timezone, now);
+  const status = processorStatus(job, timezone, now);
+  const review = !assessment ? job.checked_at ? "previous check stale · refresh AI" : "not AI checked"
+    : assessment.ai_used === true ? assessment.evidence.length ? "AI reviewed source quotes" : "AI found no verified job update"
+      : assessment.ai_used === false ? "no AI used" : "AI usage not recorded";
+  if (["payment_pending", "partial_paid"].includes(job.status) || (job.status === "job_in_progress" && status === "job_in_progress" && !assessment?.evidence.some((e) => e.signal === "progress"))) return `Saved lead status · ${review}`;
+  if (assessment && status === "payment_pending" && assessment.evidence.some((e) => e.signal === "completed")) return "AI evidence · technician completion verified";
+  if (assessment && status === "job_in_progress" && assessment.evidence.some((e) => e.signal === "progress")) return "AI evidence · technician progress verified";
+  if (assessment && status === "send_dose") return assessment.history_complete && assessment.evidence.some((e) => e.signal === "accepted" || e.signal === "progress") && assessment.evidence.some((e) => e.signal === "update_request")
+    ? "AI evidence + delivered-request timing · follow up manually" : "Review result · verify acceptance and delivered request before following up";
+  if (status === "scheduled" || status === "take_job_update") return `Schedule rule · ${review}`;
+  return `Saved workflow / review result · ${review}`;
 }
 export const PROCESSOR_TIMEZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"];

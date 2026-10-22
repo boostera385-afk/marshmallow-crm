@@ -3,10 +3,13 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useProcessorBoard } from "./useProcessorBoard";
-const state = vi.hoisted(() => ({ role: "processor", user: "user-a", fetch: vi.fn(), listeners: new Set<() => void>(), releases: vi.fn() }));
+const state = vi.hoisted(() => ({ role: "processor", user: "user-a", fetch: vi.fn(), listeners: new Set<() => void>(), activityListeners: new Set<() => void>(), activityScopes: [] as string[][], releases: vi.fn() }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: state.user }, role: state.role }) }));
 vi.mock("@/lib/processor-board", () => ({ fetchProcessorJobs: state.fetch }));
-vi.mock("@/lib/realtime", () => ({ subscribeToProcessorBoard: (listener: () => void) => {
+vi.mock("@/lib/realtime", () => ({ subscribeToProcessorActivity: (ids: string[], listener: () => void) => {
+  state.activityScopes.push(ids); if (!ids.length) return () => {};
+  state.activityListeners.add(listener); return () => state.activityListeners.delete(listener);
+}, subscribeToProcessorBoard: (listener: () => void) => {
   state.listeners.add(listener); return () => { state.listeners.delete(listener); state.releases(); };
 } }));
 const filters = { offset: 0, search: "", history: false, timezone: "America/New_York" };
@@ -16,7 +19,7 @@ function wrapper({ children }: PropsWithChildren) {
 }
 let client: QueryClient;
 beforeEach(() => {
-  vi.clearAllMocks(); state.role = "processor"; state.user = "user-a"; state.listeners.clear();
+  vi.clearAllMocks(); state.role = "processor"; state.user = "user-a"; state.listeners.clear(); state.activityListeners.clear(); state.activityScopes = [];
   state.fetch.mockResolvedValue(result);
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
@@ -53,5 +56,21 @@ describe("Processor Board refresh resource behavior", () => {
     act(() => state.listeners.forEach((f) => f()));
     await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
     expect(state.fetch).toHaveBeenCalledTimes(2);
+  });
+  it("coalesces page-chat and lead bursts together without recreating the lead transport", async () => {
+    const id = "00000000-0000-4000-8000-000000000001";
+    const data = { ...result, rows: [{ chat_setup: { conversation_id: id } }] };
+    state.fetch.mockResolvedValue(data);
+    const hook = renderHook(() => useProcessorBoard(filters), { wrapper });
+    await waitFor(() => expect(state.activityListeners.size).toBe(1));
+    expect(state.activityScopes.at(-1)).toEqual([id]); expect(state.releases).not.toHaveBeenCalled();
+    let resolve!: (value: typeof data) => void;
+    state.fetch.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    act(() => { for (let i = 0; i < 20; i++) { state.activityListeners.forEach((f) => f()); state.listeners.forEach((f) => f()); } });
+    await waitFor(() => expect(state.fetch).toHaveBeenCalledTimes(2));
+    act(() => state.activityListeners.forEach((f) => f()));
+    await act(async () => resolve(data));
+    await waitFor(() => expect(state.fetch).toHaveBeenCalledTimes(3));
+    hook.unmount(); expect(state.activityListeners.size).toBe(0); expect(state.listeners.size).toBe(0);
   });
 });
