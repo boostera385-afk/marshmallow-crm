@@ -1,21 +1,29 @@
-import type { JobMessage } from "./processor-job-status.ts";
+import { attributeTechnicianReplies, createJobMatcher, isCallOrSystemEvent, type JobIdentity, type JobMessage, type JobPeer } from "./processor-job-status.ts";
 
-/** Counts describe attribution, not outcomes. No other job's text leaves the server. */
-export function processorReviewDiagnostics(messages: JobMessage[], matches: (text: string) => boolean) {
-  let matchedTechnician = 0; let unattributedTechnician = 0;
-  const relevant: JobMessage[] = [];
-  for (const message of messages) {
-    if (!message.text) continue;
-    const identified = matches(message.text);
-    if (message.sender === "customer") {
-      if (identified) matchedTechnician++; else unattributedTechnician++;
-    }
-    if (!identified) continue;
-    relevant.push(message);
-  }
-  // With no identified technician reply there is no acceptance/progress/completion
-  // evidence, so no possible Send Dose result. Otherwise retain EVERY delivered
-  // agent message: an update question need not contain an English keyword.
-  const extractable = matchedTechnician ? relevant.filter((message) => message.sender === "customer" || (message.sender === "agent" && message.status === "delivered")) : [];
-  return { relevant, extractable, matched_technician_messages: matchedTechnician, unattributed_technician_messages: unattributedTechnician };
+/**
+ * Attribution counts for one job. A technician text that names the job is
+ * explicit; a text that follows this job's saved dispatch in the shared 1:1
+ * thread is context-attributed; anything else stays unassigned. Call recordings,
+ * transcripts, summaries, media and reactions are never technician replies.
+ * No other job's text leaves the server.
+ */
+export function processorReviewDiagnostics(job: JobIdentity, peers: JobPeer[], messages: JobMessage[], matches = createJobMatcher(job, peers)) {
+  const attribution = attributeTechnicianReplies(job, peers, messages, matches);
+  const relevant = messages.filter((message) => !isCallOrSystemEvent(message) && typeof message.text === "string" &&
+    (matches(message.text) || attribution.contextual.has(message.id)));
+  const hasReply = attribution.explicit.size + attribution.contextual.size > 0;
+  // A pure dispatch has no technician reply to interpret, so no AI is spent.
+  // Otherwise retain every delivered agent message in this job's episode: an
+  // update question need not contain an English keyword.
+  const extractable = hasReply ? relevant.filter((message) => message.sender === "customer" || (message.sender === "agent" && message.status === "delivered")) : [];
+  return {
+    relevant,
+    extractable,
+    matched_technician_messages: attribution.explicit.size,
+    context_technician_messages: attribution.contextual.size,
+    unattributed_technician_messages: attribution.unattributed.size,
+    technician_text_messages: attribution.technicianTexts.size,
+    call_event_messages: attribution.callEvents,
+    contextual_ids: new Set(attribution.contextual.keys()),
+  };
 }

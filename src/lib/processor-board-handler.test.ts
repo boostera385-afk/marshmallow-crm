@@ -66,15 +66,29 @@ describe("Processor Board server boundary", () => {
     expect(s.rpc.mock.calls.filter(([name]) => name === "save_processor_job_assessment")).toHaveLength(1);
     expect(s.tables.leads).toEqual([job]);
   });
-  it("reports no identified technician reply rather than claiming a verified outcome or spending AI on dispatch-only text", async () => {
-    const s = setup();
-    s.tables.quo_messages = [{ id: "dispatch", sender: "agent", text: "Dispatch JOB-1001 for tomorrow at 10am", status: "delivered", message_time: "2026-10-15T14:00:00Z" }, { id: "generic", sender: "customer", text: "Finished the job and cleaned up", message_time: "2026-10-15T16:00:00Z" }];
+  it("uses a technician reply that follows this job's saved dispatch and marks it context-attributed", async () => {
+    const quote = "Finished the job and cleaned up";
+    const s = setup({ modelEvidence: [{ signal: "completed", message_id: "generic", quote }] });
+    s.tables.quo_messages = [{ id: "dispatch", sender: "agent", text: "Dispatch JOB-1001 for tomorrow at 10am", status: "delivered", message_time: "2026-10-15T14:00:00Z" }, { id: "generic", sender: "customer", text: quote, message_time: "2026-10-15T16:00:00Z" }];
     const response = await s.request(); expect(response.status).toBe(200);
     const result = (await response.json()).result;
-    expect(result).toMatchObject({ status: "take_job_update", evidence: [], ai_used: false, matched_messages: 1, matched_technician_messages: 0, unattributed_technician_messages: 1, extraction_messages: 0 });
-    expect(result.summary).toContain("No verified technician outcome");
-    expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(0);
+    expect(result).toMatchObject({ status: "payment_pending", evidence: [{ quote, identity_basis: "thread_context" }], ai_used: true, matched_messages: 2, matched_technician_messages: 0, context_technician_messages: 1, unattributed_technician_messages: 0, extraction_messages: 2 });
+    expect(result.summary).toContain("context-attributed");
+    expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(1);
     expect(s.tables.leads).toEqual([job]);
+  });
+  it("does not attribute a technician reply after another job's dispatch or spend AI on it", async () => {
+    const s = setup();
+    s.tables.quo_messages = [
+      { id: "dispatch", sender: "agent", text: "Dispatch JOB-1001 for tomorrow at 10am", status: "delivered", message_time: "2026-10-15T14:00:00Z" },
+      { id: "other", sender: "agent", text: "Customer Name: Other Customer Customer Address: 99 Unknown Rd", status: "delivered", message_time: "2026-10-15T14:10:00Z" },
+      { id: "generic", sender: "customer", text: "Done with the other property", message_time: "2026-10-15T14:15:00Z" },
+    ];
+    const response = await s.request(); expect(response.status).toBe(200);
+    const result = (await response.json()).result;
+    expect(result).toMatchObject({ status: "take_job_update", evidence: [], ai_used: false, matched_technician_messages: 0, context_technician_messages: 0, unattributed_technician_messages: 1, extraction_messages: 0 });
+    expect(result.summary).toContain("No technician text reply is tied to this job");
+    expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(0);
   });
   it("accepts a source-grounded factual span with identity elsewhere in the same message", async () => {
     const quote = "I have finished the installation and cleaned up.";

@@ -6,7 +6,7 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Flow | CRM | Donut | Shared authority / verification |
 | --- | --- | --- | --- |
 | Technician intelligence | Technicians → Processing Workflow; map selection up to 8 | Native Technician Intelligence panel for the captured phone, reviewed-label saving, full-workflow link for batch selection/flag approvals/chat actions | `technician-chat-assessment`: Admin/Processor only; identical AI prompt, evidence checks, counts and labels. Missing history is unavailable, not misconduct. |
-| Processor Board | `/processor-board`: assigned-job radar, newest schedules first, four advisory actions, saved-status filters, exact check date/time and explicit AI-versus-rule labels; follow-up adds timezone-confirmed open-board tracking and exact saved-chat fallback | No native scheduled-job board/job-specific assessment action; existing technician-wide intelligence is separate. Donut sources and v1.7.0 artifacts unchanged | Authenticated `processor-board` **v4 ACTIVE** after explicit deployment approval; all eight files match, JWT and six non-mutating auth/runtime checks passed. Caller-token scope, leases, revision-checked advisory save and atomic audit preserved. No new migration, lead/status/approval writes or messages. CRM Publish and signed-in/provider QA are separate. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
+| Processor Board | `/processor-board`: assigned-job radar, newest schedules first, four advisory actions, saved-status filters, exact check date/time, explicit AI-versus-rule labels and timezone-confirmed open-board tracking; local follow-up attributes replies within this job's saved dispatch context | No native scheduled-job board/job-specific assessment action; existing technician-wide intelligence is separate. Donut sources and v1.7.0 artifacts unchanged | Authenticated `processor-board` **v5 installed**; the new context-attribution backend awaits approved deployment (expected v6). Caller-token scope, leases, revision-checked advisory save and atomic audit preserved. No new migration, lead/status/approval writes or messages. CRM Publish and signed-in/provider QA are separate. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
 | Technician flags | Admin applies; Processor requests review | Opens full workflow for the same reviewed actions | Existing `request_technician_change` approval RPC and technician flag trigger; never write flags directly in Donut. |
 | Urgent lead review | Latest customer agreement, corrections and missing details | Same check; displays issues, corrections and flags; opens saved-lead review for confirmed corrections/approval | `check-urgent-lead`, urgent verification/review RPCs and database status gate. No duplicate prompt or approval bypass. |
 | Address lookup / map coordinates | Authenticated Census-only lookup and preserved units | Same function for Find Address, coverage preview and submission coordinates | `geocode-lead-address`: only Census coordinates may be cached/persisted for the free map. Google or unlabelled points are rejected by both clients. Preserve Apt/Suite/Unit/#. |
@@ -43,7 +43,44 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
-## Processor Board evidence accuracy follow-up (2026-10-22; local)
+## Processor Board saved-chat context attribution (2026-10-22; local, awaiting deployment approval)
+
+CRM-only: source audit reconfirmed no Donut Processor Board/job-specific assessment
+counterpart. The separate `technician-chat-assessment` intelligence flow is unchanged;
+no extension source, prompt, manifest, release metadata or ZIP was modified.
+
+The board reads the same verified technician conversation opened by the lead's
+Tech Quick Chat (current Quo text history when configured; the webhook mirror
+otherwise). It does not use the separate CX chat as technician evidence or invent
+a per-lead technician thread: several jobs share one technician's 1:1 conversation.
+
+Directly identified replies remain supported. Unnamed replies are context-attributed
+only after this job's delivered, job-identifying dispatch in the same conversation,
+strictly later than the dispatch and within seven days. A peer/unknown dispatch or
+a technician switching to another identified job ends that context. The drawer
+labels `thread_context` evidence and requires human verification in Quo; call events,
+transcripts, reactions and media are excluded as text evidence even if selected by
+the model. Short replies must be quoted in full inside verified context. Acceptance
+alone is not progress/completion; context-only acceptance cannot enable Send Dose.
+
+Page/batch reply counts use attribution, not the number of extracted outcomes, so
+an acknowledgement is not misleadingly reported as zero replies. Pure dispatches
+still skip AI; changed context invalidates extraction reuse. Existing authorization,
+status/approval gates, schedules, serial requests, realtime, freshness and retries
+remain. No additional reads, feeds, workers or schema changes were introduced;
+more legitimate replies can now qualify for the existing single extraction call.
+No production usage or bill savings are claimed.
+
+Edge v5 remains the recorded installed release. The user approved committing and
+pushing this follow-up; that is not deployment approval. CRM merge/Publish, confirmed schedule
+timezone, verified correction of three malformed technician numbers and live
+signed-in/provider accuracy checks are separate. See the newest section of
+`docs/PROCESSOR_BOARD_ROLLOUT.md` for the actual test results and remaining limits.
+Publish the matching frontend before deploying the new Edge source: old frontends
+may reject `thread_context` or mislabel contextual completion as directly verified.
+Do not treat approval to push a branch as approval or proof of CRM publication.
+
+## Processor Board evidence accuracy follow-up (2026-10-22; Edge v5 installed)
 
 CRM-only; no native Donut job board/job-specific assessment counterpart was found.
 No extension source, prompt, metadata or ZIP changed. The new follow-up separates

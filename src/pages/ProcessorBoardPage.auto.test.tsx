@@ -41,7 +41,7 @@ describe("automatic tracking while the board is open", () => {
     expect(state.assess).toHaveBeenCalledExactlyOnceWith(job.id, "America/New_York");
     expect(screen.getAllByText("Schedule rule · AI found no verified job update")).toHaveLength(2);
     expect(state.rows[0].status).toBe("scheduled");
-    expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 fresh successful checks · 0 with verified technician updates");
+    expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 fresh successful checks · 0 with a technician reply tied to the job");
     view.update(); expect(state.assess).toHaveBeenCalledTimes(1);
   });
   it("gates manual checks and schedule-derived actions until timezone confirmation even when automatic tracking is off", async () => {
@@ -54,7 +54,7 @@ describe("automatic tracking while the board is open", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
     fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("0 with verified technician updates · 1 without a verified technician update"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("0 with a technician reply tied to the job · 1 without a tied technician reply"));
     expect(state.assess).toHaveBeenCalledTimes(1);
     fireEvent.change(screen.getByLabelText("Schedule timezone"), { target: { value: "America/Chicago" } });
     expect(screen.getByLabelText("Confirm schedule timezone")).not.toBeChecked();
@@ -71,9 +71,26 @@ describe("automatic tracking while the board is open", () => {
     });
     mount(); fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 reviewed"));
-    expect(screen.getAllByText(/0 technician messages identify this job; 7 other replies/)).toHaveLength(2);
+    expect(screen.getAllByText(/7 technician replies were not tied to this job/)).toHaveLength(2);
     fireEvent.click(screen.getAllByRole("button", { name: /Review/ })[0]);
     expect(screen.getByRole("link", { name: "Open verified technician chat" })).toHaveAttribute("href", state.rows[0].chat_setup!.chat_url);
+    expect(state.assess).toHaveBeenCalledTimes(1);
+  });
+  it("counts an attributed reply even when it establishes no progress or completion", async () => {
+    state.assess.mockImplementation(async (id: string) => {
+      const response = reviewed(id);
+      response.result.matched_technician_messages = 0;
+      response.result.context_technician_messages = 2;
+      response.result.unattributed_technician_messages = 1;
+      state.rows[0].assessment = response.result;
+      return response;
+    });
+    mount(); fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 with a technician reply tied to the job · 0 without a tied technician reply"));
+    expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 with a technician reply tied to the job");
+    expect(screen.getAllByText(/No progress or completion is verified yet/)).toHaveLength(2);
+    expect(state.rows[0].status).toBe("scheduled");
+    expect(state.rows[0].assessment?.status).toBe("take_job_update");
     expect(state.assess).toHaveBeenCalledTimes(1);
   });
   it("stops starting jobs when hidden, resumes when visible and preserves the current result", async () => {
