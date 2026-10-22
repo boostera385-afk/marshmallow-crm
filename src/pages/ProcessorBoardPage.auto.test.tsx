@@ -21,6 +21,8 @@ function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const tree = () => <QueryClientProvider client={client}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>;
   const view = render(tree());
+  const options = screen.queryByText("Filters & tracking", { exact: true });
+  if (options) fireEvent.click(options);
   return { ...view, update: () => view.rerender(tree()) };
 }
 beforeEach(() => {
@@ -132,8 +134,8 @@ describe("automatic tracking while the board is open", () => {
     });
     mount(); fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 reviewed"));
-    expect(screen.getAllByText(/7 technician replies were not tied to this job/)).toHaveLength(2);
     fireEvent.click(screen.getAllByRole("button", { name: /Review/ })[0]);
+    expect(screen.getByRole("dialog")).toHaveTextContent("7 technician replies were not tied to this job");
     expect(screen.getByRole("button", { name: "Open technician chat in CRM" })).toBeEnabled();
     expect(screen.queryByRole("link", { name: "Open verified technician chat" })).not.toBeInTheDocument();
     expect(state.assess).toHaveBeenCalledTimes(1);
@@ -150,7 +152,8 @@ describe("automatic tracking while the board is open", () => {
     mount(); fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 with a technician reply tied to the job · 0 without a tied technician reply"));
     expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 with a technician reply tied to the job");
-    expect(screen.getAllByText(/No progress or completion is verified yet/)).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: /Review/ })[0]);
+    expect(screen.getByRole("dialog")).toHaveTextContent("No progress or completion is verified yet");
     expect(state.rows[0].status).toBe("scheduled");
     expect(state.rows[0].assessment?.status).toBe("take_job_update");
     expect(state.assess).toHaveBeenCalledTimes(1);

@@ -1,5 +1,67 @@
 # Processor Board
 
+## Compact simplified board, assigned-schedules-only queue and latest-message AI filter (2026-10-22; migration + Edge v7 APPLIED, CRM publication pending)
+
+Applied live on 2026-10-22 with explicit user approval via MCP: migration
+`processor_board_assigned_schedules_only` (recorded in remote history as
+`20261022113108`, matching the local file
+`20261022111039_processor_board_assigned_schedules_only.sql`; the active-radar
+base had been applied earlier as `20261022044310`) and the Edge `processor-board`
+bundle as **v7 ACTIVE** (`ezbr_sha256 2dae24fe…50b82bb`, `verify_jwt: true`, all
+nine files read back byte-exact against local source; no-auth/invalid-token
+probes return 401). Verified in the shared project read-only: with an Admin
+caller impersonated in a rolled-back transaction, the active total is 695 and
+equals the exact expected assigned-scheduled count; zero returned rows lack
+technician name/number, date or start time; Security Advisors report no
+findings. Rollback: restore `list_processor_jobs` from the active-radar
+migration and redeploy the v6 bundle (`processor-board-v6-verified-20261022`);
+v7 source copy is saved at `processor-board-v7-verified-20261022`.
+
+- Simplified panel per the requested screenshot look: slim title bar with the total
+  badge, exact latest check and the one "Refresh AI · this page" action; search
+  directly under the header; timezone confirmation and tracking state compacted onto
+  one summary line; all filters, timezone picker, tracking controls and page counts
+  moved into a collapsed-by-default "Filters & tracking" disclosure. The job table
+  gained a dedicated **Technician** column (name + number), customer/job and
+  schedule columns keep their width, and AI status cells are one-line with a
+  title tooltip. Mobile cards show technician identity and job time directly.
+- Queue correctness: only jobs with **both** a saved technician name and number
+  plus an appointment date and start time appear on the radar. Incomplete jobs
+  (previously shown with "Not assigned/manual" placeholders) stay in All Jobs for
+  repair; any EXPLAIN-era placeholder rows were display-only and are now excluded
+  at the source. `supabase/migrations/20261022111039_processor_board_assigned_schedules_only.sql`
+  updates `list_processor_jobs` (idempotent, no lead writes, RLS/authorization
+  unchanged) and must be applied manually after `20261022041621_processor_board_active_radar.sql`.
+  Rollback: restore only `list_processor_jobs` from the earlier migration.
+- AI input filter (user request): the provider prompt receives only up to the last
+  20 job-linked messages **plus** older job-linked messages matching update
+  keywords ("done", "on my way", "completed", "payment", "reschedule", …). Job
+  attribution happens before selection, another job's keyword match is never sent,
+  negated/future wording ("not done yet") is kept intact for AI to reject, and
+  latest non-English replies are always included without keyword guessing. The
+  server still reads full available history for identity and non-response timing;
+  only the AI payload is narrowed. The result reports `ai_scope`,
+  `ai_recent_limit` and `ai_messages_omitted`; the drawer and rows label
+  "AI · latest job updates + keywords" when a check used the filtered scope, and a
+  banner appears while the deployed backend is still below evidence policy 6.
+  The new Edge bundle is committed locally and **awaiting approved deployment**.
+
+Gates run so far: **99/99 focused tests** across `ProcessorBoardPage.test.tsx`,
+`ProcessorBoardPage.auto.test.tsx`, `processor-review-diagnostics.test.ts` and
+`processor-board-handler.test.ts` (new: closed-by-default filters with technician
+column, latest/keyword selection keeping peer wording out, handler payload pruning
+with evidence rejected from omitted messages, provider budget counts), and the
+PGlite fixture run of `scripts/test-processor-board-db.mjs` covering migration
+`20261022111039…` applied twice idempotently plus **all 154 harness checks PASS**
+(assigned-only totals, missing name/number/date/time exclusions in history,
+newest-schedule ordering ties, complete pagination, retained reschedule/approval
+statuses, per-user status deny and role denial matrix). Final round: typecheck
+clean, full lint 0 errors/28 pre-existing warnings, build with Donut v1.7.0
+integrity OK, and **29/29 mocked browser cases pass** (the two zero-evidence
+cases now assert the unverified-reply note in the review drawer, matching the
+updated UI contract where rows show the one-line origin and the drawer holds the
+full attribution breakdown). No assertion, timeout or configuration was weakened.
+
 ## Tracking startup and manual controls (2026-10-22; CRM publication pending)
 
 The next screenshot exposed three UI defects: timezone confirmation was lost on

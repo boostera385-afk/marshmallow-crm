@@ -43,6 +43,31 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## Processor Board compact view, assigned-schedules queue and AI input filter (2026-10-22; migration + Edge v7 APPLIED)
+
+CRM-only round: source audit reconfirmed no Donut Processor Board, job queue or
+job-specific assessment counterpart; the extension, its prompts and v1.7.0
+artifacts are unchanged, so no ZIP release is required.
+
+- The board UI is the compact screenshot-style panel: dedicated Technician
+  identity column, one-line AI status with the "AI · latest job updates +
+  keywords" label when the filtered scope was used, exact last-check time and one
+  refresh action; filters and tracking controls live in a collapsed disclosure.
+- `list_processor_jobs` now returns only jobs with a saved technician name and
+  number plus appointment date/start time; incomplete jobs remain in All Jobs for
+  repair. New migration
+  `supabase/migrations/20261022111039_processor_board_assigned_schedules_only.sql`
+  is idempotent, authorization/RLS-preserving and **still needs manual
+  application** (harness 154 must be run alongside).
+- The AI provider payload is narrowed to the last 20 job-linked messages plus
+  older update-keyword matches, with attribution before selection and full-history
+  identity/silence checks kept on the server. Edge `processor-board` **v7 is
+  ACTIVE** (deployed 2026-10-22 via MCP with the user's explicit approval; all
+  nine files verified byte-exact, JWT verification retained). The matching
+  migration `processor_board_assigned_schedules_only` is also applied
+  (`20261022113108`). Remaining: CRM Publish and signed-in QA; the board banner
+  clears once the frontend loads a policy-6 backend.
+
 ## Processor Board tracking controls (2026-10-22; frontend publication pending)
 
 CRM remembers explicit timezone confirmation and tracking pause for the same caller,

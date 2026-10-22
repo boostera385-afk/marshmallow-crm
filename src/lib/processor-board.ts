@@ -26,6 +26,7 @@ export const processorAssessmentSchema = z.object({
   messages_reviewed: z.number().int().nonnegative(), matched_messages: z.number().int().nonnegative(),
   matched_technician_messages: z.number().int().nonnegative().optional(), context_technician_messages: z.number().int().nonnegative().optional(), unattributed_technician_messages: z.number().int().nonnegative().optional(), technician_text_messages: z.number().int().nonnegative().optional(), call_event_messages: z.number().int().nonnegative().optional(), extraction_messages: z.number().int().nonnegative().optional(),
   source: z.string(), history_complete: z.boolean(), ai_used: z.boolean().optional(), chat_fingerprint: z.string().optional(), chat_source: z.enum(["saved_link", "verified_mirror"]).optional(), timezone: z.string(), checked_at: z.string(), summary: z.string(), lead_updated_at: z.string(),
+  ai_scope: z.literal("latest_job_messages_and_keywords").optional(), ai_recent_limit: z.number().int().positive().optional(), ai_messages_omitted: z.number().int().nonnegative().optional(),
 });
 export const processorJobSchema = z.object({
   id: z.string().uuid(), job_id: z.string(), customer_name: z.string(), customer_phone: nullableText,

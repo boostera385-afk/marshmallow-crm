@@ -3,7 +3,7 @@ import { createJobMatcher, deriveJobStatus, phoneKey, verifyJobEvidence, type Jo
 import { processorReadiness, ProcessorReviewError, PROCESSOR_TERMINAL } from "./processor-review.ts";
 import { readProcessorChats, readProcessorRows, type ProcessorChatSetup } from "./processor-chat.ts";
 import { readProcessorHistory } from "./processor-history.ts";
-import { processorReviewDiagnostics } from "./processor-review-diagnostics.ts";
+import { processorReviewDiagnostics, selectProcessorAiMessages, PROCESSOR_RECENT_AI_MESSAGES } from "./processor-review-diagnostics.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS", "Cache-Control": "no-store" };
 const LEAD_COLUMNS = "id,job_id,customer_name,customer_phone,address,tech_number,scheduled_date,scheduled_time_start,scheduled_time_end,status,updated_at,created_at";
@@ -42,7 +42,7 @@ export function createProcessorBoardHandler(deps: {
       if (error || !data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.rows) || !data.rows.every(isQueueJob)) return json({ error: "Processor Board database setup is unavailable. Ask Admin to check the reviewed migration." }, 503);
       const rows = data.rows;
       const phones = rows.flatMap((row) => { const phone = phoneKey(row.tech_number); return phone ? [phone] : []; });
-      const monitoring = { ai_configured: Boolean(deps.env("OPENAI_API_KEY")), current_history_configured: Boolean(deps.env("QUO_API_KEY")), evidence_policy: 5 };
+      const monitoring = { ai_configured: Boolean(deps.env("OPENAI_API_KEY")), current_history_configured: Boolean(deps.env("QUO_API_KEY")), evidence_policy: 6 };
       try {
         const chats = await readProcessorChats(caller, phones, monitoring.current_history_configured);
         return json({ ...data, monitoring, rows: rows.map((row) => ({ ...row, chat_setup: chats.get(phoneKey(row.tech_number) ?? "")?.setup ?? null })) });
@@ -99,18 +99,21 @@ export function createProcessorBoardHandler(deps: {
       // Do not claim mirror completeness/freshness if latest metadata is ahead of the available messages.
       if (!directKey && conversation?.last_message_time && Date.parse(conversation.last_message_time) > Date.parse(messages.at(-1)?.message_time ?? "")) return json({ error: "The conversation mirror is behind its latest activity. Sync Quo before reviewing non-response." }, 422);
       const peerIdentities = peers.map((p) => ({ id: p.id, job_id: p.job_id, customer_name: p.customer_name, customer_phone: p.customer_phone, address: p.address }));
-      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, chat: chat.setup.fingerprint, policy: 5 });
+      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, chat: chat.setup.fingerprint, policy: 6 });
       const { data: cache, error: cacheError } = await service.from("processor_job_assessments").select("input_hash,result,checked_at").eq("lead_id", job.id).maybeSingle();
       if (cacheError) throw new Error("Saved assessment could not be read.");
       if (cache?.input_hash === inputHash && now.getTime() - Date.parse(cache.checked_at) < 60_000) return json({ result: cache.result, cached: true });
       const matches = createJobMatcher(job, peers);
       const diagnostics = processorReviewDiagnostics(job, peers, messages, matches);
-      const { relevant, extractable, contextual_ids } = diagnostics;
+      const { relevant, contextual_ids } = diagnostics;
+      const extractable = selectProcessorAiMessages(diagnostics.extractable);
+      const aiOmitted = diagnostics.extractable.length - extractable.length;
       // Another job/generic reply changes silence timing, not this job's AI facts.
       // Re-read all current history, but reuse extraction when target text is identical.
-      const evidenceHash = await hash({ job, peers: peerIdentities, extractable, contextual: [...contextual_ids].sort(), timezone, source, link: chat.link, policy: 5 });
+      const selectedContext = extractable.filter((message) => contextual_ids.has(message.id)).map((message) => message.id).sort();
+      const evidenceHash = await hash({ job, peers: peerIdentities, extractable, contextual: selectedContext, timezone, source, link: chat.link, policy: 6 });
       let evidence = cache?.result?.evidence_hash === evidenceHash
-        ? verifyJobEvidence(cache.result.evidence, job, peers, messages, timezone, now, matches, contextual_ids) : null;
+        ? verifyJobEvidence(cache.result.evidence, job, peers, extractable, timezone, now, matches, contextual_ids) : null;
       if (!evidence) {
         // All history is examined for identity and response timing; only this job's
         // attributable replies and delivered agent messages leave the server.
@@ -134,7 +137,7 @@ export function createProcessorBoardHandler(deps: {
           try { parsed = JSON.parse(payload.choices?.[0]?.message?.content ?? "{}"); }
           catch { throw new ProcessorReviewError("AI returned an unreadable review. Retry; no result was saved.", "ai_invalid", true); }
           if (!parsed || !Array.isArray(parsed.evidence) || parsed.evidence.length > 20) throw new ProcessorReviewError("AI returned an invalid or oversized review. Retry; no result was saved.", "ai_invalid", true);
-          evidence = verifyJobEvidence(parsed.evidence, job, peers, messages, timezone, now, matches, contextual_ids);
+          evidence = verifyJobEvidence(parsed.evidence, job, peers, extractable, timezone, now, matches, contextual_ids);
         }
       }
       let status = deriveJobStatus(job, evidence, messages, true, now, timezone);
@@ -145,9 +148,11 @@ export function createProcessorBoardHandler(deps: {
       const unassigned = diagnostics.unattributed_technician_messages;
       const replyCount = direct + contextual;
       const result = { status, evidence, evidence_hash: evidenceHash, ai_used: extractable.length > 0, matched_technician_messages: direct, context_technician_messages: contextual, unattributed_technician_messages: unassigned, technician_text_messages: diagnostics.technician_text_messages, call_event_messages: diagnostics.call_event_messages, extraction_messages: extractable.length, chat_fingerprint: chat.setup.fingerprint, chat_source: chat.setup.source, messages_reviewed: messages.length, matched_messages: relevant.length,
+        ai_scope: "latest_job_messages_and_keywords", ai_recent_limit: PROCESSOR_RECENT_AI_MESSAGES, ai_messages_omitted: aiOmitted,
         source, history_complete: Boolean(directKey), timezone, checked_at: now.toISOString(),
         summary: `${directKey ? "The saved Tech Quick Chat conversation was read from current Quo history; all available text-history pages were included." : "The webhook-stored Tech Quick Chat mirror was read; completeness is not verified. Non-response cannot be established without QUO_API_KEY."} ${replyCount ? `${direct} technician repl${direct === 1 ? "y" : "ies"} name this job directly${contextual ? `; ${contextual} more follow this job's saved dispatch in the same thread and are context-attributed` : ""}.` : "No technician text reply is tied to this job."} ${unassigned ? `${unassigned} technician repl${unassigned === 1 ? "y was" : "ies were"} not tied to this job (they may concern another job).` : ""} Call recordings, transcripts, summaries and reactions are not counted as replies. ${evidence.length ? "Only verified job-specific quotes are shown; verify context-attributed replies in Quo before acting." : "No acceptance, progress or completion is verified yet."} ${!extractable.length ? "No AI extraction was needed because no technician reply is tied to this job. " : ""}Review the verified chat manually when attribution is missing.`,
         lead_updated_at: job.updated_at, mirror_conversation_id: conversation?.id ?? null, mirror_last_message_at: conversation?.last_message_time ?? null };
+      result.summary = `AI input is filtered to the latest ${PROCESSOR_RECENT_AI_MESSAGES} job-linked messages plus update-keyword matches; ${extractable.length} selected and ${aiOmitted} older non-keyword messages omitted from AI. Full available text history is checked on the server for identity and silence timing. ${result.summary}`;
       const { data: saved, error: saveError } = await service.rpc("save_processor_job_assessment", { p_lead_id: job.id, p_token: token, p_updated_at: job.updated_at, p_hash: inputHash, p_result: result, p_actor: auth.user.id });
       if (saveError || !saved) return json({ error: "Review could not be saved, or the job changed during review. Refresh and retry; lead status was not changed." }, 409);
       return json({ result, cached: false });

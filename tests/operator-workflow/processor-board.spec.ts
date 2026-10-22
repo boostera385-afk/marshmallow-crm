@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 const version = JSON.parse(readFileSync(new URL("../../public/extension-release.json", import.meta.url), "utf8")).version;
 const USER = "00000000-0000-4000-8000-000000000001";
 const LEAD = "00000000-0000-4000-8000-000000000002";
+const openFilters = async (page: Page) => page.getByText("Filters & tracking", { exact: true }).first().click();
 async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean; noEvidence?: boolean; context?: boolean; chatGrant?: boolean; failChat?: boolean } = {}) {
   const actions: Record<string, unknown>[] = [];
   let reviewed = false;
@@ -82,7 +83,7 @@ for (const width of [1440, 390]) test(`Processor reviews the correct job and evi
   expect(actions.filter((a) => a.action === "assess")).toEqual([{ action: "assess", leadId: LEAD, timezone: "America/New_York" }]);
   await page.keyboard.press("Escape");
   await expect(page.locator("[role=dialog]")).toHaveCount(0);
-  const status = width >= 768 ? page.locator("tbody tr").first().locator("td").nth(2) : page.locator("article").filter({ visible: true }).first();
+  const status = width >= 768 ? page.locator("tbody tr").first().locator("td").nth(3) : page.locator("article").filter({ visible: true }).first();
   const checked = status.locator("time");
   await expect(checked).toHaveText("Checked just now");
   await expect(checked).toHaveAttribute("title", /.+/);
@@ -105,6 +106,7 @@ for (const width of [1440, 390]) test(`automatic tracking requires timezone conf
   await page.setViewportSize({ width, height: 1000 });
   const actions = await isolatedBoard(page, "processor", false, { auto: true });
   await page.goto("/processor-board");
+  await openFilters(page);
   await expect(page.getByLabel("Automatic AI tracking")).toBeChecked();
   await expect(page.getByLabel("Confirm schedule timezone")).not.toBeChecked();
   await expect(page.getByLabel("Automatic tracking state")).toContainText("Tracking not started");
@@ -141,9 +143,10 @@ for (const width of [1440, 390]) test(`zero-verified-outcome checks stay explici
   await page.getByLabel("Confirm schedule timezone").check();
   await expect(page.getByRole("status")).toContainText("1 reviewed · 0 failed");
   await expect(page.getByRole("status")).toContainText("0 with a technician reply tied to the job · 1 without a tied technician reply");
+  await openFilters(page);
   await expect(page.getByLabel("Evidence quality on this page")).toContainText("0 with a technician reply tied to the job");
-  await expect(page.getByText(/8 technician replies were not tied to this job/).filter({ visible: true })).toBeVisible();
   await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(/8 technician replies were not tied to this job/);
   await expect(page.getByRole("dialog")).toContainText("No verified technician outcome for this job");
   await expect(page.getByRole("button", { name: "Open technician chat in CRM" })).toBeEnabled();
   await expect(page.getByRole("link", { name: "Open verified technician chat" })).toHaveCount(0);
@@ -155,6 +158,7 @@ for (const width of [1440, 390]) test(`zero-verified-outcome checks stay explici
 test("automatic tracking can be paused before starting and setup problems never invoke the provider", async ({ page }) => {
   const actions = await isolatedBoard(page, "processor", false, { auto: true, setup: true });
   await page.goto("/processor-board");
+  await openFilters(page);
   await page.getByLabel("Automatic AI tracking").uncheck();
   await page.getByLabel("Confirm schedule timezone").check();
   await expect(page.getByText("Paused. Manual checks remain available.")).toBeVisible();
@@ -222,6 +226,7 @@ for (const width of [1440, 390]) test(`saved-status filtering preserves the boar
   await page.setViewportSize({ width, height: 1000 });
   const actions = await isolatedBoard(page, "processor", false, { showcase: true });
   await page.goto("/processor-board");
+  await openFilters(page);
   await page.getByLabel("Saved status on this page").selectOption("job_in_progress");
   const job = page.getByRole("button", { name: "Review JOB-1002" }).filter({ visible: true });
   await expect(job).toBeVisible();
@@ -236,6 +241,7 @@ for (const width of [1440, 390]) {
   test(`incomplete jobs show a repair path without an AI request at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     const actions = await isolatedBoard(page, "processor", false, { setup: true }); await page.goto("/processor-board");
+    await openFilters(page);
     await page.getByLabel("Filter this page").selectOption("setup");
     await expect(page.getByRole("button", { name: "Refresh AI · this page" })).toBeDisabled();
     await expect(page.getByText(/Save a valid technician number/).filter({ visible: true })).toBeVisible();
@@ -249,6 +255,7 @@ for (const width of [1440, 390]) {
   test(`failed-only retry recovers and explicit page reviews recheck fresh history at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     const actions = await isolatedBoard(page, "processor", false, { retryOnce: true }); await page.goto("/processor-board");
+    await openFilters(page);
     await page.getByLabel("Confirm schedule timezone").check();
     await page.getByRole("button", { name: "Refresh AI · this page" }).click();
     await expect(page.getByRole("button", { name: "Retry failed · 1" })).toBeEnabled();
@@ -277,6 +284,7 @@ for (const theme of ["dark", "light"] as const) {
     const actions = await isolatedBoard(page, "processor", false, { showcase: true });
     await page.goto("/processor-board");
     await page.getByLabel("Confirm schedule timezone").check();
+    await openFilters(page);
     await expect(page.locator("html")).toHaveClass(new RegExp(theme));
     await expect(page.locator("tbody tr")).toHaveCount(6);
     const accents = await page.locator("tbody tr td:first-child").evaluateAll((cells) => cells.map((cell) => getComputedStyle(cell).boxShadow));
@@ -312,6 +320,7 @@ test("standard motion adds a restrained hover lift without new data or provider 
   await page.emulateMedia({ reducedMotion: "no-preference" });
   const actions = await isolatedBoard(page);
   await page.goto("/processor-board");
+  await openFilters(page);
   const filter = page.getByRole("button", { name: /Take Job Update/ });
   await filter.hover();
   await expect(filter).toHaveCSS("transform", /matrix/);
@@ -326,6 +335,7 @@ test("five-row viewport scrolls to later jobs with sticky headings and an adjust
   await page.emulateMedia({ reducedMotion: "reduce" });
   const actions = await isolatedBoard(page, "processor", false, { showcase: true });
   await page.goto("/processor-board");
+  await openFilters(page);
   await page.getByLabel("Confirm schedule timezone").check();
   const viewport = page.getByRole("region", { name: "Scrollable jobs" }).filter({ visible: true });
   await expect(page.getByLabel("Rows in view")).toHaveValue("5");
@@ -365,6 +375,7 @@ test("mobile jobs remain reachable inside a bounded keyboard-accessible scroll r
   const actions = await isolatedBoard(page, "processor", false, { showcase: true });
   await page.goto("/processor-board");
   const viewport = page.getByRole("region", { name: "Scrollable jobs" }).filter({ visible: true });
+  await openFilters(page);
   await expect(viewport).toHaveAttribute("tabindex", "0");
   expect(await viewport.evaluate((element) => element.clientHeight)).toBeLessThanOrEqual(630);
   await viewport.focus(); await page.keyboard.press("End");

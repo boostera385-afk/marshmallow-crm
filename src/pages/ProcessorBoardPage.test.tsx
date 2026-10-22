@@ -13,6 +13,8 @@ const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: 
 const reviewResult = () => ({ status: "take_job_update", evidence: [], messages_reviewed: 10, matched_messages: 1, source: "Quo current history", history_complete: true, ai_used: false, timezone: "America/New_York", lead_updated_at: job.updated_at, checked_at: new Date().toISOString(), summary: "No verified technician update" });
 function mount() {
   const view = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>);
+  const options = screen.queryByText("Filters & tracking", { exact: true });
+  if (options) fireEvent.click(options);
   const confirm = screen.queryByLabelText("Confirm schedule timezone");
   if (confirm) fireEvent.click(confirm);
   return view;
@@ -26,6 +28,19 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("Processor Board interactions", () => {
+  it("opens as a compact job table with optional filters closed and technician identity in its own column", async () => {
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>);
+    const options = screen.getByText("Filters & tracking", { exact: true }).closest("details");
+    expect(options).not.toHaveAttribute("open");
+    expect(screen.getByRole("columnheader", { name: "Technician" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter this page")).not.toBeVisible();
+    expect(screen.getByRole("button", { name: "Refresh AI · this page" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Filters & tracking", { exact: true }));
+    expect(options).toHaveAttribute("open", "");
+    // motion.section animates opacity from 0; wait for the entrance to finish.
+    await waitFor(() => expect(screen.getByLabelText("Filter this page")).toBeVisible());
+    expect(state.assess).not.toHaveBeenCalled();
+  });
   it("unlocks AI controls after a completed review even while recovery list invalidation is pending", async () => {
     vi.spyOn(QueryClient.prototype, "invalidateQueries").mockImplementationOnce(() => new Promise(() => {}));
     mount();
@@ -91,7 +106,7 @@ describe("Processor Board interactions", () => {
       { ...job, id: "second", job_id: "JOB-1002", checked_at, assessment: { ...assessment, status: "scheduled", evidence: [], ai_used: false } },
     ], total: 2, observed_at: checked_at } });
     mount();
-    const cells = screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[2]);
+    const cells = screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[3]);
     expect(cells[0]).toHaveTextContent("AI evidence · technician completion verified");
     expect(cells[1]).toHaveTextContent("Schedule rule · no AI used");
     expect(within(cells[0]).getByLabelText("Last checked date and time")).toHaveTextContent(new Date(checked_at).getUTCFullYear().toString());
@@ -104,11 +119,11 @@ describe("Processor Board interactions", () => {
     mount();
     expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 with a technician reply tied to the job");
     expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 rely on this job's saved dispatch");
-    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[2];
-    expect(cell).toHaveTextContent("2 technician replies are tied to this job (2 via this job's saved dispatch)");
+    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
     expect(cell).toHaveTextContent("context-attributed · verify in Quo");
     fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
     const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("2 technician replies are tied to this job (2 via this job's saved dispatch)");
     expect(dialog).toHaveTextContent("this job's saved dispatch");
     expect(dialog).toHaveTextContent("Quo current history · saved Tech Quick Chat");
     expect(dialog).toHaveTextContent("Verify it in Quo before acting");
@@ -151,7 +166,7 @@ describe("Processor Board interactions", () => {
   });
   it("uses the compact column layout and keeps the exact total separate from page counts", () => {
     mount();
-    expect(screen.getAllByRole("columnheader").map((column) => column.textContent)).toEqual(["Customer / job / technician", "Service", "AI status", "Area", "Schedule", "Terms", "Action"]);
+    expect(screen.getAllByRole("columnheader").map((column) => column.textContent)).toEqual(["Customer / job", "Service", "Technician", "AI status", "Area", "Schedule", "Terms", "Action"]);
     expect(screen.getByLabelText("Total matching jobs")).toHaveTextContent("26");
     expect(screen.getByLabelText("Action counts on this page")).toHaveTextContent("On this page");
     expect(screen.getAllByText("Not checked yet").length).toBeGreaterThan(0);
@@ -178,7 +193,7 @@ describe("Processor Board interactions", () => {
     state.hook.mockReturnValue({ data: { rows: [reviewed], total: 1, observed_at: new Date().toISOString() } });
     mount();
     const row = screen.getAllByRole("row")[1];
-    const statusCell = within(row).getAllByRole("cell")[2];
+    const statusCell = within(row).getAllByRole("cell")[3];
     const check = within(statusCell).getByText("Checked 2m ago");
     const badge = within(statusCell).getByText("Payment Pending");
     expect(check.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -195,7 +210,7 @@ describe("Processor Board interactions", () => {
     const assessment = { status: "payment_pending", evidence: [], timezone: reason === "other timezone" ? "America/Chicago" : "America/New_York", checked_at: checkedAt, lead_updated_at: reason === "changed record" ? "2025-01-01T00:00:00Z" : job.updated_at };
     state.hook.mockReturnValue({ data: { rows: [{ ...job, checked_at: checkedAt, assessment: reason === "invalidated history" ? null : assessment }], total: 1, observed_at: new Date().toISOString() } });
     mount();
-    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[2];
+    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
     expect(cell).toHaveTextContent("Previous check");
     expect(cell).toHaveTextContent("previous check stale · refresh AI");
     expect(within(cell).queryByText("Payment Pending")).not.toBeInTheDocument();
@@ -209,7 +224,7 @@ describe("Processor Board interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check this job" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Synthetic provider unavailable"));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[2];
+    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
     expect(cell).toHaveTextContent("Previous check just now");
     expect(cell).toHaveTextContent("Unavailable");
     expect(cell.closest("tr")).toHaveAttribute("data-processor-status", "unavailable");
