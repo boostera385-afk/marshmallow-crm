@@ -33,11 +33,7 @@
 }
 
 .processor-board .processor-titlebar {
-  background:
-    radial-gradient(ellipse at top left, hsl(var(--primary) / 0.20), transparent 55%),
-    radial-gradient(ellipse at top right, hsl(198 90% 60% / 0.14), transparent 45%),
-    linear-gradient(180deg, hsl(var(--card) / 0.90), hsl(var(--muted) / 0.45));
-  box-shadow: inset 0 1px 0 hsl(var(--primary) / 0.18);
+  background: hsl(var(--card) / 0.5);
 }
 
 .processor-board .processor-toolbar {
@@ -76,13 +72,12 @@ html:not(.dark) .processor-board .processor-filter {
 }
 
 .processor-board .processor-row {
-  background-image: linear-gradient(90deg, hsl(var(--processor-tone) / 0.045), transparent 55%);
   transition: background-color 180ms;
 }
 
 .processor-board .processor-row > td:first-child,
 .processor-board article.processor-row {
-  box-shadow: inset 3px 0 0 hsl(var(--processor-tone) / 0.65);
+  box-shadow: inset 3px 0 0 hsl(var(--processor-tone) / 0.55);
 }
 
 .processor-board .processor-row:focus-within {
@@ -112,7 +107,7 @@ html:not(.dark) .processor-board .processor-filter {
   position: relative;
   max-height: var(--processor-viewport-height, 34rem);
   overflow: auto;
-  border-radius: 24px 24px 0 0;
+  border-radius: 0;
   scrollbar-gutter: stable;
 }
 

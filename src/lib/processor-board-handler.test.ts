@@ -36,7 +36,7 @@ function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; 
     };
     return builder;
   };
-  const fetcher = vi.fn(async (url: string | URL | Request) => {
+  const fetcher = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
     if (String(url).includes("/messages?")) return new Response(JSON.stringify({ data: tables.quo_messages.map((m) => ({ id: m.id, conversationId: "CN12345678", phoneNumberId: "PN12345678", direction: m.sender === "agent" ? "outgoing" : "incoming", text: m.text, status: m.status ?? "received", createdAt: m.message_time })), nextPageToken: null }), { status: options.directFail ? 503 : 200 });
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ evidence: options.modelEvidence ?? [{ signal: "completed", message_id: "m1", quote: tables.quo_messages[0].text }] }) } }] }), { status: options.aiFail ? 503 : 200 });
   });
@@ -48,6 +48,30 @@ function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; 
   return { request, rpc, reads, fetcher, tables };
 }
 describe("Processor Board server boundary", () => {
+  it("filters the provider payload to latest job messages and keywords while retaining response timing history", async () => {
+    const s = setup();
+    s.tables.quo_messages.push(...Array.from({ length: 50 }, (_, i) => ({ id: `chatter-${i}`, conversation_id: "mirror", sender: "customer", text: `JOB-1001 fixture colour note ${i}`, message_time: `2026-10-15T16:${String(i + 1).padStart(2, "0")}:00Z` })));
+    const response = await s.request();
+    expect(response.status).toBe(200);
+    const result = (await response.json()).result;
+    expect(result).toMatchObject({ status: "payment_pending", ai_scope: "latest_job_messages_and_keywords", ai_recent_limit: 20, ai_messages_omitted: 30, messages_reviewed: 51, extraction_messages: 21 });
+    const aiCall = s.fetcher.mock.calls.find(([url]) => String(url).includes("openai"))!;
+    const prompt = JSON.parse(String(aiCall[1]?.body));
+    const input = JSON.parse(prompt.messages[1].content).untrustedMessages;
+    expect(input).toHaveLength(21);
+    expect(input.some((message: { id: string }) => message.id === "m1")).toBe(true);
+    expect(input.some((message: { id: string }) => message.id === "chatter-0")).toBe(false);
+    expect(s.tables.leads).toEqual([job]);
+  });
+  it("rejects model evidence from a message omitted by the latest/keyword filter", async () => {
+    const text = "JOB-1001 fixture colour is blue";
+    const s = setup({ modelEvidence: [{ signal: "completed", message_id: "m1", quote: text }] });
+    s.tables.quo_messages[0].text = text;
+    s.tables.quo_messages.push(...Array.from({ length: 25 }, (_, i) => ({ id: `chatter-${i}`, conversation_id: "mirror", sender: "customer", text: `JOB-1001 fixture note ${i}`, message_time: `2026-10-15T16:${String(i + 1).padStart(2, "0")}:00Z` })));
+    const result = await (await s.request()).json();
+    expect(result.result.evidence).toEqual([]);
+    expect(result.result.status).toBe("take_job_update");
+  });
   it.each(["customer_service", "cs_admin", "opr", "opr_admin"])("rejects %s before reading leads/chats or invoking AI", async (role) => {
     const s = setup({ role }); expect((await s.request()).status).toBe(403); expect(s.reads).toEqual(["user_roles"]); expect(s.fetcher).not.toHaveBeenCalled();
   });
@@ -184,7 +208,7 @@ describe("Processor Board server boundary", () => {
     const response = await s.request({ action: "list" }); expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.rows).toHaveLength(25); expect(payload.total).toBe(25);
-    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true, evidence_policy: 5 });
+    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true, evidence_policy: 6 });
     expect(payload.rows.every((row: { chat_setup: { state: string } }) => row.chat_setup.state === "ready")).toBe(true);
     expect(s.reads).toEqual(["user_roles", "technicians", "quo_conversations"]);
     expect(s.rpc.mock.calls.map(([name]) => name)).toEqual(["list_processor_jobs"]);

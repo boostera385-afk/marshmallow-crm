@@ -1,11 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { canAccessNavItem } from "./access";
 import { currentAssessment, processorStatus, processorStatusOrigin, processorWorkflowMessage, processorReadiness, assessProcessorJob, fetchProcessorJobs, type ProcessorJob } from "./processor-board";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke } } }));
 const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1", customer_name: "John Sample", customer_phone: null, address: null, city: null, state: null, service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-10-15", scheduled_time_start: "10:00:00", scheduled_time_end: null, customer_schedule_requirements: null, terms: null, status: "scheduled", updated_at: "2026-10-15T10:00:00Z", checked_at: null, assessment: null };
 const now = new Date("2026-10-15T18:00:00Z");
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("Processor Board contract", () => {
+  it("bounds stalled checks and reports uncertain server completion rather than fabricated success", async () => {
+    vi.useFakeTimers();
+    invoke.mockImplementationOnce((_name, options) => new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("Aborted")))));
+    const review = assessProcessorJob(job.id, "America/New_York");
+    const check = expect(review).rejects.toMatchObject({ code: "review_timeout", retryable: true, message: expect.stringContaining("server may still finish") });
+    await vi.advanceTimersByTimeAsync(120000);
+    await check;
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it.each(["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin"] as const)("enforces fixed role access for %s despite grants", (role) => {
     expect(canAccessNavItem(role, "processor_board", [{ id: "p", user_id: "u", nav_section: "processor_board", allowed: true }])).toBe(["admin", "processor"].includes(role));
   });

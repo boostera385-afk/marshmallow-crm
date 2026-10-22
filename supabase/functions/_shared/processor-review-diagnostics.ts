@@ -1,5 +1,15 @@
 import { attributeTechnicianReplies, createJobMatcher, isCallOrSystemEvent, type JobIdentity, type JobMessage, type JobPeer } from "./processor-job-status.ts";
 
+export const PROCESSOR_RECENT_AI_MESSAGES = 20;
+// Candidate selection only, never evidence/authorization. Keep negated/future
+// wording intact for AI to reject; latest messages cover other wording/languages.
+// Job attribution always happens BEFORE this selector.
+const UPDATE_KEYWORDS = /\b(?:accept(?:ed)?|yes|ok(?:ay)?|on (?:my|the) way|en route|arriv\w*|start\w*|work(?:ing)?|progress|finish\w*|complet\w*|done|payment|paid|unanswer\w*|respond\w*|update|status|eta|cancel\w*|reschedul\w*)\b/i;
+export function selectProcessorAiMessages(attributable: JobMessage[]): JobMessage[] {
+  const recent = new Set(attributable.slice(-PROCESSOR_RECENT_AI_MESSAGES).map((message) => message.id));
+  return attributable.filter((message) => recent.has(message.id) || UPDATE_KEYWORDS.test(message.text ?? ""));
+}
+
 /**
  * Attribution counts for one job. A technician text that names the job is
  * explicit; a text that follows this job's saved dispatch in the shared 1:1
