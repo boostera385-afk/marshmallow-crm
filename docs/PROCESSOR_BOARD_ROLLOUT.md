@@ -1,5 +1,171 @@
 # Processor Board
 
+## Active radar requirements audit (2026-10-22) — database/Edge installed; CRM pending
+
+This section supersedes the older default-queue description below. The existing
+compact interface, viewport controls, permissions and advisory-only workflow remain.
+
+- Fixed server ordering **before pagination**: appointment date/time descending,
+  null schedules last, then job creation descending and ID for deterministic ties.
+  Both page selection and JSON aggregation use the same order. Newest appointments
+  appear first; old appointments remain reachable, not discarded.
+- A saved technician name **or** number is required for queue inclusion, including
+  history. Both absent/blank means unassigned and is excluded **before exact counts
+  and pagination**, not hidden client-side. A name-only assignment still needs its
+  number repaired before AI; a number-only assignment is not guessed from a name.
+- Assigned dated jobs stay on the active radar across saved status changes until
+  `paid`, `cancelled` or `job_done` (also excluding legacy `done`/`completed`). The
+  existing undated `scheduled` repair case remains. Needs Reschedule, cancellation
+  and payment approval requests remain visible but their workflows cannot be
+  advanced by an assessment. Only the existing eligible execution/payment states
+  permit checks; `job_done` is now history-only and not assessable.
+- Added a **Saved status · this page** filter, independent of advisory-action
+  filters. All saved statuses remains the default; counts/filters remain page-local.
+  No NSS category was invented: repository search, live saved statuses, visibility
+  settings and the four distinct `cs_tag` values contained no `NSS` entry. The user
+  also could not define NSS. A new NSS mapping requires a confirmed business meaning.
+- Every persisted check displays its **date, time and selected timezone**, not only
+  relative time or a hover title. Stale checks still say Previous check. New results
+  record `ai_used`: AI-reviewed rows explicitly say so, zero-matching-message checks
+  identify the saved-status/schedule rule, and older results honestly say AI usage
+  was not recorded. A policy-hash bump prevents reuse of pre-change backend results.
+- A complete chat with no new target-job signal no longer regresses saved In
+  Progress/Payment Pending/Partial Paid into Take Job Update. Incomplete history and
+  provider failure remain unavailable, never a successful AI check.
+- Existing four action rules, full paginated text history, exact job-identity and
+  quote verification, delivered-request/60-minute Send Dose safeguards, revision
+  checks, leases and atomic audit remain. No automatic lead mutation or message
+  sending was added. **AI checks remain on demand, not unattended monitoring.**
+  Calls/voicemails still need manual review; generic unanchored replies cannot be
+  safely attributed among several jobs in the same technician conversation.
+
+### Required release steps
+
+1. **Applied through Supabase MCP with explicit user approval on 2026-10-22** to
+   `kxiqholnmhkwhdkhtopp`: exact file
+   `supabase/migrations/20261022041621_processor_board_active_radar.sql`.
+   MCP recorded `20261022044310 / processor_board_active_radar`; retain the original
+   reviewed repository filename and do not repair remote migration history or
+   reapply this migration on this project. For another environment, review and
+   manually apply the file in its intended SQL Editor. It replaces only the existing
+   caller-token `SECURITY INVOKER` list RPC, preserving status visibility and lead
+   RLS. No table columns, API signatures, grants expansion or generated-type changes
+   are required. Do **not** run `db push`/`db reset` or reapply the original migration.
+2. **Deployed through Supabase MCP after separate explicit user approval on
+   2026-10-22:** `processor-board` **v3 ACTIVE**, JWT verification preserved (`true`).
+   All seven deployed files match the reviewed Git-normalized LF source: entrypoint,
+   `deno.json`, shared handler, job-status rules, readiness, history and technician
+   Quo-link parser. Preflight v2 already contained the earlier reliability fixes;
+   this release adds active-radar rules and explicit AI-use metadata. Function ID:
+   `6281626c-9181-4714-b8cf-8956ca98333f`. No other function was redeployed.
+3. Publish the CRM separately; verify signed-in Admin/Processor, denied roles,
+   reschedules, terminal transitions, technician unassignment/reassignment, several
+   jobs in one chat, and live-provider failures. Only the explicitly approved list
+   RPC migration was installed remotely: no lead/customer data writes, provider
+   invocations, messages or secret changes were performed. Only `processor-board`
+   was deployed after the user's additional explicit approval.
+4. Run `supabase/tests/153_processor_board_active_radar.sql` **only on an isolated
+   test database**; it writes synthetic records and is not production safe. The
+   runner below applies each migration twice and checks every PASS/FAIL. Existing
+   `150_processor_board.sql` authorization/lease/audit checks still run first.
+5. **Live database verification passed:** the updated read-only
+   `supabase/tests/151_processor_board_readonly.sql` returned **28 PASS** after
+   installation (18 original checks passed beforehand). It verifies caller-scoped
+   exact totals, newest-first page order, assigned-only active/history pages,
+   terminal exclusion and permitted/excluded roles. The exact
+   `supabase/tests/40_leads_rls_baseline.sql` was run before/after; all six role
+   matrices matched cell-for-cell. `pg_proc.prosrc` matches the migration body
+   exactly. The synthetic write-based 150/153 harnesses were not run on production.
+6. **Six non-mutating live Edge smoke checks passed:** preflight 200; missing user
+   authorization, invalid JWT, API-key-only and anon-JWT calls 401; unsupported
+   method 405. The anon-JWT rejection reaches the handler's `Not signed in.` check.
+   v3 logs in the checked 15-minute window contain those six expected HTTP results,
+   with no error-severity/runtime-failure entries. This verifies boot/authentication,
+   not a real signed-in assessment or Quo/OpenAI credentials. Existing server secrets
+   are reused; no new cron, unattended monitor, grants or client/API keys are needed.
+   The previous v2 source was saved outside the repository for approved rollback.
+
+```powershell
+node scripts/test-processor-board-db.mjs "C:\path\to\pglite-installation"
+npm test -- --maxWorkers=1 src/pages/ProcessorBoardPage.test.tsx src/lib/processor-board.test.ts src/lib/processor-board-handler.test.ts src/lib/processor-job-status.test.ts src/hooks/useProcessorBoard.test.tsx src/lib/processor-history.test.ts src/lib/processor-matching.test.ts
+npx playwright test --config playwright.operator-workflow.config.ts processor-board.spec.ts
+```
+
+Rollback: restore only the `list_processor_jobs` definition/grants from the original
+`20261015045700_processor_board_job_assessments.sql` (lines 72–107), redeploy the
+previous v2 function and restore the prior CRM. Retain advisory/audit history. There
+are no lead writes, schedules or data repairs to reverse.
+
+### Efficiency, diagnostics and verification boundaries
+
+- UI: bounded to the existing 25 rows; dates reuse the existing 30-second clock.
+  Saved-status filtering adds no timer, listener, query or provider call. Cache keys,
+  fresh skips, failed-only retry, reconnect/polling and the shared realtime bus are
+  unchanged. No additional job-history downloads, AI passes or background worker.
+- Database/API: exact counts precede the same 25-row evidence join. Assignment and
+  unfinished-job filtering occur server-side; creation time is used internally for
+  ties and removed from the JSON projection. No speculative index or RLS change.
+  Read-only production EXPLAIN of the proposed selection used the existing
+  `leads_scheduled_date_idx` and `idx_leads_status`, top-N sort (27 kB), 696 candidate
+  rows, no temp writes, 12.132ms execution. This privileged selection-only diagnostic
+  is **not** a caller-RLS RPC benchmark or a verified production improvement.
+- Before/after workload: Windows local Chromium, same synthetic six-job board,
+  mount/filter/drawer actions still require **one list request / zero assessments**;
+  the new saved-status filter has the same budget. Explicit repeated unchanged
+  checks retain one AI call for two current-history reads. No billing savings or
+  production-after performance/health claims; normalized billing evidence unavailable.
+- Production read-only diagnostics confirmed the installed RPC still sorts oldest
+  first. Last-24-hour logs returned 156 board HTTP 200s and no matching CPU-limit
+  events; this is not proof of correct job assessment. Security/performance advisors
+  retain unrelated findings (including private/service-only tables without browser
+  policies); no authorization was weakened to silence them. Relevant guidance:
+  [RLS without policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy),
+  [function search paths](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable),
+  [unindexed foreign keys](https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys).
+- Donut source search found no native board/list RPC/job-level assessment action;
+  technician-wide intelligence remains a separate flow. No extension source,
+  manifest, release metadata or ZIP changed. Storage/uploads/downloads are not
+  affected. No extension release or manual installation is needed for this change.
+- Local SQL checks: **45 PASS** (24 original + 21 radar), migrations applied twice.
+  Initial focused Vitest run: **87 PASS**. Full lint: zero errors / 28 existing
+  warnings. Typechecking and `git diff --check` passed. Initial browser run: 17/18
+  passed; the first desktop case timed out in cold `page.goto` before workflow
+  assertions. The unchanged full browser rerun passed **18/18**, including desktop,
+  mobile, saved-status filtering, failure recovery and all four excluded roles.
+  First full-unit run (overlapping build/browser activity): **886 PASS / 2 FAIL**,
+  both in the unchanged `AppSidebar.test.tsx` (Admin timeout then missing link).
+  All Processor Board tests passed, including the final 15 contract tests. The full
+  standalone rerun passed **888/888 tests across 103 files**, including all four
+  sidebar tests. No tests/timeouts/configuration were weakened or unrelated sidebar
+  work edited.
+  Production build passed, including unchanged Donut v1.7.0 source/ZIP integrity;
+  existing Browserslist, mixed-import and bundle-size warnings remain. The board
+  route is 31.65 kB JS (10.13 kB gzip) and 3.82 kB CSS (0.98 kB gzip).
+  The 1440px and 390px checked-job screenshots were inspected: exact check date/time,
+  AI-source label, technician identity and schedule are visible without overflow.
+  Signed-in production/provider QA and native Deno check remain unverified.
+
+### Boostera release branch verification (2026-10-22)
+
+The user requested a new remote branch and will merge `main` themselves. Release
+branch `feat/processor-board-active-radar-2026-10-22` is based on Boostera `main`
+`f5a82cb`, not the older dirty development branch. Only 17 Processor Board files
+(including its isolated parity section) are included; unrelated original working
+changes are preserved. No dependency, extension source or release ZIP changed.
+
+The exact release worktree passed lint (zero errors / 28 existing warnings), app/
+node typechecks, **915 unit tests across 104 files**, build including Donut v1.7.0
+integrity, and all **18 network-isolated Processor Board browser tests**. The 45
+isolated SQL checks also passed from that worktree. These supersede the older
+workspace's 888-test count above; Boostera main includes additional existing tests.
+Existing Browserslist, mixed-import, large-bundle and optional react-leaflet
+prebundle warnings remain. Tests/configuration were not weakened or skipped.
+
+Database migration and Edge v3 are installed as recorded above. Merging the branch
+does not constitute signed-in/provider QA or CRM publication; those remain the
+user's separate release steps. No Donut installation is needed for this CRM-only
+board change.
+
 ## Five-row scroll viewport (2026-10-19) — local only
 
 - **Rows in view** defaults to **Show 5**, with 10, 15 and 25 options beside the

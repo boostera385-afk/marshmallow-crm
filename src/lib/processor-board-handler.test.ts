@@ -59,7 +59,7 @@ describe("Processor Board server boundary", () => {
   });
   it("saves only job-specific advisory evidence and reuses unchanged inputs without a second AI call", async () => {
     const s = setup(); const first = await s.request(); expect(first.status).toBe(200);
-    expect((await first.json()).result).toMatchObject({ status: "payment_pending", history_complete: true, source: "Quo current history" });
+    expect((await first.json()).result).toMatchObject({ status: "payment_pending", ai_used: true, history_complete: true, source: "Quo current history" });
     expect((await s.request()).status).toBe(200);
     expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(1);
     expect(s.reads.filter((name) => name === "quo_messages")).toHaveLength(0);
@@ -119,5 +119,18 @@ describe("Processor Board server boundary", () => {
     ];
     const response = await s.request(); expect(response.status).toBe(200);
     expect((await response.json()).result).toMatchObject({ status: "needs_review", history_complete: false });
+  });
+  it("does not invoke or claim AI when the complete chat only identifies another job", async () => {
+    const s = setup(); s.tables.quo_messages[0].text = "JOB-1002 is completed and ready for payment.";
+    const response = await s.request(); expect(response.status).toBe(200);
+    expect((await response.json()).result).toMatchObject({ status: "take_job_update", ai_used: false, matched_messages: 0, evidence: [] });
+    expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(0);
+    expect(s.tables.leads).toEqual([job]);
+  });
+  it.each(["job_done", "cancelled", "payment_requested", "cancellation_requested", "needs_reschedule"])("does not let AI bypass the saved %s workflow", async (status) => {
+    const s = setup(); s.tables.leads = [{ ...job, status }];
+    expect((await s.request()).status).toBe(409);
+    expect(s.fetcher).not.toHaveBeenCalled();
+    expect(s.rpc.mock.calls.map(([name]) => name)).toEqual(["processor_can_view_status"]);
   });
 });

@@ -58,4 +58,9 @@ describe("Processor job isolation", () => {
     expect(deriveJobStatus(job, evidence(messages, "progress"), messages, true, now, "America/New_York")).toBe("job_in_progress");
     expect(deriveJobStatus(job, evidence(messages), messages, false, now, "America/New_York")).toBe("unavailable");
   });
+  it.each(["payment_pending", "partial_paid", "job_in_progress"])("does not regress saved %s when AI finds no new job update", (status) => {
+    const expected = status === "job_in_progress" ? status : "payment_pending";
+    expect(deriveJobStatus({ ...job, status }, [], [message("JOB-1002 is completed")], true, now, "America/New_York")).toBe(expected);
+    expect(deriveJobStatus({ ...job, status }, [], [], false, now, "America/New_York")).toBe("unavailable");
+  });
 });

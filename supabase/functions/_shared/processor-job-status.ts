@@ -74,6 +74,8 @@ export function verifyJobEvidence(value: unknown, job: JobIdentity, peers: JobPe
 }
 export function deriveJobStatus(job: JobIdentity, evidence: JobEvidence[], messages: JobMessage[], complete: boolean, now: Date, timezone: string): ProcessorStatus {
   if (!complete) return "unavailable";
+  // A missing conversation signal must not regress an already saved payment state.
+  if (["payment_pending", "partial_paid"].includes(job.status)) return "payment_pending";
   const latest = [...evidence].reverse().find((e) => e.signal === "completed" || e.signal === "progress");
   if (latest?.signal === "completed") return "payment_pending";
   // Absence is only actionable after acceptance AND a specific unanswered request.
@@ -83,6 +85,6 @@ export function deriveJobStatus(job: JobIdentity, evidence: JobEvidence[], messa
       localDateTime(new Date(request.message_time), timezone).slice(0, 10) >= job.scheduled_date! &&
       now.getTime() - Date.parse(request.message_time) >= 60 * 60_000 &&
       !messages.some((m) => m.sender === "customer" && (!m.message_time || m.message_time > request.message_time))) return "send_dose";
-  if (latest?.signal === "progress") return "job_in_progress";
+  if (latest?.signal === "progress" || job.status === "job_in_progress") return "job_in_progress";
   return schedulePassed(job, now, timezone) ? "take_job_update" : job.scheduled_date && job.scheduled_time_start ? "scheduled" : "needs_review";
 }
