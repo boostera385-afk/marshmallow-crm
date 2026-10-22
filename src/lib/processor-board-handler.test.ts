@@ -66,6 +66,23 @@ describe("Processor Board server boundary", () => {
     expect(s.rpc.mock.calls.filter(([name]) => name === "save_processor_job_assessment")).toHaveLength(1);
     expect(s.tables.leads).toEqual([job]);
   });
+  it("reports no identified technician reply rather than claiming a verified outcome or spending AI on dispatch-only text", async () => {
+    const s = setup();
+    s.tables.quo_messages = [{ id: "dispatch", sender: "agent", text: "Dispatch JOB-1001 for tomorrow at 10am", status: "delivered", message_time: "2026-10-15T14:00:00Z" }, { id: "generic", sender: "customer", text: "Finished the job and cleaned up", message_time: "2026-10-15T16:00:00Z" }];
+    const response = await s.request(); expect(response.status).toBe(200);
+    const result = (await response.json()).result;
+    expect(result).toMatchObject({ status: "take_job_update", evidence: [], ai_used: false, matched_messages: 1, matched_technician_messages: 0, unattributed_technician_messages: 1, extraction_messages: 0 });
+    expect(result.summary).toContain("No verified technician outcome");
+    expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(0);
+    expect(s.tables.leads).toEqual([job]);
+  });
+  it("accepts a source-grounded factual span with identity elsewhere in the same message", async () => {
+    const quote = "I have finished the installation and cleaned up.";
+    const s = setup({ modelEvidence: [{ signal: "completed", message_id: "m1", quote }] });
+    s.tables.quo_messages[0].text = `JOB-1001\n${quote}`;
+    const response = await s.request(); expect(response.status).toBe(200);
+    expect((await response.json()).result).toMatchObject({ status: "payment_pending", evidence: [{ quote, identity_basis: "source_message" }], matched_technician_messages: 1 });
+  });
   it("does not save or claim success on an AI, incomplete-history or persistence failure", async () => {
     for (const options of [{ aiFail: true }, { failMessages: true, noDirect: true }, { directFail: true }, { failSave: true }]) {
       const s = setup(options); expect((await s.request()).status).toBeGreaterThanOrEqual(400);
