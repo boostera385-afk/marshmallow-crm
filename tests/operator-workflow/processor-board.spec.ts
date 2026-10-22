@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 const version = JSON.parse(readFileSync(new URL("../../public/extension-release.json", import.meta.url), "utf8")).version;
 const USER = "00000000-0000-4000-8000-000000000001";
 const LEAD = "00000000-0000-4000-8000-000000000002";
-async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean; noEvidence?: boolean } = {}) {
+async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean; noEvidence?: boolean; context?: boolean } = {}) {
   const actions: Record<string, unknown>[] = [];
   let reviewed = false;
   let failures = 0;
   const row = () => ({ id: LEAD, job_id: "JOB-1001", customer_name: "John Sample", customer_phone: "4155550101", service_type: "Garage Door Service", address: "10 Sample St Apt 2", city: "Miami", state: "FL", tech_name: "Alex Technician", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only; call before arrival", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: reviewed ? new Date().toISOString() : null,
-    assessment: reviewed ? { status: options.noEvidence ? "take_job_update" : "payment_pending", evidence: options.noEvidence ? [] : [{ signal: "completed", quote: "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer" }], matched_technician_messages: options.noEvidence ? 0 : 1, unattributed_technician_messages: options.noEvidence ? 8 : 0, extraction_messages: options.noEvidence ? 0 : 1, messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, ai_used: !options.noEvidence, chat_fingerprint: options.auto ? "verified-setup" : undefined, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: options.noEvidence ? "No verified technician outcome for this job. Generic replies were not assigned to the nearest dispatch." : "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
+    assessment: reviewed ? { status: options.noEvidence ? "take_job_update" : "payment_pending", evidence: options.noEvidence ? [] : [{ signal: "completed", quote: options.context ? "I finished the installation and cleaned up." : "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer", identity_basis: options.context ? "thread_context" : undefined }], matched_technician_messages: options.noEvidence || options.context ? 0 : 1, context_technician_messages: options.context ? 2 : 0, unattributed_technician_messages: options.noEvidence ? 8 : 0, extraction_messages: options.noEvidence ? 0 : 1, messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, ai_used: !options.noEvidence, chat_fingerprint: options.auto ? "verified-setup" : undefined, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: options.noEvidence ? "No verified technician outcome for this job. Generic replies were not assigned to the nearest dispatch." : "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
     chat_setup: options.auto ? { state: "ready", code: "ready", message: "Exact saved technician chat verified", fingerprint: "verified-setup", conversation_id: "00000000-0000-4000-8000-000000000010", last_message_at: null, source: "verified_mirror", chat_url: "https://my.quo.com/inbox/PN12345678/c/CN12345678" } : undefined,
     ...(options.setup ? { tech_number: null, scheduled_date: null, scheduled_time_start: null } : {}) });
   const rows = () => {
@@ -72,7 +72,7 @@ for (const width of [1440, 390]) test(`Processor reviews the correct job and evi
   await page.getByRole("button", { name: "Check this job" }).click();
   await expect(page.getByRole("dialog")).toContainText("JOB-1001 is completed and ready for payment.");
   await expect(page.getByRole("dialog")).toContainText("Saved lead status: Scheduled");
-  await expect(page.getByRole("dialog")).toContainText("534 conversation events examined");
+  await expect(page.getByRole("dialog")).toContainText("534 messages examined");
   expect(actions.filter((a) => a.action === "assess")).toEqual([{ action: "assess", leadId: LEAD, timezone: "America/New_York" }]);
   await page.keyboard.press("Escape");
   await expect(page.locator("[role=dialog]")).toHaveCount(0);
@@ -106,7 +106,7 @@ for (const width of [1440, 390]) test(`automatic tracking requires timezone conf
   expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
   await page.getByLabel("Confirm schedule timezone").check();
   await expect(page.getByRole("status")).toContainText("Automatic check: 1 reviewed");
-  await expect(page.getByLabel("Evidence quality on this page")).toContainText("1 with verified technician updates");
+  await expect(page.getByLabel("Evidence quality on this page")).toContainText("1 with a technician reply tied to the job");
   await expect(page.getByText("AI evidence · technician completion verified").filter({ visible: true })).toBeVisible();
   await expect(page.getByText("Saved: Scheduled", { exact: false }).filter({ visible: true })).toBeVisible();
   await page.getByRole("button", { name: "Refresh AI · this page" }).click();
@@ -126,9 +126,9 @@ for (const width of [1440, 390]) test(`zero-verified-outcome checks stay explici
   await page.keyboard.press("Escape");
   await page.getByLabel("Confirm schedule timezone").check();
   await expect(page.getByRole("status")).toContainText("1 reviewed · 0 failed");
-  await expect(page.getByRole("status")).toContainText("0 with verified technician updates · 1 without a verified technician update");
-  await expect(page.getByLabel("Evidence quality on this page")).toContainText("0 with verified technician updates");
-  await expect(page.getByText(/0 technician messages identify this job; 8 other replies/).filter({ visible: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("0 with a technician reply tied to the job · 1 without a tied technician reply");
+  await expect(page.getByLabel("Evidence quality on this page")).toContainText("0 with a technician reply tied to the job");
+  await expect(page.getByText(/8 technician replies were not tied to this job/).filter({ visible: true })).toBeVisible();
   await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
   await expect(page.getByRole("dialog")).toContainText("No verified technician outcome for this job");
   await expect(page.getByRole("link", { name: "Open verified technician chat" })).toHaveAttribute("href", "https://my.quo.com/inbox/PN12345678/c/CN12345678");
@@ -146,6 +146,23 @@ test("automatic tracking can be paused before starting and setup problems never 
   await page.getByLabel("Automatic AI tracking").check();
   await expect(page.getByText(/Save a valid technician number/).filter({ visible: true })).toBeVisible();
   expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
+});
+for (const width of [1440, 390]) test(`context-attributed completion is labelled for manual verification at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const actions = await isolatedBoard(page, "processor", false, { auto: true, context: true });
+  await page.goto("/processor-board");
+  await page.getByLabel("Confirm schedule timezone").check();
+  await expect(page.getByRole("status")).toContainText("1 with a technician reply tied to the job");
+  await expect(page.getByText("AI evidence · technician completion context-attributed · verify in Quo").filter({ visible: true })).toBeVisible();
+  await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("2 follow this job's saved dispatch");
+  await expect(dialog).toContainText("This reply does not name the job");
+  await expect(dialog).toContainText("Quo current history · saved Tech Quick Chat");
+  await expect(dialog).toContainText("Saved lead status: Scheduled");
+  await expect(dialog).toContainText("I finished the installation and cleaned up.");
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
 for (const width of [1440, 390]) test(`saved-status filtering preserves the board and makes no AI calls at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { createJobMatcher, jobAnchors, phoneKey, type JobIdentity } from "../../supabase/functions/_shared/processor-job-status";
+import { attributeTechnicianReplies, createJobMatcher, jobAnchors, phoneKey, type JobIdentity, type JobMessage } from "../../supabase/functions/_shared/processor-job-status";
 
 // The pre-optimization algorithm, retained only as a behavioral/performance baseline.
 function baseline(text: string, job: JobIdentity, peers: JobIdentity[]): boolean {
@@ -47,6 +47,22 @@ describe("compiled job matching", () => {
     console.info(`Synthetic 60-peer/360-message matcher: before ${oldMs.toFixed(1)}ms / ${oldReads} identity reads; after ${newMs.toFixed(1)}ms / ${identityReads} identity reads.`);
     for (let index = 0; index < 10000; index++) expect(matches(index % 2 ? "JOB-1001 is completed" : "JOB-1001 and OTHER-59 are completed")).toBe(Boolean(index % 2));
     expect(identityReads).toBe(60);
+  });
+  it("builds one peer identity index per attribution pass, not one matcher per peer", () => {
+    let identityReads = 0;
+    const peers = [job, ...Array.from({ length: 60 }, (_, index) => ({ ...peer, id: `peer-${index}`, job_id: `OTHER-${index}`, address: `${index + 100} Example St`, customer_phone: null, get customer_name() { identityReads++; return `Example Person ${index}`; } }))];
+    const messages: JobMessage[] = [{ id: "dispatch", conversation_id: "chat", sender: "agent", text: "JOB-1001 is in progress", status: "delivered", message_time: "2026-10-15T14:00:00Z" },
+      ...Array.from({ length: 360 }, (_, index) => ({ id: `m-${index}`, conversation_id: "chat", sender: index % 2 ? "customer" : "agent", text: index % 2 ? "Ok thank you" : "Please send the update", status: index % 2 ? "received" : "delivered", message_time: new Date(Date.parse("2026-10-15T14:01:00Z") + index * 60_000).toISOString() }))];
+    // Compare the same roster/workload with the initial per-peer compile plan.
+    createJobMatcher(job, peers);
+    for (const other of peers.slice(1)) createJobMatcher(other, peers);
+    const perPeerReads = identityReads;
+    identityReads = 0;
+    const attribution = attributeTechnicianReplies(job, peers, messages);
+    // Target matcher reads each peer once; the attribution index reads each peer once.
+    expect(attribution.contextual.size).toBe(180);
+    expect(perPeerReads).toBe(3660);
+    expect(identityReads).toBe(120);
   });
   it("does not reuse identity indexes after job reassignment or scope changes", () => {
     const before = createJobMatcher(job, [job]);

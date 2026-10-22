@@ -22,9 +22,9 @@ export const processorChatSetupSchema = z.object({
   chat_url: z.string().regex(/^https:\/\/my\.quo\.com\/inbox\/PN[A-Za-z0-9_-]{6,}\/c\/CN[A-Za-z0-9_-]{6,}$/).optional(),
 });
 export const processorAssessmentSchema = z.object({
-  status: z.enum(PROCESSOR_STATUSES), evidence: z.array(z.object({ signal: z.enum(["accepted", "progress", "completed", "update_request"]), quote: z.string(), message_id: z.string(), message_time: z.string(), sender: z.string(), identity_basis: z.literal("source_message").optional() })),
+  status: z.enum(PROCESSOR_STATUSES), evidence: z.array(z.object({ signal: z.enum(["accepted", "progress", "completed", "update_request"]), quote: z.string(), message_id: z.string(), message_time: z.string(), sender: z.string(), identity_basis: z.enum(["source_message", "thread_context"]).optional() })),
   messages_reviewed: z.number().int().nonnegative(), matched_messages: z.number().int().nonnegative(),
-  matched_technician_messages: z.number().int().nonnegative().optional(), unattributed_technician_messages: z.number().int().nonnegative().optional(), extraction_messages: z.number().int().nonnegative().optional(),
+  matched_technician_messages: z.number().int().nonnegative().optional(), context_technician_messages: z.number().int().nonnegative().optional(), unattributed_technician_messages: z.number().int().nonnegative().optional(), technician_text_messages: z.number().int().nonnegative().optional(), call_event_messages: z.number().int().nonnegative().optional(), extraction_messages: z.number().int().nonnegative().optional(),
   source: z.string(), history_complete: z.boolean(), ai_used: z.boolean().optional(), chat_fingerprint: z.string().optional(), chat_source: z.enum(["saved_link", "verified_mirror"]).optional(), timezone: z.string(), checked_at: z.string(), summary: z.string(), lead_updated_at: z.string(),
 });
 export const processorJobSchema = z.object({
@@ -66,8 +66,23 @@ export function processorSetupIssue(job: ProcessorJob): string | null {
 }
 export function processorAttributionMessage(job: ProcessorJob, timezone: string, now: Date): string | null {
   const a = currentAssessment(job, timezone, now);
-  if (a?.matched_technician_messages === undefined) return null;
-  return `${a.matched_technician_messages} technician messages identify this job; ${a.unattributed_technician_messages ?? 0} other replies not assigned to it. ${a.matched_technician_messages ? "Only identified source messages can verify an outcome." : "No technician outcome is verified. Review the chat manually."}`;
+  if (a?.matched_technician_messages === undefined && a?.context_technician_messages === undefined) return null;
+  const direct = a?.matched_technician_messages ?? 0;
+  const contextual = a?.context_technician_messages ?? 0;
+  const unassigned = a?.unattributed_technician_messages ?? 0;
+  const tied = direct + contextual;
+  if (!tied) return unassigned
+    ? `${unassigned} technician repl${unassigned === 1 ? "y was" : "ies were"} not tied to this job; no technician outcome is verified. Review the chat manually.`
+    : "No technician text reply is tied to this job yet. Review the chat manually.";
+  const verified = a?.evidence.some((item) => item.signal !== "update_request");
+  return `${tied} technician repl${tied === 1 ? "y is" : "ies are"} tied to this job${contextual ? ` (${contextual} via this job's saved dispatch)` : ""}.${unassigned ? ` ${unassigned} other repl${unassigned === 1 ? "y was" : "ies were"} not tied to it.` : ""} ${verified ? "Verify the quoted updates in Quo before acting." : "No progress or completion is verified yet."}`;
+}
+/** Replies and extracted outcomes are different: an acknowledgement is a reply
+ * even when AI finds no progress/completion. Older results fall back to evidence. */
+export function processorHasTechnicianReply(assessment: z.infer<typeof processorAssessmentSchema>): boolean {
+  if (assessment.matched_technician_messages !== undefined || assessment.context_technician_messages !== undefined)
+    return (assessment.matched_technician_messages ?? 0) + (assessment.context_technician_messages ?? 0) > 0;
+  return assessment.evidence.some((item) => item.signal !== "update_request");
 }
 export const processorReviewSignature = (job: ProcessorJob, timezone: string) => `${job.updated_at}:${timezone}:${job.chat_setup?.fingerprint ?? "legacy"}`;
 export function processorStatus(job: ProcessorJob, timezone: string, now: Date): ProcessorStatus {
@@ -90,8 +105,10 @@ export function processorStatusOrigin(job: ProcessorJob, timezone: string, now: 
     : assessment.ai_used === true ? assessment.evidence.length ? "AI reviewed source quotes" : "AI found no verified job update"
       : assessment.ai_used === false ? "no AI used" : "AI usage not recorded";
   if (["payment_pending", "partial_paid"].includes(job.status) || (job.status === "job_in_progress" && status === "job_in_progress" && !assessment?.evidence.some((e) => e.signal === "progress"))) return `Saved lead status · ${review}`;
-  if (assessment && status === "payment_pending" && assessment.evidence.some((e) => e.signal === "completed")) return "AI evidence · technician completion verified";
-  if (assessment && status === "job_in_progress" && assessment.evidence.some((e) => e.signal === "progress")) return "AI evidence · technician progress verified";
+  const completion = assessment?.evidence.find((e) => e.signal === "completed");
+  if (assessment && status === "payment_pending" && completion) return `AI evidence · technician completion ${completion.identity_basis === "thread_context" ? "context-attributed · verify in Quo" : "verified"}`;
+  const progress = assessment?.evidence.find((e) => e.signal === "progress");
+  if (assessment && status === "job_in_progress" && progress) return `AI evidence · technician progress ${progress.identity_basis === "thread_context" ? "context-attributed · verify in Quo" : "verified"}`;
   if (assessment && status === "send_dose") return assessment.history_complete && assessment.evidence.some((e) => e.signal === "accepted" || e.signal === "progress") && assessment.evidence.some((e) => e.signal === "update_request")
     ? "AI evidence + delivered-request timing · follow up manually" : "Review result · verify acceptance and delivered request before following up";
   if (status === "scheduled" || status === "take_job_update") return `Schedule rule · ${review}`;

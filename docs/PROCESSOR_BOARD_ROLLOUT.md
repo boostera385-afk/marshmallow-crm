@@ -1,5 +1,193 @@
 # Processor Board
 
+## Verified Tech Quick Chat attribution (2026-10-22) — local source; Edge v6 deployment awaiting approval
+
+This section records the follow-up to the live complaint that the board said
+“0 technician messages identify this job” while the saved Tech Quick Chat on the
+lead clearly contained technician replies. It is **source-only, not deployed**:
+Edge **v5** remains ACTIVE. The user requested an immediate commit on the new
+`processor-fix` branch while the final serial test run continues in the background.
+The resulting commit/push status is recorded in the handoff, not proof of publication.
+No CRM publication, migration, provider call, assessment, lead/status write,
+schedule edit or outbound message occurred. Edge deployment requires separate
+explicit approval after the matching CRM UI is published.
+
+### Live read-only diagnosis
+
+- `LD-7RL3L3` current Quo text history had **9 text events**: one
+  outbound customer-details dispatch that uniquely identified the job, and three
+  real technician texts (acknowledgements and a cancellation complaint).
+  The old rule required the technician text itself to repeat a job ID, complete
+  address, full name or exact customer phone; none did, so all three were counted
+  as “not assigned”. Call rows were not in the current-history text feed.
+- `LD-HJ83ZO` showed the same defect in the visible saved chat: technician
+  acknowledgements and appointment discussion followed this job's customer-details
+  dispatch, but were unassigned because they did not repeat its identifiers.
+  `LD-RORBQD` also had acknowledgements and a technician reschedule request.
+  These observations do not establish work started or finished.
+- The webhook mirror also stores call recordings, call transcripts, call summaries
+  and reactions as inbound `customer` rows. The current-history API feed is
+  text-only, so mirror diagnostics could count those artifacts as “technician
+  messages”. They are not technician replies and may contain both speakers.
+
+### Attribution rule and limits
+
+- A technician text that names this job in the same message remains **direct**
+  evidence under the existing unique-ID/address/full-name/exact-phone and
+  peer-exclusion checks.
+- A technician text that does **not** name the job is **context-attributed** only
+  when it follows this job's own delivered, job-identifying dispatch in the same 1:1
+  technician thread, before any other saved or unknown job's dispatch, and within
+  **7 days** of that dispatch. The reply must be strictly later (a tied timestamp
+  cannot establish order); failed/unknown delivery and another conversation cannot
+  anchor it. The reply itself is still the only quoted source.
+- Any peer dispatch, any unknown “Customer Name/Number/Address” dispatch, any
+  technician message that mentions another saved job, or the expiry of the window
+  closes/blocks the episode, including generic replies after a technician changes
+  topics to another job. Generic chatter does not re-open an episode.
+- Call recordings, transcripts, summaries, media and reactions never count as
+  technician text replies and are never sent to the AI as replies; server evidence
+  verification rejects them even if a model returns such an ID. All received rows
+  still participate in silence timing when present in the chosen feed; current
+  Quo text history does not independently prove whether a phone call occurred.
+- AI input is still limited to the target job's attributable replies plus this
+  job's delivered agent messages. Each message is labelled `names_job` or
+  `follows_job_dispatch`; server verification still requires the exact quote from
+  that same message, the correct sender, a non-future timestamp, the appointment
+  date guard and the peer checks. An unnamed reply after another job's dispatch is
+  rejected even if the model returns it. Short replies (synthetic examples: `Ok`,
+  `Done`) must be quoted in full, inside the verified episode; a short substring
+  from a longer or negated message is rejected. Acknowledgement alone is neither
+  progress nor completion.
+- Context-attributed evidence carries `identity_basis: thread_context` and is
+  shown as **context-attributed · verify in Quo**. It can establish acceptance,
+  progress or completion admissibly, but **Send Dose still requires a directly
+  identified acceptance** plus a delivered, unanswered, job-specific update
+  request and the existing 60-minute wait. Context-only evidence cannot accuse a
+  technician of silence.
+- The result now reports direct replies, context-attributed replies, real
+  technician texts, unassigned replies and excluded call/system rows separately.
+  Page/batch reply counts use attribution rather than outcome extraction: a reply
+  with no verified progress/completion is no longer misleadingly counted as zero.
+  Unassigned replies remain separately counted. The drawer names the same saved Tech
+  Quick Chat conversation as the source (current Quo history or webhook mirror).
+- No lead status, schedule, approval, quote, payment or conversation link is
+  changed. The board remains advisory and still requires schedule-timezone
+  confirmation. `policy: 5` invalidates prior extraction hashes.
+
+### Remaining limits and release state
+
+Conversation position is not proof of intent: a human must verify context-attributed
+replies in Quo before acting, especially completions that would suggest Payment
+Pending. A technician who discusses a job by phone, or whose job was never sent as
+a customer-details dispatch, can still produce no attributable reply. The three
+malformed saved numbers (`LD-EFM7FS`, `LD-BLYIQ8`, `LD-SHALGR`), the unconfirmed
+schedule-timezone convention and live real-conversation accuracy remain unresolved
+data/manual steps. No schema, RLS, generated type, migration or SQL harness change
+is needed; no Donut source/version/ZIP changed because Donut has no native board or
+job-specific assessment counterpart. Edge v6 is **awaiting approved deployment**;
+CRM Publish and signed-in/provider QA remain the user's separate steps.
+
+**Release order matters:** publish the new frontend before deploying the new Edge
+source, then confirm publication and obtain explicit Edge deployment approval.
+The new frontend accepts existing v5 result fields, but an older frontend can
+reject the new `thread_context` provenance (or display an unqualified legacy
+completion label). Do not deploy v6 ahead of the matching UI. A branch push is
+not publication; verify the published UI's provenance support before deployment.
+
+### TODO / manager-message checklist
+
+| Requirement | Current source behavior / remaining check |
+| --- | --- |
+| Preserve interface; newest schedules first | Existing compact layout unchanged; installed list RPC orders by saved appointment date/time, then job creation, before pagination. |
+| Technician name/number, job time, last check | Saved identity/schedule and exact checked date/time are retained; missing/malformed setup remains visible with a repair path. |
+| Only assigned unfinished jobs on radar | Existing active radar excludes unassigned and terminal paid/cancelled/done/completed jobs; older unfinished assigned appointments remain accessible through pagination. |
+| Take Job Update | Overdue saved schedule rule, only after operator timezone confirmation; no guessed customer timezone. |
+| Job In Progress | Technician work/progress evidence for this job, not a bare acknowledgement, future plan or another job's message. |
+| Payment Pending | Technician completion evidence for this job; context-based completion explicitly requires manual verification. No approval/status write. |
+| Send Dose | Advisory only: direct acceptance, delivered job-specific request, 60-minute wait, current history and no later technician reply; never an automatic send. |
+| Do not mix one technician's 2–3 jobs | Direct identifier/peer checks plus bounded dispatch episodes; technician topic switches close the context. Ambiguity remains manual review. |
+| Identify AI use | Per-row AI-versus-saved-status/schedule-rule labels, provenance notes, reply diagnostics and successful-check counts remain separate. |
+| Automatic tracking | While the board is open/visible and timezone-confirmed, for the loaded page (up to 25 jobs); hiding/unmounting stops new checks. It is not an all-pages/background worker. |
+| NSS | No authoritative NSS status/tag was found in the source audit; no invented status mapping/filter was added. Confirm the intended saved status if another exclusion is required. |
+
+After approved release, verify the real saved chat and board side by side for a
+multi-job technician, an acknowledgement-only job, a completion, an unanswered
+request and a reschedule request. Build/mocked tests do not establish live model
+accuracy. Obtain verified phone corrections and a confirmed schedule convention
+before calling the production TODO complete.
+
+### Rollback and permissions
+
+All five permission layers were traced: fixed Admin/Processor UI and helper gates,
+`AuthContext.canAccess`, caller-token lead/status/chat scope, assessment-table RLS
+and service-only lease/save RPCs, plus generated database types. None changed. The
+optional JSON diagnostics/provenance do not add a database enum. Tests cover excluded
+roles, hidden/status-excluded jobs, provider/save failures and unchanged lead values.
+No live RLS write-based harness was run; no database authorization change is proposed.
+
+If approved deployment needs rollback, redeploy the nine-file v5 source from
+`ea68547` with its existing JWT verification setting preserved, and restore the
+frontend only after a separate compatibility review. Keep the provenance-capable
+new UI during backend rollback: stored `thread_context` JSON may remain in list
+results even after changing the backend. Do not delete assessment/customer records
+or rewrite migration history. New-context cached evidence must not be trusted by
+the old policy; input/extraction policy hashes force a fresh review when invoked,
+but do not themselves rewrite list results. Any live rechecks require approval.
+
+### Efficiency and verification record
+
+- No additional database read, Quo request, second provider call or timer per check.
+  More legitimate replies now qualify for the existing single AI extraction where
+  the earlier rule skipped it, so this is not a provider-cost reduction claim. Attribution
+  runs in memory over the history already read. It builds **one normalized peer
+  identity index per review**, not one full matcher per peer; a synthetic
+  Windows/Vitest 60-peer/360-message regression compares **3,660 identity reads** for the initial
+  per-peer compilation with **120 identity reads** (target matcher + peer index),
+  while retaining 180 contextual replies on that synthetic workload. The evidence hash now
+  includes the contextual IDs and policy so a changed episode cannot reuse stale
+  provenance; changed target text still forces a fresh extraction.
+- UI/cache reuse the existing page, query keys, freshness and retry/backoff; the
+  new counts come from the loaded result. No new realtime subscription, upload,
+  worker or storage work. The board chunk is 44.05 kB (13.83 kB gzip), up from
+  41.65 kB (13.18 kB gzip); CSS is unchanged at 3.82 kB (0.98 kB gzip).
+- Gates run locally: focused Processor Board tests **100 passed across 5 files**,
+  plus a **65-test** matcher/diagnostics/handler rerun after the peer-index change;
+  initial full `npm test` ran **968 tests across 108 files** with **966 passing**.
+  The two failures were unrelated `AppSidebar` timing/teardown tests under full
+  parallel load; that file passed **4/4** alone. The subsequent complete
+  `npm test -- --maxWorkers=1` passed **975/975 across 108 files**, including those
+  sidebar tests. After the final shared-identity/unit safeguards, the two-worker
+  full run passed **978/980**; only the same sidebar timeout/teardown pair failed.
+  The final serial run continues in the background; the user requested committing
+  without waiting for it. Its outcome must be reported separately. No test timeout,
+  assertion or repository configuration was changed to hide these failures.
+  `npm run lint` passed with **0 errors / 28 existing warnings**;
+  `npm run typecheck` and `npm run build` passed, including unchanged Donut v1.7.0
+  source/ZIP integrity. The latest focused safety/automatic-count pass is **79/79**.
+  Browser checks passed **25/25** with desktop/mobile context-attribution coverage,
+  excluded roles, saved-status preservation, safe failures, keyboard access and
+  no horizontal overflow. Reproduce with
+  `npx playwright test tests/operator-workflow/processor-board.spec.ts --config playwright.operator-workflow.config.ts --reporter=line`.
+  The default Lovable config cannot load its missing local package; a temporary
+  default-channel browser attempt timed out before creating a page and was stopped.
+  The existing operator-workflow config uses the working Chromium channel; no test
+  assertion or repository test setting was relaxed. The temporary config was removed.
+  One concurrent lint attempt hit `ENOENT` while Vitest removed a generated config
+  module; rerun lint separately from Vitest, without changing ignore rules.
+
+Read-only MCP reconfirmed the installed function is v5 ACTIVE with JWT verification
+enabled. Security/performance/health advisors were inspected; existing project-wide
+notices include mutable function search paths, executable definer functions,
+password protection, policy/index tuning and Auth connection information. No
+unrelated production change was made. These need their own authorization/grant
+review, not blindly revoked access or speculative indexes. See the
+[security-definer advisory guidance](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)
+and [database advisor reference](https://supabase.com/docs/guides/database/database-linter).
+Unified log source counts were readable; the targeted Processor Board status query
+failed at the MCP service, so this task does not claim clean function-specific
+production logs or complete health/billing evidence.
+
 ## Evidence accuracy follow-up (2026-10-22) — Edge v5 installed; CRM publish pending
 
 This section supersedes the earlier manual-check timezone behavior. The user

@@ -38,6 +38,21 @@ describe("Processor Board interactions", () => {
     expect(within(cells[0]).getByLabelText("Last checked date and time").textContent).toMatch(/\d{1,2}:\d{2}/);
     expect(state.assess).not.toHaveBeenCalled();
   });
+  it("shows context-attributed replies, the saved Tech Quick Chat source and honest page counts", () => {
+    const checkedAt = new Date().toISOString();
+    state.hook.mockReturnValue({ data: { rows: [{ ...job, checked_at: checkedAt, assessment: { status: "job_in_progress", evidence: [{ signal: "progress", quote: "I am on my way to the property now", message_id: "m2", message_time: checkedAt, sender: "customer", identity_basis: "thread_context" }], messages_reviewed: 9, matched_messages: 3, matched_technician_messages: 0, context_technician_messages: 2, unattributed_technician_messages: 1, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: checkedAt, lead_updated_at: job.updated_at, summary: "Context-attributed technician replies reviewed." } }], total: 1, observed_at: checkedAt } });
+    mount();
+    expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 with a technician reply tied to the job");
+    expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 rely on this job's saved dispatch");
+    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[2];
+    expect(cell).toHaveTextContent("2 technician replies are tied to this job (2 via this job's saved dispatch)");
+    expect(cell).toHaveTextContent("context-attributed · verify in Quo");
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("this job's saved dispatch");
+    expect(dialog).toHaveTextContent("Quo current history · saved Tech Quick Chat");
+    expect(dialog).toHaveTextContent("Verify it in Quo before acting");
+  });
   it("filters by saved status independently of AI actions and reviews approval evidence without changing the saved workflow", async () => {
     state.hook.mockReturnValue({ data: { rows: [job, { ...job, id: "reschedule", job_id: "JOB-RESCHEDULE", status: "needs_reschedule" }, { ...job, id: "approval", job_id: "JOB-APPROVAL", status: "cancellation_requested" }], total: 3 } });
     mount();
