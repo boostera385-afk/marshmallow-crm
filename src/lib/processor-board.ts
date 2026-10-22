@@ -36,7 +36,7 @@ export const processorJobSchema = z.object({
   chat_setup: processorChatSetupSchema.nullable().optional(),
 });
 export type ProcessorJob = z.infer<typeof processorJobSchema>;
-export const processorQueueSchema = z.object({ rows: z.array(processorJobSchema), total: z.number().int().nonnegative(), observed_at: z.string(), timezone: z.string(), monitoring: z.object({ ai_configured: z.boolean(), current_history_configured: z.boolean() }).optional() });
+export const processorQueueSchema = z.object({ rows: z.array(processorJobSchema), total: z.number().int().nonnegative(), observed_at: z.string(), timezone: z.string(), monitoring: z.object({ ai_configured: z.boolean(), current_history_configured: z.boolean(), evidence_policy: z.number().int().nonnegative().optional() }).optional() });
 export type ProcessorQueue = z.infer<typeof processorQueueSchema>;
 export type ProcessorFilters = { offset: number; search: string; history: boolean; timezone: string };
 export class ProcessorReviewFailure extends Error {

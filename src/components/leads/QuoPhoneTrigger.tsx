@@ -50,6 +50,12 @@ interface QuoPhoneTriggerProps {
   children?: ReactNode;
   chatType?: "customer" | "tech";
   initialMessage?: string;
+  /** Pinned CRM-only review; never resolve another conversation as a fallback. */
+  conversationId?: string;
+  readOnly?: boolean;
+  defaultOpen?: boolean;
+  hideTrigger?: boolean;
+  onClose?: () => void;
 }
 
 function getPhoneKey(value: string | null | undefined) {
@@ -172,10 +178,18 @@ export default function QuoPhoneTrigger({
   children,
   chatType,
   initialMessage,
+  conversationId,
+  readOnly = false,
+  defaultOpen = false,
+  hideTrigger = false,
+  onClose,
 }: QuoPhoneTriggerProps) {
   const auth = useAuth();
   const role = auth.role;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const trimmedPhone = phone?.trim() ?? "";
   const normalizedPhone = useMemo(() => normalizePhoneE164(trimmedPhone), [trimmedPhone]);
@@ -222,14 +236,25 @@ export default function QuoPhoneTrigger({
   // Quick Chat is available to admins and to any user an admin granted access to.
   const canUseQuickChat = isAdmin || auth.canAccess?.(requiredAccessKey) === true;
   const [lastFromCustomer, setLastFromCustomer] = useState(false);
+  const closeChat = () => { setOpen(false); onCloseRef.current?.(); };
 
   useEffect(() => {
-    if (open && initialMessage) setMessageDraft(initialMessage);
-  }, [initialMessage, open]);
+    if (!open || !readOnly || !canUseQuickChat) return;
+    closeButtonRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setOpen(false); onCloseRef.current?.(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, readOnly, canUseQuickChat]);
+
+  useEffect(() => {
+    if (open && initialMessage && !readOnly) setMessageDraft(initialMessage);
+  }, [initialMessage, open, readOnly]);
 
   // Shared unread-status subscriber: batch all visible numbers to avoid one subscription per trigger.
   useEffect(() => {
-    if (!canUseQuickChat || !normalizedPhone) return;
+    if (!canUseQuickChat || !normalizedPhone || hideTrigger) return;
 
     const watcherId = ++nextQuickChatUnreadWatcherId;
     const watcherKey = `${chatType ?? "customer"}:${normalizedPhone}:${watcherId}`;
@@ -257,7 +282,7 @@ export default function QuoPhoneTrigger({
         scheduleQuickChatUnreadRefresh();
       }
     };
-  }, [canUseQuickChat, normalizedPhone, chatType]);
+  }, [canUseQuickChat, normalizedPhone, chatType, hideTrigger]);
 
 
   useEffect(() => {
@@ -270,7 +295,7 @@ export default function QuoPhoneTrigger({
       setError(null);
 
       try {
-        const response = await fetchQuoChatThread(normalizedPhone, chatType);
+        const response = conversationId ? await fetchQuoChatThread(normalizedPhone, chatType, conversationId) : await fetchQuoChatThread(normalizedPhone, chatType);
         if (!active) return;
         if (!response) throw new Error("Quick Chat returned no thread data");
         setMessages((prev) => {
@@ -336,7 +361,7 @@ export default function QuoPhoneTrigger({
       clearInterval(pollId);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [canUseQuickChat, normalizedPhone, open, chatType]);
+  }, [canUseQuickChat, normalizedPhone, open, chatType, conversationId]);
 
   useEffect(() => {
     const databaseConversationId = conversationMeta?.databaseId;
@@ -401,6 +426,7 @@ export default function QuoPhoneTrigger({
   // gives Quo time to load in its background tab while the user finishes the
   // message, without adding any database traffic.
   useEffect(() => {
+    if (readOnly) return;
     if (!messageDraft.trim()) {
       preparedChatUrlRef.current = "";
       return;
@@ -422,9 +448,11 @@ export default function QuoPhoneTrigger({
     normalizedPhone,
     conversationMeta?.quoConversationId,
     conversationMeta?.quoPhoneNumberId,
+    readOnly,
   ]);
 
   const handleSend = async () => {
+    if (readOnly) return;
     if (!normalizedPhone) {
       setError("This number could not be normalized to E.164.");
       return;
@@ -477,6 +505,7 @@ export default function QuoPhoneTrigger({
   };
 
   const handleSchedule = async (scheduleTime: string) => {
+    if (readOnly) return;
     if (!normalizedPhone) {
       setError("This number could not be normalized to E.164.");
       return;
@@ -534,7 +563,7 @@ export default function QuoPhoneTrigger({
 
   return (
     <>
-      <button
+      {!hideTrigger && <button
         type="button"
         onClick={(event) => {
           event.stopPropagation();
@@ -556,13 +585,16 @@ export default function QuoPhoneTrigger({
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
           </span>
         )}
-      </button>
+      </button>}
 
       {open &&
         createPortal(
           <div className="pointer-events-none fixed inset-0 z-[70] overflow-hidden">
             <AnimatePresence>
               <motion.div
+                role={readOnly ? "dialog" : undefined}
+                aria-label={readOnly ? `Tech Quick Chat: ${contactName}` : undefined}
+                tabIndex={readOnly ? -1 : undefined}
                 drag
                 dragMomentum={false}
                 dragElastic={0.05}
@@ -573,8 +605,9 @@ export default function QuoPhoneTrigger({
                 className="pointer-events-auto absolute w-[92vw] max-w-[500px] rounded-2xl border border-border/80 bg-background/95 backdrop-blur-xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.35)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.75)] flex flex-col z-[70] overflow-hidden"
                 style={{
                   bottom: "20px",
-                  right: chatType === "tech" ? "530px" : "20px",
+                  right: chatType === "tech" && !readOnly ? "530px" : "20px",
                   height: isMinimized ? "auto" : "540px",
+                  maxHeight: readOnly ? "calc(100dvh - 40px)" : undefined,
                 }}
               >
                 {/* Header Bar - Drag handle */}
@@ -635,7 +668,8 @@ export default function QuoPhoneTrigger({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      onClick={() => setOpen(false)}
+                      ref={closeButtonRef}
+                      onClick={closeChat}
                       className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                       title="Close Chat"
                     >
@@ -749,7 +783,7 @@ export default function QuoPhoneTrigger({
                     </div>
 
                     {/* Chat Input Footer */}
-                    <form
+                    {readOnly ? <p className="border-t p-3 text-xs text-muted-foreground">CRM saved conversation · read-only review. No Quo login is needed to read; opening this chat sends nothing.</p> : <form
                       onSubmit={(e) => {
                         e.preventDefault();
                         void handleSend();
@@ -878,7 +912,7 @@ export default function QuoPhoneTrigger({
                           </PopoverContent>
                         </Popover>
                       </div>
-                    </form>
+                    </form>}
                   </>
                 )}
               </motion.div>

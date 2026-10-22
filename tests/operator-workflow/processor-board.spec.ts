@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 const version = JSON.parse(readFileSync(new URL("../../public/extension-release.json", import.meta.url), "utf8")).version;
 const USER = "00000000-0000-4000-8000-000000000001";
 const LEAD = "00000000-0000-4000-8000-000000000002";
-async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean; noEvidence?: boolean; context?: boolean } = {}) {
+async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean; noEvidence?: boolean; context?: boolean; chatGrant?: boolean; failChat?: boolean } = {}) {
   const actions: Record<string, unknown>[] = [];
   let reviewed = false;
   let failures = 0;
@@ -31,7 +31,7 @@ async function isolatedBoard(page: Page, role = "processor", fail = false, optio
     if (!url.hostname.endsWith("supabase.co")) return route.abort();
     if (url.pathname.endsWith("/functions/v1/processor-board")) {
       const body = route.request().postDataJSON(); actions.push(body);
-      if (body.action === "list") { const jobs = rows(); return route.fulfill({ json: { rows: jobs, total: jobs.length, observed_at: new Date().toISOString(), timezone: body.timezone, monitoring: options.auto ? { ai_configured: true, current_history_configured: true } : undefined } }); }
+      if (body.action === "list") { const jobs = rows(); return route.fulfill({ json: { rows: jobs, total: jobs.length, observed_at: new Date().toISOString(), timezone: body.timezone, monitoring: options.auto ? { ai_configured: true, current_history_configured: true, evidence_policy: 5 } : undefined } }); }
       if (fail || (options.retryOnce && failures++ === 0)) return route.fulfill({ status: 503, json: { error: "Synthetic AI provider unavailable. Previous review retained.", code: "ai_provider", retryable: true } });
       reviewed = true; return route.fulfill({ json: { result: row().assessment, cached: false } });
     }
@@ -40,6 +40,12 @@ async function isolatedBoard(page: Page, role = "processor", fail = false, optio
     if (url.pathname.startsWith("/auth/v1/")) data = { id: USER, email: "synthetic@example.invalid" };
     else if (endpoint === "profiles" || endpoint === "profiles_public") data = [{ id: USER, full_name: "Synthetic User", email: "synthetic@example.invalid" }];
     else if (endpoint === "user_roles") data = [{ user_id: USER, role }];
+    else if (endpoint === "navigation_permissions") data = [{ user_id: USER, nav_section: "tech_quick_chat", allowed: options.chatGrant !== false }];
+    else if (endpoint === "quo_conversations") data = [{ id: "00000000-0000-4000-8000-000000000010", quo_conversation_id: "CN12345678", customer_number: "+14155550199", customer_name: "Alex Technician", number_id: "tech-line", quo_phone_numbers: { id: "tech-line", quo_phone_number_id: "PN12345678", number: "+17475887812", display_number: "(747) 588-7812", name: "Technician Communications", label: null } }];
+    else if (endpoint === "quo_messages") {
+      if (options.failChat) return route.fulfill({ status: 403, json: { message: "Synthetic saved CRM chat unavailable", code: "42501" } });
+      data = [{ id: "stored-tech-reply", sender: "customer", text: "Synthetic technician update from the saved CRM conversation.", direction: "incoming", status: "received", conversation_id: "00000000-0000-4000-8000-000000000010", message_time: "2026-01-01T18:00:00Z", recipients: [], media: [], raw_payload: null }];
+    }
     else if (endpoint === "get_lead_copy_access") data = false;
     else if (url.pathname.endsWith("/functions/v1/cx-update-requests")) data = { count: 0 };
     else if (url.pathname.endsWith("/functions/v1/marshmallow-copilot")) data = { allowed: false, aiEnabled: false, role, timezone: "UTC", sections: [] };
@@ -131,7 +137,8 @@ for (const width of [1440, 390]) test(`zero-verified-outcome checks stay explici
   await expect(page.getByText(/8 technician replies were not tied to this job/).filter({ visible: true })).toBeVisible();
   await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
   await expect(page.getByRole("dialog")).toContainText("No verified technician outcome for this job");
-  await expect(page.getByRole("link", { name: "Open verified technician chat" })).toHaveAttribute("href", "https://my.quo.com/inbox/PN12345678/c/CN12345678");
+  await expect(page.getByRole("button", { name: "Open technician chat in CRM" })).toBeEnabled();
+  await expect(page.getByRole("link", { name: "Open verified technician chat" })).toHaveCount(0);
   expect(actions.filter(a => a.action === "assess")).toHaveLength(1);
   await page.keyboard.press("Escape");
   await page.screenshot({ path: test.info().outputPath(`processor-attribution-${width}.png`), fullPage: true });
@@ -146,6 +153,45 @@ test("automatic tracking can be paused before starting and setup problems never 
   await page.getByLabel("Automatic AI tracking").check();
   await expect(page.getByText(/Save a valid technician number/).filter({ visible: true })).toBeVisible();
   expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
+});
+for (const width of [1440, 390]) test(`opens the exact stored technician chat inside CRM without login, navigation or AI at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const actions = await isolatedBoard(page, "processor", false, { auto: true });
+  await page.goto("/processor-board");
+  await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
+  await page.getByRole("button", { name: "Open technician chat in CRM" }).click();
+  const chat = page.getByRole("dialog", { name: "Tech Quick Chat: Alex Technician" });
+  await expect(chat).toContainText("Synthetic technician update from the saved CRM conversation.");
+  await expect(chat).toContainText("No Quo login is needed");
+  await expect(chat.getByRole("textbox")).toHaveCount(0);
+  await expect(chat.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
+  expect(page.context().pages()).toHaveLength(1);
+  await expect(page).toHaveURL(/\/processor-board$/);
+  const box = await chat.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
+  await page.screenshot({ path: test.info().outputPath(`processor-crm-chat-${width}.png`), fullPage: true });
+  await chat.getByRole("button", { name: "Close Chat" }).click();
+  await expect(page.getByRole("button", { name: "Open technician chat in CRM" })).toBeVisible();
+});
+test("does not bypass Tech Quick Chat permission or navigate externally on a failed CRM read", async ({ page }) => {
+  const actions = await isolatedBoard(page, "processor", false, { auto: true, chatGrant: false });
+  await page.goto("/processor-board");
+  await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
+  await expect(page.getByRole("button", { name: "Open technician chat in CRM" })).toBeDisabled();
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
+  expect(page.context().pages()).toHaveLength(1);
+});
+test("reports a failed mirrored chat read without opening Quo or claiming an empty chat", async ({ page }) => {
+  await isolatedBoard(page, "processor", false, { auto: true, failChat: true });
+  await page.goto("/processor-board");
+  await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
+  await page.getByRole("button", { name: "Open technician chat in CRM" }).click();
+  const chat = page.getByRole("dialog", { name: "Tech Quick Chat: Alex Technician" });
+  await expect(chat).toContainText("Synthetic saved CRM chat unavailable");
+  await expect(chat).not.toContainText("No messages in this chat yet");
+  expect(page.context().pages()).toHaveLength(1);
 });
 for (const width of [1440, 390]) test(`context-attributed completion is labelled for manual verification at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });

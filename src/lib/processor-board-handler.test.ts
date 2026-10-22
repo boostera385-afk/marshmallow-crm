@@ -184,7 +184,7 @@ describe("Processor Board server boundary", () => {
     const response = await s.request({ action: "list" }); expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.rows).toHaveLength(25); expect(payload.total).toBe(25);
-    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true });
+    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true, evidence_policy: 5 });
     expect(payload.rows.every((row: { chat_setup: { state: string } }) => row.chat_setup.state === "ready")).toBe(true);
     expect(s.reads).toEqual(["user_roles", "technicians", "quo_conversations"]);
     expect(s.rpc.mock.calls.map(([name]) => name)).toEqual(["list_processor_jobs"]);

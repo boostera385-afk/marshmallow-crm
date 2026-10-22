@@ -6,7 +6,7 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Flow | CRM | Donut | Shared authority / verification |
 | --- | --- | --- | --- |
 | Technician intelligence | Technicians → Processing Workflow; map selection up to 8 | Native Technician Intelligence panel for the captured phone, reviewed-label saving, full-workflow link for batch selection/flag approvals/chat actions | `technician-chat-assessment`: Admin/Processor only; identical AI prompt, evidence checks, counts and labels. Missing history is unavailable, not misconduct. |
-| Processor Board | `/processor-board`: assigned-job radar, newest schedules first, four advisory actions, saved-status filters, exact check date/time, explicit AI-versus-rule labels and timezone-confirmed open-board tracking; local follow-up attributes replies within this job's saved dispatch context | No native scheduled-job board/job-specific assessment action; existing technician-wide intelligence is separate. Donut sources and v1.7.0 artifacts unchanged | Authenticated `processor-board` **v5 installed**; the new context-attribution backend awaits approved deployment (expected v6). Caller-token scope, leases, revision-checked advisory save and atomic audit preserved. No new migration, lead/status/approval writes or messages. CRM Publish and signed-in/provider QA are separate. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
+| Processor Board | `/processor-board`: assigned-job radar, newest schedules first, four advisory actions, saved-status filters, exact check date/time, explicit AI-versus-rule labels and timezone-confirmed open-board tracking; job-dispatch context attribution and a pinned read-only internal CRM chat viewer | No native scheduled-job board/job-specific assessment action; existing technician-wide intelligence is separate. Donut sources and v1.7.0 artifacts unchanged | Authenticated `processor-board` **v6 ACTIVE**, JWT verification retained and all nine source files read back exactly. Caller-token scope, leases, revision-checked advisory save and atomic audit preserved. No new migration, lead/status/approval writes or messages. New internal-chat UI still needs CRM Publish; signed-in/provider QA is separate. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
 | Technician flags | Admin applies; Processor requests review | Opens full workflow for the same reviewed actions | Existing `request_technician_change` approval RPC and technician flag trigger; never write flags directly in Donut. |
 | Urgent lead review | Latest customer agreement, corrections and missing details | Same check; displays issues, corrections and flags; opens saved-lead review for confirmed corrections/approval | `check-urgent-lead`, urgent verification/review RPCs and database status gate. No duplicate prompt or approval bypass. |
 | Address lookup / map coordinates | Authenticated Census-only lookup and preserved units | Same function for Find Address, coverage preview and submission coordinates | `geocode-lead-address`: only Census coordinates may be cached/persisted for the free map. Google or unlabelled points are rejected by both clients. Preserve Apt/Suite/Unit/#. |
@@ -43,7 +43,23 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
-## Processor Board saved-chat context attribution (2026-10-22; local, awaiting deployment approval)
+## Processor Board internal CRM chat (2026-10-22; frontend publication pending)
+
+The board now reuses CRM Tech Quick Chat in pinned read-only mode instead of
+launching the external Quo site. It reads only the verified CRM UUID and exact
+technician/line, retains the separate chat grant and existing authenticated RLS,
+and fails visibly rather than choosing a customer/newest chat. No extension
+prepare/send/schedule or outbound write occurs. One viewer mounts on click;
+hidden-trigger unread work is skipped, paginated history is complete up to an
+explicit 10,000-row error boundary, and scope/identity/permission changes retire it.
+General lead Quick Chat sending behavior is unchanged. No Donut board/viewer
+counterpart exists, so no extension source, version or ZIP release is required.
+The user explicitly approved backend deployment; v6 is now ACTIVE with JWT enabled
+and all nine files verified against local source. Local gates passed 998 unit tests,
+29 mocked browser tests, typecheck, lint (0 errors/28 existing warnings) and build.
+See the newest rollout section for remaining CRM Publish/live QA steps.
+
+## Processor Board saved-chat context attribution (2026-10-22; Edge v6 installed)
 
 CRM-only: source audit reconfirmed no Donut Processor Board/job-specific assessment
 counterpart. The separate `technician-chat-assessment` intelligence flow is unchanged;
@@ -71,8 +87,9 @@ remain. No additional reads, feeds, workers or schema changes were introduced;
 more legitimate replies can now qualify for the existing single extraction call.
 No production usage or bill savings are claimed.
 
-Edge v5 remains the recorded installed release. The user approved committing and
-pushing this follow-up; that is not deployment approval. CRM merge/Publish, confirmed schedule
+The user separately approved backend deployment after committing/pushing the
+attribution follow-up. See the newest rollout section for installed release state.
+CRM merge/Publish, confirmed schedule
 timezone, verified correction of three malformed technician numbers and live
 signed-in/provider accuracy checks are separate. See the newest section of
 `docs/PROCESSOR_BOARD_ROLLOUT.md` for the actual test results and remaining limits.

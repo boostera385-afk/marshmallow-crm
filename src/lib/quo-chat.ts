@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { TablesInsert } from "@/integrations/supabase/types";
+import { phoneKey } from "../../supabase/functions/_shared/processor-job-status";
 
 export interface QuoChatMedia {
   type?: string | null;
@@ -104,24 +105,37 @@ export function extractTranscriptFromPayload(payload: unknown): string | null {
          extract(msg.voicemailTranscript);
 }
 
-export async function fetchQuoChatThread(participant: string, chatType?: "customer" | "tech"): Promise<QuoChatThreadResponse> {
+export async function fetchQuoChatThread(participant: string, chatType?: "customer" | "tech", conversationId?: string): Promise<QuoChatThreadResponse> {
   const digits = lastTen(participant);
-
-  const { data: conversations, error: conversationError } = await supabase
+  if (conversationId && (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversationId) || !phoneKey(participant))) {
+    throw new Error("The saved CRM chat identity is invalid. Refresh the board; no conversation was guessed.");
+  }
+  const query = supabase
     .from("quo_conversations")
     .select(
       "id, quo_conversation_id, customer_name, customer_number, number_id, last_message_time, updated_at, quo_phone_numbers(id, quo_phone_number_id, number, display_number, name, label)",
-    )
-    .or(`customer_number.eq.${participant},customer_number.ilike.%${digits}`)
-    .order("last_message_time", { ascending: false, nullsFirst: false })
-    .limit(10);
+    );
+  // Processor Board pins its verified CRM UUID. Never substitute a newer chat,
+  // another participant, or a customer line if that saved conversation disappears.
+  const { data: conversations, error: conversationError } = conversationId
+    ? await query.eq("id", conversationId).limit(1)
+    : await query.or(`customer_number.eq.${participant},customer_number.ilike.%${digits}`)
+      .order("last_message_time", { ascending: false, nullsFirst: false }).limit(10);
 
   if (conversationError) {
     throw new Error(conversationError.message || "Failed to load Quo chat");
   }
 
   let conversation = null;
-  if (conversations && conversations.length > 0) {
+  if (conversationId) {
+    const saved = conversations?.[0];
+    const line = saved?.quo_phone_numbers;
+    if (!saved || saved.id !== conversationId || phoneKey(saved.customer_number) !== phoneKey(participant) ||
+      (chatType === "tech" && phoneKey(line?.number || line?.display_number || null) !== phoneKey(TECH_COMMUNICATIONS_NUMBER))) {
+      throw new Error("The verified technician chat is not available in your CRM scope or no longer matches this technician and line. Refresh or verify saved chat setup.");
+    }
+    conversation = saved;
+  } else if (conversations && conversations.length > 0) {
     if (chatType === "tech") {
       conversation = conversations.find((c) => {
         const numRow = c.quo_phone_numbers;
@@ -149,32 +163,40 @@ export async function fetchQuoChatThread(participant: string, chatType?: "custom
     } | null;
   } | null)?.quo_phone_numbers ?? null;
 
-  let messages: QuoChatMessage[] = [];
+  const messages: QuoChatMessage[] = [];
 
   if (conversation) {
-    const { data: rows, error: messageError } = await supabase
-      .from("quo_messages")
-      .select("id, sender, recipients, text, direction, status, message_time, quo_created_at, created_at, conversation_id, media, raw_payload")
-      .eq("conversation_id", conversation.id)
-      .order("message_time", { ascending: true, nullsFirst: false })
-      .limit(500);
+    const pageSize = 500;
+    // Existing general Quick Chat keeps its current viewport. A pinned board
+    // review reads every page, rather than silently hiding replies after row 500.
+    for (let offset = 0; ; offset += pageSize) {
+      const { data: rows, error: messageError } = await supabase
+        .from("quo_messages")
+        .select("id, sender, recipients, text, direction, status, message_time, quo_created_at, created_at, conversation_id, media, raw_payload")
+        .eq("conversation_id", conversation.id)
+        .order("message_time", { ascending: true, nullsFirst: false })
+        .order("id", { ascending: true })
+        .range(offset, offset + pageSize - 1);
 
-    if (messageError) {
-      throw new Error(messageError.message || "Failed to load Quo messages");
+      if (messageError || (conversationId && !rows)) {
+        throw new Error(messageError?.message || "Failed to load Quo messages");
+      }
+
+      if (conversationId && offset + (rows?.length ?? 0) > 10000) throw new Error("This saved chat exceeds the safe review limit. No partial conversation was displayed; ask Admin to review history.");
+      messages.push(...(rows ?? []).map<QuoChatMessage>((row) => ({
+        id: row.id,
+        to: Array.isArray(row.recipients) ? (row.recipients as unknown[]).map((entry) => String(entry)) : [],
+        from: row.sender ?? "",
+        text: row.text || extractTranscriptFromPayload(row.raw_payload) || "",
+        phoneNumberId: numberRow?.quo_phone_number_id ?? "",
+        conversationId: row.conversation_id,
+        direction: row.direction === "outgoing" ? "outgoing" : "incoming",
+        status: row.status,
+        createdAt: row.message_time ?? row.quo_created_at ?? row.created_at,
+        media: Array.isArray(row.media) ? (row.media as unknown as QuoChatMedia[]) : [],
+      })));
+      if (!conversationId || (rows?.length ?? 0) < pageSize) break;
     }
-
-    messages = (rows ?? []).map((row) => ({
-      id: row.id,
-      to: Array.isArray(row.recipients) ? (row.recipients as unknown[]).map((entry) => String(entry)) : [],
-      from: row.sender ?? "",
-      text: row.text || extractTranscriptFromPayload(row.raw_payload) || "",
-      phoneNumberId: numberRow?.quo_phone_number_id ?? "",
-      conversationId: row.conversation_id,
-      direction: row.direction === "outgoing" ? "outgoing" : "incoming",
-      status: row.status,
-      createdAt: row.message_time ?? row.quo_created_at ?? row.created_at,
-      media: Array.isArray(row.media) ? (row.media as unknown as QuoChatMedia[]) : [],
-    }));
   }
 
   const queued: QuoChatMessage[] = [];

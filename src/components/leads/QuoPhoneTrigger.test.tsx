@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import QuoPhoneTrigger from "@/components/leads/QuoPhoneTrigger";
 import { useAuth } from "@/contexts/AuthContext";
-import { fetchQuoChatThread } from "@/lib/quo-chat";
+import { fetchQuoChatThread, sendQuoChatMessage } from "@/lib/quo-chat";
 import { prepareQuoChatViaExtension, sendQuoMessageViaExtension } from "@/lib/quo-dashboard";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -39,6 +39,7 @@ describe("QuoPhoneTrigger", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it("opens the Quo drawer for admins and shows a normalized phone number", async () => {
@@ -162,5 +163,39 @@ describe("QuoPhoneTrigger", () => {
 
     expect(screen.queryByRole("button", { name: /\(555\) 123-4567/i })).not.toBeInTheDocument();
     expect(screen.getByText("(555) 123-4567")).toBeInTheDocument();
+  });
+  it("opens a pinned CRM-only review without composing, queuing or launching Quo", async () => {
+    vi.mocked(useAuth).mockReturnValue({ role: "admin" } as ReturnType<typeof useAuth>);
+    const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
+    const close = vi.fn();
+    const id = "00000000-0000-4000-8000-000000000123";
+    render(<QuoPhoneTrigger contactName="Synthetic Tech" phone="4155550199" chatType="tech" conversationId={id} defaultOpen hideTrigger readOnly initialMessage="Must not become an outbound message" onClose={close} />);
+    const panel = await screen.findByRole("dialog", { name: "Tech Quick Chat: Synthetic Tech" });
+    expect(fetchQuoChatThread).toHaveBeenCalledExactlyOnceWith("+14155550199", "tech", id);
+    expect(panel).toHaveTextContent("No Quo login is needed to read");
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /send/i })).not.toBeInTheDocument();
+    expect(prepareQuoChatViaExtension).not.toHaveBeenCalled();
+    expect(sendQuoMessageViaExtension).not.toHaveBeenCalled();
+    expect(sendQuoChatMessage).not.toHaveBeenCalled();
+    expect(openWindow).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  it("does not read a pinned chat without the independent Tech Quick Chat grant", () => {
+    vi.mocked(useAuth).mockReturnValue({ role: "processor", canAccess: () => false } as unknown as ReturnType<typeof useAuth>);
+    render(<QuoPhoneTrigger contactName="Synthetic Tech" phone="4155550199" chatType="tech" conversationId="00000000-0000-4000-8000-000000000123" defaultOpen hideTrigger readOnly />);
+    expect(fetchQuoChatThread).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  it("exposes a failed CRM read instead of opening an external fallback", async () => {
+    vi.mocked(useAuth).mockReturnValue({ role: "admin" } as ReturnType<typeof useAuth>);
+    vi.mocked(fetchQuoChatThread).mockRejectedValueOnce(new Error("Synthetic CRM chat unavailable"));
+    const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(<QuoPhoneTrigger contactName="Synthetic Tech" phone="4155550199" chatType="tech" conversationId="00000000-0000-4000-8000-000000000123" defaultOpen hideTrigger readOnly />);
+    expect(await screen.findByText("Synthetic CRM chat unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("No messages in this chat yet.")).not.toBeInTheDocument();
+    expect(openWindow).not.toHaveBeenCalled();
   });
 });
