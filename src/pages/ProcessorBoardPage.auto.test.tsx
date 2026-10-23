@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +33,104 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("automatic tracking while the board is open", () => {
+  it("prioritizes only the selected job after the active request and resumes page tracking only on close", async () => {
+    state.rows.push({ ...job, id: "second", job_id: "JOB-AUTO-2" }, { ...job, id: "third", job_id: "JOB-AUTO-3" });
+    const finish = new Map<string, () => void>();
+    state.assess.mockImplementation((id: string) => new Promise((resolve) => { finish.set(id, () => resolve(reviewed(id))); }));
+    const view = mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    expect(state.assess).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-2" })[0]);
+    const dialog = screen.getByRole("dialog");
+    const check = within(dialog).getByRole("button", { name: "Check this job" });
+    expect(check).toBeEnabled();
+    expect(check).toHaveAttribute("aria-busy", "false");
+    fireEvent.click(check);
+    expect(check).toBeDisabled();
+    expect(check).toHaveTextContent("Queued · this job only");
+    expect(within(dialog).getByLabelText("This job check")).toHaveTextContent("Waiting for #JOB-AUTO-1");
+    expect(state.assess).toHaveBeenCalledTimes(1);
+    await act(async () => finish.get(job.id)!());
+    expect(state.assess.mock.calls.map(([id]) => id)).toEqual([job.id, "second"]);
+    expect(check).toHaveAttribute("aria-busy", "true");
+    await act(async () => finish.get("second")!());
+    expect(check).toBeEnabled();
+    expect(check).toHaveAttribute("aria-busy", "false");
+    view.update();
+    expect(state.assess).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText("Automatic AI tracking")).toBeChecked();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(state.assess).toHaveBeenCalledTimes(3));
+    expect(state.assess.mock.calls.map(([id]) => id)).toEqual([job.id, "second", "third"]);
+    await act(async () => finish.get("third")!());
+  });
+  it("opening review alone stops the remaining batch without triggering a check for that job", async () => {
+    state.rows.push({ ...job, id: "second", job_id: "JOB-AUTO-2" });
+    let finish!: () => void;
+    state.assess.mockImplementationOnce((id: string) => new Promise((resolve) => { finish = () => resolve(reviewed(id)); }));
+    mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-2" })[0]);
+    await act(async () => finish());
+    expect(state.assess).toHaveBeenCalledTimes(1);
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Check this job" })).toBeEnabled();
+    expect(screen.getByLabelText("Automatic tracking state")).toHaveTextContent("reviewing one job");
+  });
+  it("reuses an already active selected-job check without duplicating it or continuing other jobs", async () => {
+    state.rows.push({ ...job, id: "second", job_id: "JOB-AUTO-2" });
+    let finish!: () => void;
+    state.assess.mockImplementationOnce((id: string) => new Promise((resolve) => { finish = () => resolve(reviewed(id)); }));
+    mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-1" })[0]);
+    const check = within(screen.getByRole("dialog")).getByRole("button", { name: "Check this job" });
+    expect(check).toBeDisabled();
+    expect(check).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(check);
+    await act(async () => finish());
+    expect(state.assess).toHaveBeenCalledTimes(1);
+    expect(check).toBeEnabled();
+  });
+  it("retries a failed selected-job check without invoking the other jobs", async () => {
+    state.configured = false;
+    state.rows.push({ ...job, id: "second", job_id: "JOB-AUTO-2" });
+    state.assess.mockRejectedValueOnce(new ProcessorReviewFailure("Synthetic selected-job provider failure", true));
+    mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-2" })[0]);
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Check this job" }));
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent("Synthetic selected-job provider failure"));
+    const check = within(dialog).getByRole("button", { name: "Check this job" });
+    expect(check).toBeEnabled();
+    expect(check).toHaveAttribute("aria-busy", "false");
+    fireEvent.click(check);
+    await waitFor(() => expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument());
+    expect(state.assess.mock.calls.map(([id]) => id)).toEqual(["second", "second"]);
+    expect(state.rows[0].assessment).toBeNull();
+  });
+  it.each(["close", "scope", "assignment", "hidden"])("retires a queued selected-job check after %s", async (reason) => {
+    state.rows.push({ ...job, id: "second", job_id: "JOB-AUTO-2" });
+    let finish!: () => void;
+    state.assess.mockImplementationOnce((id: string) => new Promise((resolve) => { finish = () => resolve(reviewed(id)); }));
+    const view = mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-2" })[0]);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Check this job" }));
+    if (reason === "close") {
+      state.configured = false; view.update();
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    } else if (reason === "scope") {
+      state.rows = [state.rows[0]]; view.update();
+    } else if (reason === "assignment") {
+      state.rows[1] = { ...state.rows[1], tech_number: "4155550188", updated_at: "2026-10-23T12:00:00Z" }; view.update();
+    } else {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      fireEvent(document, new Event("visibilitychange"));
+    }
+    await act(async () => finish());
+    expect(state.assess).toHaveBeenCalledTimes(1);
+  });
   it("shows checking and queued states on opening, not a fabricated Scheduled AI finding", async () => {
     state.rows = [{ ...job, scheduled_date: "2099-01-01" }, { ...job, id: "second", job_id: "JOB-AUTO-2", scheduled_date: "2099-01-02" }];
     let finish!: () => void;

@@ -1,5 +1,68 @@
 # Processor Board
 
+## Focused single-job Review controls (2026-10-23; local frontend update)
+
+The screenshots showed a page-wide spinner on Check this job while unrelated
+automatic checks continued behind Review, and the actual controls below repeated
+history/filter explanations. This change is CRM-only; no new migration, Edge
+source/deployment, database type, grant or Donut source/version/ZIP is required.
+
+- Opening Review stops the remaining page batch after the one in-flight request;
+  it does not abort a possibly-saving request or invoke AI just for opening.
+  Automatic assessment scheduling pauses through Review and the pinned read-only
+  technician chat, while normal scoped list/realtime/recovery reads continue.
+- Check this job prioritizes only the selected lead next. It never queues all rows
+  or a technician-wide assessment. A selected job already in flight is reused, not
+  duplicated. Busy/queued state is keyed by lead UUID, independent of other jobs'
+  progress. The drawer explains waiting for the current request vs checking this
+  job, including the existing two-minute client deadline; no promise of instant
+  or measured production latency improvement is made.
+- Temporary focus does not rewrite the caller's saved tracking pause preference.
+  Closing returns to that previous setting; closing an unstarted focused check,
+  hiding the tab, losing row access, or changing the assignment retires that queue.
+  In-flight responses retain the existing revision/fingerprint cache guards.
+  Explicit page-level manual takeover still persists a tracking pause as before.
+- Review has a fixed header and visible action footer, with one independently
+  scrollable content region. Status/next action, assigned technician/schedule,
+  missing-chat/failure instructions and source quotes remain prominent. The
+  existing read-only chat grant and exact conversation remain required. Technical
+  counts, full source summary and safety details appear once under the collapsed
+  Check details & safety disclosure, not multiple paragraphs above the buttons.
+  Saved customer schedule requirements remain available in their own disclosure.
+  AI-used/no-AI/unknown usage and previous-evidence labels remain explicit.
+
+Permission/parity review: Admin/Processor route/helper gates, caller-authenticated
+`processor-board` v8 and invoker RPC/RLS, audited revision-checked assessment save,
+approval/terminal status gates and generated types are unchanged. No native Donut
+Processor Board or job-specific action was found; technician-wide intelligence
+is a different unchanged flow. CRM Publish and real signed-in/provider QA remain
+separate; this task does not deploy the frontend or change customer records.
+
+Efficiency review: no new endpoint/payload, subscription, timer, worker, storage
+access or download. Existing query keys/cache, shared realtime and coalesced reads
+remain. Windows/jsdom synthetic three-job regression: after A starts, focusing B
+without checking leaves **one** assessment call; checking B yields **A then B**, no
+C or duplicated request while Review stays open. Closing resumes C if tracking
+was enabled. The source baseline continued the page batch behind Review; request
+counts here are local controlled behavior, not production invoice savings or a
+reason to drop remaining work. Browser checks also verify the action footer stays
+in view after scrolling lengthy diagnostics on desktop/mobile.
+
+Local validation: **69/69** focused Processor Board tests, **39/39** mocked browser
+cases (including 1440px/390px focused-job priority and footer geometry), typecheck,
+lint (**0 errors / 28 existing warnings**), production build and Donut **v1.7.0**
+source/ZIP integrity passed. Desktop/mobile focused-review screenshots were
+visually inspected. The initial default-worker `npm test` run passed 1,040 tests
+but failed two unchanged `AppSidebar.test.tsx` cases: a five-second timeout followed
+by an empty-render assertion. The isolated sidebar rerun passed **4/4**; the full
+`npm test -- --maxWorkers=1` rerun passed **1,042/1,042 tests in 111 files** without
+changing test limits, assertions or configuration. This is consistent with timing
+contention, not proof of its cause. Build retains existing Browserslist/chunk and
+mixed-import warnings. Final `git diff --check` passed. SQL harnesses and live
+provider/browser checks were not run for this frontend-only task. Committing and
+pushing this update do not publish the CRM; CRM Publish and real signed-in/provider
+QA are still pending.
+
 ## Urgent-leads-style panel and honest job review (2026-10-23; database + Edge installed, CRM publication pending)
 
 This supersedes the incomplete-row hiding and five-minute display fallback below.

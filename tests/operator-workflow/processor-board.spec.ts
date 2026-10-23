@@ -65,6 +65,54 @@ async function isolatedBoard(page: Page, role = "processor", fail = false, optio
   }, { id: USER, version });
   return actions;
 }
+for (const width of [1440, 390]) test(`single-job review takes priority and keeps actions visible at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 800 });
+  const actions = await isolatedBoard(page, "processor", false, { auto: true });
+  const ids = [LEAD, "00000000-0000-4000-8000-000000000003", "00000000-0000-4000-8000-000000000004"];
+  const results = new Map<string, object>();
+  const finish = new Map<string, () => void>();
+  const fixture = (id: string, index: number) => ({ id, job_id: `FOCUS-${index + 1}`, customer_name: `Synthetic Customer ${index + 1}`, customer_phone: null, service_type: "Synthetic Repair", address: "House 10, Sample Street", half_address: null, city: null, state: null, tech_name: "Alex Technician", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Call before arrival", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: results.has(id) ? new Date().toISOString() : null, assessment: results.get(id) ?? null,
+    chat_setup: { state: "ready", code: "ready", message: "Verified", fingerprint: "focus-chat", conversation_id: "00000000-0000-4000-8000-000000000010", last_message_at: null, source: "verified_mirror" } });
+  await page.route("**/functions/v1/processor-board", async (route) => {
+    const body = route.request().postDataJSON(); actions.push(body);
+    if (body.action === "list") return route.fulfill({ json: { rows: ids.map(fixture), total: ids.length, observed_at: new Date().toISOString(), timezone: "America/New_York", monitoring: { ai_configured: true, current_history_configured: true, evidence_policy: 7 } } });
+    await new Promise<void>((resolve) => { finish.set(body.leadId, resolve); });
+    const result = { status: "take_job_update", evidence: [], messages_reviewed: 7, matched_messages: 1, matched_technician_messages: 0, context_technician_messages: 0, ai_used: false, source: "Quo current history", history_complete: true, chat_fingerprint: "focus-chat", timezone: "America/New_York", lead_updated_at: "2026-01-01T00:00:00Z", checked_at: new Date().toISOString(), summary: "Synthetic detailed explanation. ".repeat(50) };
+    results.set(body.leadId, result);
+    return route.fulfill({ json: { result, cached: false } });
+  });
+  await page.goto("/processor-board");
+  await page.getByLabel("Confirm schedule timezone").check();
+  await expect.poll(() => finish.has(ids[0])).toBe(true);
+  await page.getByRole("button", { name: "Review FOCUS-2" }).filter({ visible: true }).click();
+  const dialog = page.getByRole("dialog");
+  const check = dialog.getByRole("button", { name: "Check this job" });
+  await expect(check).toHaveAttribute("aria-busy", "false");
+  await check.click();
+  await expect(dialog.getByLabel("This job check")).toContainText("Waiting for #FOCUS-1");
+  finish.get(ids[0])!();
+  await expect.poll(() => finish.has(ids[1])).toBe(true);
+  await expect(check).toHaveAttribute("aria-busy", "true");
+  expect(actions.filter((a) => a.action === "assess").map((a) => a.leadId)).toEqual(ids.slice(0, 2));
+  finish.get(ids[1])!();
+  await expect(check).toBeEnabled();
+  const details = dialog.getByText("Check details & safety", { exact: true });
+  await expect(dialog.getByText("Synthetic detailed explanation.", { exact: false })).not.toBeVisible();
+  await details.click();
+  const content = dialog.getByRole("region", { name: "Job review content" });
+  await content.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const checkBox = await check.boundingBox();
+  expect(checkBox!.y).toBeGreaterThanOrEqual(0);
+  expect(checkBox!.y + checkBox!.height).toBeLessThanOrEqual(800);
+  await expect(dialog.getByRole("button", { name: "Open technician chat in CRM" })).toBeVisible();
+  expect(actions.filter((a) => a.action === "assess").map((a) => a.leadId)).toEqual(ids.slice(0, 2));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  await page.screenshot({ path: test.info().outputPath(`processor-job-focus-${width}.png`), fullPage: true });
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect.poll(() => finish.has(ids[2])).toBe(true);
+  finish.get(ids[2])!();
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
+});
 for (const width of [1440, 390]) {
   for (const location of ["full", "partial", "missing"] as const) test(`saved ${location} customer location is honest at ${width}px without extra requests`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });

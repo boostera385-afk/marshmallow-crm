@@ -29,6 +29,22 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("Processor Board interactions", () => {
+  it("keeps long diagnostics collapsed once while exposing the next action and job-only controls", async () => {
+    const summary = "Synthetic long diagnostic history and filtering explanation.";
+    const assessment = { ...reviewResult(), summary, matched_technician_messages: 0, context_technician_messages: 0 };
+    state.hook.mockReturnValue({ data: { rows: [{ ...job, assessment, checked_at: assessment.checked_at }], total: 1 } });
+    mount();
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Check this job" })).toBeVisible());
+    expect(within(dialog).getByText(summary)).not.toBeVisible();
+    expect(within(dialog).getAllByText(summary)).toHaveLength(1);
+    expect(dialog).toHaveTextContent("Ask the technician for this job's current update");
+    expect(within(dialog).getByLabelText("Job review actions")).toContainElement(within(dialog).getByRole("button", { name: "Check this job" }));
+    fireEvent.click(within(dialog).getByText("Check details & safety", { exact: true }));
+    expect(within(dialog).getByText(summary)).toBeVisible();
+    expect(state.assess).not.toHaveBeenCalled();
+  });
   it.each(["assignment", "chat"])("does not attach an in-flight old result after the %s changes", async (change) => {
     const setup = { state: "ready" as const, code: "ready", message: "Verified", fingerprint: "old-chat", conversation_id: "00000000-0000-4000-8000-000000000123", last_message_at: null, source: "verified_mirror" as const };
     const original = { ...job, chat_setup: setup };
