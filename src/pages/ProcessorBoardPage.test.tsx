@@ -34,11 +34,12 @@ describe("Processor Board interactions", () => {
     state.hook.mockReturnValue({ data: { rows: [{ ...job, scheduled_date: date, assessment, checked_at: assessment.checked_at }], total: 1 } });
     mount();
     const row = screen.getAllByRole("row")[1];
-    expect(row).toHaveTextContent(date === "2026-01-01" ? "Take Job Update" : "No action yet");
-    expect(row).toHaveTextContent("No verified work update yet");
+    expect(row).toHaveTextContent(date === "2026-01-01" ? "Take Job Update" : "Appointment upcoming");
+    expect(row).toHaveTextContent(date === "2026-01-01" ? "Reply found" : "Appointment has not started");
     expect(row).not.toHaveTextContent("Needs Review");
     expect(row).not.toHaveTextContent("Job In Progress");
-    fireEvent.change(screen.getByLabelText("Filter this page"), { target: { value: date === "2026-01-01" ? "take_job_update" : "scheduled" } });
+    fireEvent.change(screen.getByLabelText("Filter this page"), { target: { value: date === "2026-01-01" ? "take_job_update" : "all" } });
+    expect(screen.queryByRole("option", { name: /No action yet|Appointment upcoming/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole("row")[1]).toHaveTextContent("JOB-1001");
     expect(state.assess).not.toHaveBeenCalled();
   });
@@ -94,7 +95,7 @@ describe("Processor Board interactions", () => {
     mount();
     const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
     expect(cell).toHaveTextContent("Payment Pending");
-    expect(cell).toHaveTextContent("Previous AI result · refresh due");
+    expect(cell).toHaveTextContent("Earlier verified update shown");
     fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
     expect(screen.getByRole("dialog")).toHaveTextContent("This is not a fresh check");
     expect(screen.getByRole("dialog")).toHaveTextContent("JOB-1001 is completed");
@@ -197,8 +198,8 @@ describe("Processor Board interactions", () => {
     ], total: 2, observed_at: checked_at } });
     mount();
     const cells = screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[3]);
-    expect(cells[0]).toHaveTextContent("AI evidence · technician completion verified");
-    expect(cells[1]).toHaveTextContent("Schedule rule · no AI used");
+    expect(cells[0]).toHaveTextContent("AI · technician message: job completed.");
+    expect(cells[1]).toHaveTextContent("No update found for this job");
     expect(within(cells[0]).getByLabelText("Last checked date and time")).toHaveTextContent(new Date(checked_at).getUTCFullYear().toString());
     expect(within(cells[0]).getByLabelText("Last checked date and time").textContent).toMatch(/\d{1,2}:\d{2}/);
     expect(state.assess).not.toHaveBeenCalled();
@@ -210,7 +211,7 @@ describe("Processor Board interactions", () => {
     expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 with a technician reply tied to the job");
     expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 rely on this job's saved dispatch");
     const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
-    expect(cell).toHaveTextContent("context-attributed · verify in Quo");
+    expect(cell).toHaveTextContent("context match—verify in chat");
     fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent("2 technician replies are tied to this job (2 via this job's saved dispatch)");
@@ -302,7 +303,7 @@ describe("Processor Board interactions", () => {
     mount();
     const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
     expect(cell).toHaveTextContent("Previous check");
-    expect(cell).toHaveTextContent("previous check stale · refresh AI");
+    expect(cell).toHaveTextContent(reason === "expired" ? "Last check is older" : "Job or chat changed");
     expect(within(cell).queryByText("Payment Pending")).not.toBeInTheDocument();
     expect(state.assess).not.toHaveBeenCalled();
   });
@@ -317,7 +318,7 @@ describe("Processor Board interactions", () => {
     const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
     expect(cell).toHaveTextContent("Previous check just now");
     expect(cell).toHaveTextContent("Needs Review");
-    expect(cell.closest("tr")).toHaveAttribute("data-processor-status", "unavailable");
+    expect(cell.closest("tr")).toHaveAttribute("data-processor-status", "needs_review");
   });
   it("shows technician identity and schedule, and opens this job's evidence instead of another job", () => {
     mount(); expect(screen.getAllByText("4155550199").length).toBeGreaterThan(0);

@@ -4,7 +4,7 @@ import { createProcessorBoardHandler } from "../../supabase/functions/_shared/pr
 
 const ID = "00000000-0000-4000-8000-000000000001";
 const job = { id: ID, job_id: "JOB-1001", customer_name: "John Sample", customer_phone: "4155550101", address: "10 Sample St", tech_number: "4155550199", scheduled_date: "2026-10-15", scheduled_time_start: "10:00:00", scheduled_time_end: null, status: "scheduled", updated_at: "2026-10-15T10:00:00Z", created_at: "2026-10-01T00:00:00Z" };
-function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; hidden?: boolean; failSave?: boolean; failMessages?: boolean; lookupFail?: boolean; busy?: boolean; aiFail?: boolean; noDirect?: boolean; directFail?: boolean; failRelease?: boolean; modelEvidence?: unknown[] } = {}) {
+function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; hidden?: boolean; failSave?: boolean; failMessages?: boolean; failCalls?: boolean; lookupFail?: boolean; busy?: boolean; aiFail?: boolean; noDirect?: boolean; directFail?: boolean; failRelease?: boolean; modelEvidence?: unknown[] } = {}) {
   const tables: Record<string, Record<string, unknown>[]> = {
     user_roles: [{ role: options.role ?? "processor" }], leads: options.hidden ? [] : [job],
     technicians: [{ id: "tech", phone_number: "4155550199", chat_link: "https://my.quo.com/inbox/PN12345678/c/CN12345678" }],
@@ -25,19 +25,19 @@ function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; 
   const from = (name: string) => {
     reads.push(name);
     let single = false;
-    let low = 0; let high = Infinity;
+    let low = 0; let high = Infinity; let callsOnly = false;
     const builder = {
-      select: () => builder, eq: () => builder, in: () => builder, ilike: () => builder, or: () => builder, order: () => builder,
+      select: () => builder, eq: () => builder, in: () => builder, ilike: () => builder, or: (filter: string) => { if (filter.includes("quo_message_id")) callsOnly = true; return builder; }, order: () => builder,
       gte: () => builder, lte: () => builder, delete: vi.fn(() => builder),
       maybeSingle: () => { single = true; return builder; }, range: (a: number, b: number) => { low = a; high = b; return builder; },
       then: (resolve: (v: unknown) => unknown, reject?: (reason: unknown) => unknown) => (name === "processor_job_refresh_locks" && options.failRelease
         ? Promise.reject(new Error("Synthetic lease cleanup failure"))
-        : Promise.resolve({ data: single ? tables[name]?.[0] ?? null : (tables[name] ?? []).slice(low, high + 1), error: (name === "quo_messages" && options.failMessages) || (name === "technicians" && options.lookupFail) ? { message: "synthetic failure" } : null })).then(resolve, reject),
+        : Promise.resolve({ data: single ? tables[name]?.[0] ?? null : (tables[name] ?? []).filter((row) => !callsOnly || /:call\.(?:completed|transcript\.completed)$/.test(String(row.quo_message_id))).slice(low, high + 1), error: (name === "quo_messages" && (options.failMessages || (callsOnly && options.failCalls))) || (name === "technicians" && options.lookupFail) ? { message: "synthetic failure" } : null })).then(resolve, reject),
     };
     return builder;
   };
   const fetcher = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
-    if (String(url).includes("/messages?")) return new Response(JSON.stringify({ data: tables.quo_messages.map((m) => ({ id: m.id, conversationId: "CN12345678", phoneNumberId: "PN12345678", direction: m.sender === "agent" ? "outgoing" : "incoming", text: m.text, status: m.status ?? "received", createdAt: m.message_time })), nextPageToken: null }), { status: options.directFail ? 503 : 200 });
+    if (String(url).includes("/messages?")) return new Response(JSON.stringify({ data: tables.quo_messages.filter((m) => !String(m.quo_message_id ?? "").includes(":call.")).map((m) => ({ id: m.id, conversationId: "CN12345678", phoneNumberId: "PN12345678", direction: m.sender === "agent" ? "outgoing" : "incoming", text: m.text, status: m.status ?? "received", createdAt: m.message_time })), nextPageToken: null }), { status: options.directFail ? 503 : 200 });
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ evidence: options.modelEvidence ?? [{ signal: "completed", message_id: "m1", quote: tables.quo_messages[0].text }] }) } }] }), { status: options.aiFail ? 503 : 200 });
   });
   const handler = createProcessorBoardHandler({
@@ -48,6 +48,44 @@ function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; 
   return { request, rpc, reads, fetcher, tables };
 }
 describe("Processor Board server boundary", () => {
+  it.each([false, true])("reviews verified call completion even with no SMS, using mirror-only=%s", async (noDirect) => {
+    const quote = "JOB-1001 I finished the repair and cleaned up";
+    const s = setup({ noDirect, modelEvidence: [{ signal: "completed", message_id: "transcript:transcript-row:0", quote }] });
+    s.tables.quo_messages = [
+      { id: "call-row", quo_message_id: "AC123456:call.completed", conversation_id: "mirror", sender: "agent", status: "completed", text: "Call completed.", message_time: "2026-10-15T15:00:00Z", raw_payload: { type: "call.completed", data: { object: { id: "AC123456", conversationId: "CN12345678", phoneNumberId: "PN12345678", from: "+17475887812", to: ["+14155550199"], createdAt: "2026-10-15T15:00:00Z", answeredAt: "2026-10-15T15:00:01Z", completedAt: "2026-10-15T15:01:00Z" } } } },
+      { id: "transcript-row", quo_message_id: "AC123456:call.transcript.completed", conversation_id: "mirror", sender: "agent", status: "call.transcript.completed", text: `Call transcript: Customer: ${quote}`, message_time: "2026-10-15T16:00:00Z", raw_payload: { type: "call.transcript.completed", data: { object: { callId: "AC123456", status: "completed", createdAt: "2026-10-15T16:00:00Z", dialogue: [{ content: quote, userId: null, identifier: "+14155550199", start: 5, end: 10 }] } } } },
+    ];
+    const response = await s.request();
+    expect(response.status).toBe(200);
+    expect((await response.json()).result).toMatchObject({ status: "payment_pending", evidence: [{ source: "call_transcript", source_message_id: "transcript-row", message_time: "2026-10-15T15:00:05.000Z" }], call_transcripts: { state: "available", checked: 1 }, ai_scope: "all_job_linked_messages" });
+    const prompt = JSON.parse(String(s.fetcher.mock.calls.find(([url]) => String(url).includes("openai"))![1]?.body));
+    expect(JSON.parse(prompt.messages[1].content).untrustedMessages).toMatchObject([{ source: "call_transcript", sender: "customer", text: quote }]);
+    expect(s.tables.leads).toEqual([job]);
+  });
+  it("retains text evidence while reporting an independent call-read failure", async () => {
+    const s = setup({ failCalls: true });
+    const response = await s.request();
+    expect(response.status).toBe(200);
+    expect((await response.json()).result).toMatchObject({ status: "payment_pending", call_transcripts: { state: "unavailable" } });
+    expect(s.tables.leads).toEqual([job]);
+  });
+  it("does not infer Send Dose when call history could not be checked", async () => {
+    const accepted = "JOB-1001 accepted, I will take this job";
+    const request = "Please give an update on JOB-1001 now";
+    const s = setup({ failCalls: true, modelEvidence: [{ signal: "accepted", message_id: "accept", quote: accepted }, { signal: "update_request", message_id: "request", quote: request }] });
+    s.tables.quo_messages = [{ id: "accept", sender: "customer", text: accepted, message_time: "2026-10-15T14:00:00Z" }, { id: "request", sender: "agent", text: request, message_time: "2026-10-15T16:00:00Z", status: "delivered" }];
+    expect((await (await s.request()).json()).result).toMatchObject({ status: "needs_review", review_reason: "call_history_unavailable", call_transcripts: { state: "unavailable" } });
+    expect(s.tables.leads).toEqual([job]);
+  });
+  it("fails explicitly rather than silently trimming a job's complete AI candidate history", async () => {
+    const s = setup();
+    s.tables.quo_messages[0].text = `JOB-1001 ${"synthetic context ".repeat(6000)}`;
+    const response = await s.request();
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ code: "context_limit", retryable: false });
+    expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(0);
+    expect(s.tables.processor_job_assessments).toEqual([]);
+  });
   it.each(["John", "Jane"])("isolates %s's outcome in a shared two-job technician conversation", async (customer) => {
     const peer = { ...job, id: "00000000-0000-4000-8000-000000000002", job_id: "JOB-1002", customer_name: "Jane Example", customer_phone: "4155550102", address: "20 Example Rd" };
     const progress = "JOB-1001 I have arrived and started working";
@@ -91,23 +129,23 @@ describe("Processor Board server boundary", () => {
     expect((await response.json()).result).toMatchObject({ status: "take_job_update", review_reason: "no_verified_update", evidence: [], ai_used: true });
     expect(s.tables.leads).toEqual([job]);
   });
-  it("filters the provider payload to latest job messages and keywords while retaining response timing history", async () => {
+  it("reviews all job-linked text, including older non-keyword messages, without losing earlier completion", async () => {
     const s = setup();
     s.tables.quo_messages.push(...Array.from({ length: 50 }, (_, i) => ({ id: `chatter-${i}`, conversation_id: "mirror", sender: "customer", text: `JOB-1001 fixture colour note ${i}`, message_time: `2026-10-15T16:${String(i + 1).padStart(2, "0")}:00Z` })));
     const response = await s.request();
     expect(response.status).toBe(200);
     const result = (await response.json()).result;
-    expect(result).toMatchObject({ status: "payment_pending", ai_scope: "latest_job_messages_and_keywords", ai_recent_limit: 20, ai_messages_omitted: 30, messages_reviewed: 51, extraction_messages: 21 });
+    expect(result).toMatchObject({ status: "payment_pending", ai_scope: "all_job_linked_messages", ai_messages_omitted: 0, messages_reviewed: 51, extraction_messages: 51 });
     const aiCall = s.fetcher.mock.calls.find(([url]) => String(url).includes("openai"))!;
     const prompt = JSON.parse(String(aiCall[1]?.body));
     const input = JSON.parse(prompt.messages[1].content).untrustedMessages;
-    expect(input).toHaveLength(21);
+    expect(input).toHaveLength(51);
     expect(input.some((message: { id: string }) => message.id === "m1")).toBe(true);
-    expect(input.some((message: { id: string }) => message.id === "chatter-0")).toBe(false);
+    expect(input.some((message: { id: string }) => message.id === "chatter-0")).toBe(true);
     expect(s.tables.leads).toEqual([job]);
   });
-  it("rejects model evidence from a message omitted by the latest/keyword filter", async () => {
-    const text = "JOB-1001 fixture colour is blue";
+  it("rejects model evidence from another job even when all target candidates are reviewed", async () => {
+    const text = "JOB-1002 fixture colour is blue";
     const s = setup({ modelEvidence: [{ signal: "completed", message_id: "m1", quote: text }] });
     s.tables.quo_messages[0].text = text;
     s.tables.quo_messages.push(...Array.from({ length: 25 }, (_, i) => ({ id: `chatter-${i}`, conversation_id: "mirror", sender: "customer", text: `JOB-1001 fixture note ${i}`, message_time: `2026-10-15T16:${String(i + 1).padStart(2, "0")}:00Z` })));
@@ -127,9 +165,11 @@ describe("Processor Board server boundary", () => {
   it("saves only job-specific advisory evidence and reuses unchanged inputs without a second AI call", async () => {
     const s = setup(); const first = await s.request(); expect(first.status).toBe(200);
     expect((await first.json()).result).toMatchObject({ status: "payment_pending", ai_used: true, history_complete: true, source: "Quo current history" });
-    expect((await s.request()).status).toBe(200);
+    const repeated = await s.request();
+    expect(repeated.status).toBe(200);
+    expect((await repeated.json()).result).toMatchObject({ status: "payment_pending", job_messages_changed: false, ai_extraction_reused: true });
     expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(1);
-    expect(s.reads.filter((name) => name === "quo_messages")).toHaveLength(0);
+    expect(s.reads.filter((name) => name === "quo_messages")).toHaveLength(2);
     expect(s.rpc.mock.calls.filter(([name]) => name === "save_processor_job_assessment")).toHaveLength(1);
     expect(s.tables.leads).toEqual([job]);
   });
@@ -251,7 +291,7 @@ describe("Processor Board server boundary", () => {
     const response = await s.request({ action: "list" }); expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.rows).toHaveLength(25); expect(payload.total).toBe(25);
-    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true, evidence_policy: 8 });
+    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true, evidence_policy: 9 });
     expect(payload.rows.every((row: { chat_setup: { state: string } }) => row.chat_setup.state === "ready")).toBe(true);
     expect(s.reads).toEqual(["user_roles", "technicians", "quo_conversations"]);
     expect(s.rpc.mock.calls.map(([name]) => name)).toEqual(["list_processor_jobs"]);

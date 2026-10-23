@@ -4,12 +4,12 @@ const version = JSON.parse(readFileSync(new URL("../../public/extension-release.
 const USER = "00000000-0000-4000-8000-000000000001";
 const LEAD = "00000000-0000-4000-8000-000000000002";
 const openFilters = async (page: Page) => page.getByText("Filters & tracking", { exact: true }).first().click();
-async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean; noEvidence?: boolean; context?: boolean; chatGrant?: boolean; failChat?: boolean; location?: "full" | "partial" | "missing"; missingChat?: boolean } = {}) {
+async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean; noEvidence?: boolean; context?: boolean; callEvidence?: boolean; noNewUpdate?: boolean; chatGrant?: boolean; failChat?: boolean; location?: "full" | "partial" | "missing"; missingChat?: boolean } = {}) {
   const actions: Record<string, unknown>[] = [];
   let reviewed = false;
   let failures = 0;
   const row = () => ({ id: LEAD, job_id: "JOB-1001", customer_name: "John Sample", customer_phone: "4155550101", service_type: "Garage Door Service", address: "10 Sample St Apt 2", city: "Miami", state: "FL", tech_name: "Alex Technician", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only; call before arrival", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: reviewed ? new Date().toISOString() : null,
-    assessment: reviewed ? { status: options.noEvidence ? "take_job_update" : "payment_pending", evidence: options.noEvidence ? [] : [{ signal: "completed", quote: options.context ? "I finished the installation and cleaned up." : "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer", identity_basis: options.context ? "thread_context" : undefined }], matched_technician_messages: options.noEvidence || options.context ? 0 : 1, context_technician_messages: options.context ? 2 : 0, unattributed_technician_messages: options.noEvidence ? 8 : 0, extraction_messages: options.noEvidence ? 0 : 1, messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, ai_used: !options.noEvidence, chat_fingerprint: options.auto ? "verified-setup" : undefined, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: options.noEvidence ? "No verified technician outcome for this job. Generic replies were not assigned to the nearest dispatch." : "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
+    assessment: reviewed ? { status: options.noEvidence ? "take_job_update" : "payment_pending", evidence: options.noEvidence ? [] : [{ signal: "completed", quote: options.context ? "I finished the installation and cleaned up." : "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer", identity_basis: options.context ? "thread_context" : undefined, ...(options.callEvidence ? { source: "call_transcript", call_id: "ACsynthetic", source_message_id: "saved-call-transcript" } : {}) }], ...(options.callEvidence ? { call_transcripts: { state: "available", checked: 1, missing: 0, skipped_segments: 0 }, ai_scope: "all_job_linked_messages" } : {}), ...(options.noNewUpdate ? { job_messages_changed: false, ai_extraction_reused: true } : {}), matched_technician_messages: options.noEvidence || options.context ? 0 : 1, context_technician_messages: options.context ? 2 : 0, unattributed_technician_messages: options.noEvidence ? 8 : 0, extraction_messages: options.noEvidence ? 0 : 1, messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, ai_used: !options.noEvidence, chat_fingerprint: options.auto ? "verified-setup" : undefined, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: options.noEvidence ? "No verified technician outcome for this job. Generic replies were not assigned to the nearest dispatch." : "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
     chat_setup: options.auto ? { state: "ready", code: "ready", message: "Exact saved technician chat verified", fingerprint: "verified-setup", conversation_id: "00000000-0000-4000-8000-000000000010", last_message_at: null, source: "verified_mirror", chat_url: "https://my.quo.com/inbox/PN12345678/c/CN12345678" } : undefined,
     ...(options.setup ? { tech_number: null, scheduled_date: null, scheduled_time_start: null } : {}),
     ...(options.location ? { city: null, state: null, address: options.location === "full" ? "House 10, Sample Street" : null, half_address: options.location === "partial" ? "House 12, Side Street" : null } : {}),
@@ -66,6 +66,34 @@ async function isolatedBoard(page: Page, role = "processor", fail = false, optio
   return actions;
 }
 for (const width of [1440, 390]) {
+  test(`call evidence and unchanged-result wording stay clear without extra action tags at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const actions = await isolatedBoard(page, "processor", false, { callEvidence: true, noNewUpdate: true });
+    await page.goto("/processor-board");
+    await openFilters(page);
+    await page.getByLabel("Confirm schedule timezone").check();
+    await expect(page.getByText("Includes other saved statuses, not just Scheduled.", { exact: false })).toBeVisible();
+    await expect(page.getByLabel("Filter this page").getByRole("option")).toHaveCount(7);
+    await expect(page.getByLabel("Filter this page")).not.toContainText("No action yet");
+    await page.getByRole("button", { name: "Refresh AI · this page" }).click();
+    await expect(page.getByText("AI · call transcript: job completed · no new update.", { exact: true }).filter({ visible: true })).toHaveCount(1);
+    await page.getByRole("button", { name: "Refresh AI · this page" }).click();
+    await expect.poll(() => actions.filter((a) => a.action === "assess").length).toBe(2);
+    await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Payment Pending");
+    await expect(dialog).toContainText("The verified evidence below still supports this action");
+    await expect(dialog.getByLabel("Call transcript coverage")).toContainText("1 saved call transcript checked");
+    await expect(dialog).toContainText("Call transcript · Technician");
+    await expect(dialog).not.toContainText("No action yet");
+    await expect(dialog).not.toContainText("AI · previous review");
+    await expect.poll(async () => Math.round((await dialog.boundingBox())!.x)).toBe(width - Math.min(width, 512));
+    await expect.poll(async () => Math.round((await dialog.boundingBox())!.y)).toBe(0);
+    const checkBox = await dialog.getByRole("button", { name: "Check this job" }).boundingBox();
+    expect(checkBox!.y).toBeGreaterThanOrEqual(0);
+    expect(checkBox!.y + checkBox!.height).toBeLessThanOrEqual(900);
+    await page.screenshot({ path: test.info().outputPath(`processor-call-evidence-${width}.png`), fullPage: false });
+  });
   test(`action filters explain their job-specific rules on hover and focus at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const actions = await isolatedBoard(page, "processor", false, { showcase: true });
@@ -119,8 +147,10 @@ for (const width of [1440, 390]) {
     await page.getByLabel("Confirm schedule timezone").check();
     await expect.poll(() => actions.filter((a) => a.action === "assess").length).toBe(2);
     await expect(page.getByRole("progressbar")).toHaveCount(0);
-    await expect(page.getByText("No action yet", { exact: true }).filter({ visible: true })).toHaveCount(1);
-    await expect(page.getByText("No verified work update yet", { exact: false }).filter({ visible: true })).toHaveCount(2);
+    await expect(page.getByText("Appointment upcoming", { exact: true }).filter({ visible: true })).toHaveCount(1);
+    await expect(page.locator('.processor-status[data-processor-status="scheduled"]')).toHaveCount(0);
+    await expect(page.getByText("Reply found", { exact: false }).filter({ visible: true })).toHaveCount(1);
+    await expect(page.getByText("Appointment has not started", { exact: false }).filter({ visible: true })).toHaveCount(1);
     await page.getByRole("button", { name: "Review LIVE-1" }).filter({ visible: true }).click();
     const readsBefore = actions.filter((a) => a.action === "list").length;
     revision = 1;
@@ -236,7 +266,7 @@ for (const width of [1440, 390]) test(`Processor reviews the correct job and evi
   await expect(checked).toHaveText("Checked just now");
   await expect(checked).toHaveAttribute("title", /.+/);
   await expect(status.getByLabel("Last checked date and time")).toContainText(new Date().getUTCFullYear().toString());
-  await expect(status).toContainText("AI evidence · technician completion verified");
+  await expect(status).toContainText("AI · technician message: job completed.");
   const checkedBox = await checked.boundingBox();
   const statusBox = await status.getByText("Payment Pending", { exact: true }).boundingBox();
   expect(checkedBox!.y + checkedBox!.height).toBeLessThanOrEqual(statusBox!.y);
@@ -265,7 +295,7 @@ for (const width of [1440, 390]) test(`automatic tracking requires timezone conf
   await page.getByLabel("Confirm schedule timezone").check();
   await expect(page.getByRole("status")).toContainText("Automatic check: 1 reviewed");
   await expect(page.getByLabel("Evidence quality on this page")).toContainText("1 with a technician reply tied to the job");
-  await expect(page.getByText("AI evidence · technician completion verified").filter({ visible: true })).toBeVisible();
+  await expect(page.getByText("AI · technician message: job completed.").filter({ visible: true })).toBeVisible();
   await expect(page.getByText("Saved: Scheduled", { exact: false }).filter({ visible: true })).toBeVisible();
   await page.getByRole("button", { name: "Refresh AI · this page" }).click();
   await expect(page.getByRole("status")).toContainText("1 reviewed · 0 failed · 0 skipped");
@@ -359,7 +389,7 @@ for (const width of [1440, 390]) test(`context-attributed completion is labelled
   await page.goto("/processor-board");
   await page.getByLabel("Confirm schedule timezone").check();
   await expect(page.getByRole("status")).toContainText("1 with a technician reply tied to the job");
-  await expect(page.getByText("AI evidence · technician completion context-attributed · verify in Quo").filter({ visible: true })).toBeVisible();
+  await expect(page.getByText("AI · technician message: job completed · context match—verify in chat.").filter({ visible: true })).toBeVisible();
   await page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("2 follow this job's saved dispatch");
@@ -436,7 +466,12 @@ for (const theme of ["dark", "light"] as const) {
     await expect(page.locator("html")).toHaveClass(new RegExp(theme));
     await expect(page.locator("tbody tr")).toHaveCount(6);
     const accents = await page.locator("tbody tr td:first-child").evaluateAll((cells) => cells.map((cell) => getComputedStyle(cell).boxShadow));
-    expect(new Set(accents).size).toBe(6);
+    expect(new Set(accents).size).toBe(5);
+    // Setup failures and unavailable checks are one Needs Review action, not
+    // two hidden status/color categories. The four actions remain distinct.
+    expect(accents[4]).toBe(accents[5]);
+    expect(new Set(accents.slice(0, 4)).size).toBe(4);
+    expect(accents.slice(0, 4)).not.toContain(accents[4]);
     const panel = page.getByRole("region", { name: "Scheduled jobs" });
     await expect(panel).toHaveCSS("opacity", "1");
     await expect(panel).toHaveCSS("transform", "none");

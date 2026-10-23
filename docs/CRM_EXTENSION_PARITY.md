@@ -6,7 +6,7 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Flow | CRM | Donut | Shared authority / verification |
 | --- | --- | --- | --- |
 | Technician intelligence | Technicians → Processing Workflow; map selection up to 8 | Native Technician Intelligence panel for the captured phone, reviewed-label saving, full-workflow link for batch selection/flag approvals/chat actions | `technician-chat-assessment`: Admin/Processor only; identical AI prompt, evidence checks, counts and labels. Missing history is unavailable, not misconduct. |
-| Processor Board | `/processor-board`: newest-schedule radar, four advisory actions, explicit AI/rule/saved sources, exact check times, job-specific chat and timezone-confirmed automatic tracking. Follow-ups add saved address fallback, compact density, action-filter help, no-outcome schedule actions and focused new-chat refresh | No native board/job-specific assessment action; existing technician-wide intelligence is separate. Donut v1.7.0 sources/artifacts unchanged | Live: authenticated `processor-board` **v9 ACTIVE**, policy 8, JWT verification retained; nine deployed files verified exact. Existing visibility migration remains applied as remote `20261023043949`; no new migration. CRM Publish and signed-in QA separate. Caller scope, leases, revision-checked advisory save, audit and approvals preserved. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
+| Processor Board | `/processor-board`: newest-schedule radar, four advisory actions plus Needs Review, plain upcoming note, exact check times, job-specific texts/saved call evidence and focused chat refresh. Includes unfinished previously scheduled statuses, not just current Scheduled | No native board/job-specific assessment action; existing technician-wide intelligence is separate. Donut v1.7.0 sources/artifacts unchanged | Live: authenticated `processor-board` **v10 ACTIVE**, policy 9, JWT verification retained; ten deployed files verified exact. Existing visibility migration remains applied as remote `20261023043949`; no new migration. CRM Publish and signed-in QA separate. Caller scope, leases, revision-checked advisory save, audit and approvals preserved. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
 | Technician flags | Admin applies; Processor requests review | Opens full workflow for the same reviewed actions | Existing `request_technician_change` approval RPC and technician flag trigger; never write flags directly in Donut. |
 | Urgent lead review | Latest customer agreement, corrections and missing details | Same check; displays issues, corrections and flags; opens saved-lead review for confirmed corrections/approval | `check-urgent-lead`, urgent verification/review RPCs and database status gate. No duplicate prompt or approval bypass. |
 | Address lookup / map coordinates | Authenticated Census-only lookup and preserved units | Same function for Find Address, coverage preview and submission coordinates | `geocode-lead-address`: only Census coordinates may be cached/persisted for the free map. Google or unlabelled points are rejected by both clients. Preserve Apt/Suite/Unit/#. |
@@ -42,6 +42,33 @@ prompt, manifest or ZIP changed. With user approval, the pilot RPC migration and
 Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
+
+## Processor Board simple actions and saved call evidence (2026-10-23; Edge installed, CRM publication pending)
+
+CRM now uses only four advisory action badges plus Needs Review. Upcoming jobs have
+a plain schedule note, not a sixth action; failed checks share the Needs Review
+filter. Short row/check summaries distinguish saved statuses, earlier evidence,
+fresh AI findings and unchanged-history results, retaining context/stale/error
+warnings and full diagnostics in Review. The 706 vs 369 screenshot counts were
+reconciled as 369 current Scheduled plus 337 other unfinished scheduled radar jobs;
+no scope, exact total or record repair changed.
+
+The same authenticated `processor-board` endpoint adds one caller-scoped read of
+saved call/transcript events, verifies the original call/line/participant/time and
+external speaker's exact number, and isolates each call's job context. Only that
+job's verified text/speech candidates reach AI; all attributable candidates are
+included, or the existing context boundary fails explicitly. Audio-only events,
+summaries and unknown speakers are not proof. Missing call data is reported, not
+passed. Answered calls prevent false non-response; call-only acceptance/questions
+do not satisfy Send Dose. Approvals, status writes, caller/RLS scope and audit
+authority are unchanged. No native Donut per-job counterpart or extension release.
+
+No migration or generated database type change. With explicit user approval,
+`processor-board` **v10 ACTIVE / evidence policy 9** is deployed with JWT
+verification retained. All ten deployed source/config files match local content,
+including the new transcript dependency; no-token/invalid-token/preflight probes
+passed **401/401/200**. CRM Publish and signed-in provider QA remain separate.
+See the newest rollout section for bounds, coverage and rollback evidence.
 
 ## Processor Board action help and focused chat activity (2026-10-23; Edge installed, CRM publication pending)
 
