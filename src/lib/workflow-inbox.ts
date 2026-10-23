@@ -12,17 +12,51 @@ export type InboxNotification = z.infer<typeof notificationSchema>;
 export type InboxFilters = { view: "all" | "unread" | "action"; category: "all" | "cx" | "tech" | "schedule" | "other"; search: string; since?: string; until?: string };
 export const inboxSchema = z.object({ rows: z.array(notificationSchema), total: z.number().int().nonnegative(), unread_count: z.number().int().nonnegative() });
 
-export async function workflowCall(area: "notifications" | "schedule", input: object): Promise<unknown> {
+const sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+/** The Supabase edge runtime answers with these while its isolate pool restarts.
+ * One short retry lets a momentary degraded window self-heal without user action;
+ * anything else (validation, permissions) is surfaced immediately. */
+const TRANSIENT_STATUS = new Set([429, 502, 503, 504]);
+const TRANSIENT_CODES = new Set(["SUPABASE_EDGE_RUNTIME_SERVICE_DEGRADED", "SUPABASE_EDGE_RUNTIME_OVERLOAD"]);
+export const INBOX_RETRY_DELAY_MS = 1500;
+
+interface InvokeOutcome { data: unknown; status: number; code: string; message: string | null; }
+async function invokeOnce(area: "notifications" | "schedule", input: object): Promise<InvokeOutcome> {
   const { data, error } = await supabase.functions.invoke("workflow-inbox", { body: { area, ...input } });
-  if (error) {
-    const context: unknown = "context" in error ? error.context : null;
-    if (context instanceof Response) {
-      const body: unknown = await context.clone().json().catch(() => null);
-      if (body && typeof body === "object" && "error" in body && typeof body.error === "string") throw new Error(body.error);
+  if (!error) return { data, status: 200, code: "", message: null };
+  const context: unknown = "context" in error ? error.context : null;
+  let status = 0;
+  let code = "";
+  let message: string | null = null;
+  if (context instanceof Response) {
+    status = context.status;
+    const body: unknown = await context.clone().json().catch(() => null);
+    if (body && typeof body === "object") {
+      if ("code" in body && typeof body.code === "string") code = body.code;
+      if ("error" in body && typeof body.error === "string") message = body.error;
+      else if ("message" in body && typeof body.message === "string") message = body.message;
     }
-    throw new Error("Inbox unavailable. Ask Admin to check backend installation.");
   }
-  return data;
+  return { data: null, status, code, message };
+}
+
+function inboxError(outcome: InvokeOutcome) {
+  if (TRANSIENT_CODES.has(outcome.code)) return new Error("Notification service briefly restarted. It was retried automatically — please try again if it persists.");
+  if (outcome.message) return new Error(outcome.message);
+  return new Error("Inbox unavailable. Ask Admin to check backend installation.");
+}
+
+export async function workflowCall(area: "notifications" | "schedule", input: object): Promise<unknown> {
+  const isTransient = (outcome: InvokeOutcome) => TRANSIENT_STATUS.has(outcome.status) || TRANSIENT_CODES.has(outcome.code);
+  const first = await invokeOnce(area, input);
+  if (!isTransient(first)) {
+    if (first.status === 200) return first.data;
+    throw inboxError(first);
+  }
+  await sleep(INBOX_RETRY_DELAY_MS);
+  const second = await invokeOnce(area, input);
+  if (second.status === 200) return second.data;
+  throw inboxError(second);
 }
 export const fetchInbox = async (filters: InboxFilters, offset: number) => inboxSchema.parse(await workflowCall("notifications", { action: "list", ...filters, offset }));
 export const fetchWorkflowAlerts = async (after: string, until: string, offset: number) => inboxSchema.parse(await workflowCall("notifications", { action: "alerts", after, until, offset }));
