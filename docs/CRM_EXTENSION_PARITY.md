@@ -43,6 +43,23 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## Processor Board focused job review (2026-10-23; local frontend update)
+
+Review temporarily pauses new page assessments after the active request. Check
+this job prioritizes only the selected lead, reuses its active check, and shows
+job-specific waiting/busy state. No other job is assessed while Review or its
+pinned read-only Tech Quick Chat remains open. Closing restores the previous
+tracking preference; unstarted focused checks are retired on close, hidden tab,
+scope loss or reassignment. Normal list/realtime recovery reads remain enabled.
+
+Fixed header/action footer and a scrollable review body make Check this job and
+the authorized chat accessible without scrolling past repeated explanations.
+Quotes, source labels, stale/error/setup warnings stay visible; full diagnostics
+and safety detail move to one collapsed disclosure. No backend prompt/history
+rule, migration, permissions/RLS, generated enum, status/approval or outbound-send
+change. No native Donut counterpart exists; no extension release is needed.
+Frontend publication and real signed-in/provider QA remain separate.
+
 ## Processor Board honest review / location fallback (2026-10-23; database + Edge installed)
 
 CRM follows the Urgent leads compact panel styling, shows Checking / Queued for
