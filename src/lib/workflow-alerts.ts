@@ -51,3 +51,10 @@ export function claimWorkflowChime(userId: string, now = Date.now()) {
 export function saveAlertCursor(userId: string, cursor: string) {
   try { localStorage.setItem(`${key(userId)}:cursor`, cursor); } catch { /* Replayed IDs are deduplicated. */ }
 }
+export const ALERT_POLL_MS = 15000;
+export const ALERT_POLL_MAX_MS = 120000;
+/** Double the gap after each failed cycle so a degraded backend is not hammered
+ * every 15 seconds; reset to the normal cadence on the first success. */
+export function pollAlertDelay(failures: number) {
+  return Math.min(ALERT_POLL_MS * 2 ** Math.max(0, failures), ALERT_POLL_MAX_MS);
+}

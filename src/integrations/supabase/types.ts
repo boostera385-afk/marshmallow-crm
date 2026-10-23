@@ -567,7 +567,12 @@ export type Database = {
           request_kind: string
           request_text: string
           requested_by: string | null
+          resolution_owner: string | null
+          resolution_owner_assigned: boolean
+          resolved_by: string | null
+          resolved_by_name: string | null
           response_text: string | null
+          revision: number
           status: string
           thread: Json
         }
@@ -582,7 +587,12 @@ export type Database = {
           request_kind?: string
           request_text: string
           requested_by?: string | null
+          resolution_owner?: string | null
+          resolution_owner_assigned?: boolean
+          resolved_by?: string | null
+          resolved_by_name?: string | null
           response_text?: string | null
+          revision?: number
           status?: string
           thread?: Json
         }
@@ -597,7 +607,12 @@ export type Database = {
           request_kind?: string
           request_text?: string
           requested_by?: string | null
+          resolution_owner?: string | null
+          resolution_owner_assigned?: boolean
+          resolved_by?: string | null
+          resolved_by_name?: string | null
           response_text?: string | null
+          revision?: number
           status?: string
           thread?: Json
         }
@@ -647,6 +662,34 @@ export type Database = {
           {
             foreignKeyName: "lead_cx_update_requests_requested_by_fkey"
             columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_resolution_owner_fkey"
+            columns: ["resolution_owner"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_resolution_owner_fkey"
+            columns: ["resolution_owner"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_cx_update_requests_resolved_by_fkey"
+            columns: ["resolved_by"]
             isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
@@ -2715,6 +2758,61 @@ export type Database = {
         }
         Relationships: []
       }
+      workflow_notification_events: {
+        Row: {
+          event_key: string
+          event_type: string
+          job_id: string
+          lead_id: string | null
+          notification_id: string
+          request_id: string | null
+          request_kind: string | null
+          revision: number
+        }
+        Insert: {
+          event_key: string
+          event_type: string
+          job_id: string
+          lead_id?: string | null
+          notification_id: string
+          request_id?: string | null
+          request_kind?: string | null
+          revision: number
+        }
+        Update: {
+          event_key?: string
+          event_type?: string
+          job_id?: string
+          lead_id?: string | null
+          notification_id?: string
+          request_id?: string | null
+          request_kind?: string | null
+          revision?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_notification_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_notification_events_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: true
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_notification_events_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "lead_cx_update_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       profiles_public: {
@@ -2816,6 +2914,7 @@ export type Database = {
         Args: { p_lead_id: string; p_token: string }
         Returns: boolean
       }
+      claim_schedule_checks: { Args: never; Returns: Json }
       claim_sheets_sync_queue: {
         Args: { p_limit?: number }
         Returns: {
@@ -2957,6 +3056,7 @@ export type Database = {
         Args: { p_lock_token: string }
         Returns: boolean
       }
+      finish_schedule_check: { Args: { p_input: Json }; Returns: boolean }
       finish_sheets_sync_job: {
         Args: {
           p_detail?: Json
@@ -3088,6 +3188,15 @@ export type Database = {
           opr_code: string
         }[]
       }
+      list_processor_board_jobs: {
+        Args: {
+          p_ai_status?: string
+          p_offset?: number
+          p_search?: string
+          p_timezone?: string
+        }
+        Returns: Json
+      }
       list_processor_jobs: {
         Args: {
           p_history?: boolean
@@ -3215,9 +3324,29 @@ export type Database = {
           tech_count: number
         }[]
       }
+      processor_board_daily_candidates: {
+        Args: { p_limit?: number }
+        Returns: string[]
+      }
+      processor_board_status: {
+        Args: {
+          p_lead_status: string
+          p_now: string
+          p_result: Json
+          p_scheduled_date: string
+          p_scheduled_time: string
+          p_tech_number: string
+          p_timezone: string
+        }
+        Returns: string
+      }
       processor_can_view_status: {
         Args: { p_status: string }
         Returns: boolean
+      }
+      processor_customer_last_message: {
+        Args: { p_customer_phone: string; p_lead_id: string }
+        Returns: string
       }
       prune_sheets_sync_errors: { Args: { p_keep?: number }; Returns: number }
       quo_conversation_counts_by_number: {
@@ -3323,6 +3452,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      schedule_monitor_admin: { Args: { p_input: Json }; Returns: Json }
       search_technicians: {
         Args: { _limit: number; _offset: number; _q: string }
         Returns: {
@@ -3411,6 +3541,8 @@ export type Database = {
         Args: { p_request_id: string }
         Returns: undefined
       }
+      workflow_notifications: { Args: { p_input: Json }; Returns: Json }
+      workflow_requests: { Args: { p_input: Json }; Returns: Json }
     }
     Enums: {
       app_role:

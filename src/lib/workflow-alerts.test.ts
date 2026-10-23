@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { claimWorkflowAlert, loadAlertCursor, saveAlertCursor, setWorkflowSounds, workflowSoundsEnabled } from "./workflow-alerts";
+import { claimWorkflowAlert, loadAlertCursor, pollAlertDelay, saveAlertCursor, setWorkflowSounds, workflowSoundsEnabled } from "./workflow-alerts";
 beforeEach(() => {
   localStorage.clear();
   Object.defineProperty(navigator, "locks", { configurable: true, value: { request: (_key: string, action: () => unknown) => Promise.resolve(action()) } });
@@ -31,5 +31,14 @@ describe("persistent workflow alert claims", () => {
     saveAlertCursor("user-a", "2026-10-20T12:00:00Z");
     expect(loadAlertCursor("user-a", "fallback")).toBe("2026-10-20T12:00:00Z");
     expect(loadAlertCursor("user-b", "fallback")).toBe("fallback");
+  });
+});
+describe("degraded backend polling backoff", () => {
+  it("polls normally when healthy and doubles the gap per failure up to the cap", () => {
+    expect(pollAlertDelay(0)).toBe(15000);
+    expect(pollAlertDelay(1)).toBe(30000);
+    expect(pollAlertDelay(2)).toBe(60000);
+    expect(pollAlertDelay(3)).toBe(120000);
+    expect(pollAlertDelay(10)).toBe(120000);
   });
 });

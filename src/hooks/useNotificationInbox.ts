@@ -28,5 +28,7 @@ export function useNotificationInbox(filters: InboxFilters, offset: number) {
     return () => { unsubscribe(); realtimeBus.removeEventListener("workflow-inbox-read", listener); };
   }, [user, enabled, refresh]);
   return useQuery({ queryKey: [...INBOX_QUERY_KEY, user?.id, role, filters, offset],
-    queryFn: () => fetchInbox(filters, offset), enabled, refetchInterval: 15000 });
+    queryFn: () => fetchInbox(filters, offset), enabled, refetchInterval: 15000,
+    // workflowCall already retries transient edge-runtime failures once; the 15s interval refetches anyway.
+    retry: false });
 }
