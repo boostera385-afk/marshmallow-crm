@@ -20,7 +20,7 @@ const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: 
   board_status: "take_job_update", ai_stale: false, assessment: facts(), checked_at: "2026-10-20T10:05:00Z", chat_setup: chat };
 const future: ProcessorJob = { ...job, id: "00000000-0000-4000-8000-000000000002", job_id: "LD-1002", customer_name: "Jeff Moore", scheduled_date: "2099-01-01", board_status: "upcoming", assessment: null, checked_at: null, created_at: "2026-10-20T15:00:00Z" };
 const queue = (rows: ProcessorJob[], extra: Partial<ProcessorQueue> = {}): { data: ProcessorQueue; isLoading: false; isFetching: false; isError: false; refetch: typeof state.refetch } =>
-  ({ data: { rows, total: rows.length, all_total: 40, counts: { take_job_update: 7, job_in_progress: 5, payment_pending: 9, send_dose: 2, not_enough_details: 3, upcoming: 14 }, observed_at: "2026-10-20T18:00:00Z", timezone: "America/New_York", monitoring: { ai_configured: true, current_history_configured: true, evidence_policy: 10 }, ...extra }, isLoading: false, isFetching: false, isError: false, refetch: state.refetch });
+  ({ data: { rows, total: rows.length, all_total: 40, counts: { take_job_update: 7, job_in_progress: 5, payment_pending: 6, payment_overdue: 3, send_dose: 2, not_enough_details: 3, upcoming: 14 }, observed_at: "2026-10-20T18:00:00Z", timezone: "America/New_York", monitoring: { ai_configured: true, current_history_configured: true, evidence_policy: 10 }, ...extra }, isLoading: false, isFetching: false, isError: false, refetch: state.refetch });
 function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return { ...render(<QueryClientProvider client={client}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>), client };
@@ -59,7 +59,7 @@ describe("Processor Board", () => {
   it("filters by AI status on the server with board-wide counts", () => {
     mount();
     const group = screen.getByRole("group", { name: "Filter by AI status" });
-    for (const [label, count] of [["All", "40"], ["Take Job Update", "7"], ["Job In Progress", "5"], ["Payment Pending", "9"], ["Send Dose", "2"], ["Not enough details in the chat", "3"], ["Upcoming", "14"]]) {
+    for (const [label, count] of [["All", "40"], ["Take Job Update", "7"], ["Job In Progress", "5"], ["Payment Pending", "6"], ["Payment Overdue", "3"], ["Send Dose", "2"], ["Not enough details in the chat", "3"], ["Upcoming", "14"]]) {
       expect(within(group).getByRole("button", { name: `${label} ${count}` })).toBeInTheDocument();
     }
     fireEvent.click(within(group).getByRole("button", { name: "Send Dose 2" }));
@@ -91,6 +91,32 @@ describe("Processor Board", () => {
     expect(rowFor("LD-1001")).toHaveTextContent("Not enough details in the chat");
     fireEvent.click(screen.getByRole("button", { name: "Review LD-1001" }));
     expect(screen.getByRole("region", { name: "Review LD-1001" })).toHaveTextContent("no mention of Shanice Walker found, so the chat from the day before the lead was read");
+  });
+  it("shows who an overdue payment is waiting on, on the row and in Review", () => {
+    const payment = { state: "waiting_on_customer", waiting_since: "2026-10-15T17:00:00Z", promised_date: null, summary: "We asked Shanice for $180 and she has not replied.",
+      evidence: [{ signal: "asked", quote: "Please send $180 today", message_id: "c1", message_time: "2026-10-15T17:00:00Z", from: "our_team" }], window: { start: "2026-10-14T16:00:00Z", messages: 4, omitted: 0, conversations: 1 } };
+    state.hook.mockReturnValue(queue([{ ...job, board_status: "payment_overdue", assessment: facts({ job_update: "completed", completed_at: "2026-10-15T16:00:00Z", payment, checked_by: "daily_check" }) }]));
+    mount();
+    const row = rowFor("LD-1001");
+    expect(row).toHaveTextContent("Payment Overdue");
+    expect(row).toHaveTextContent("Waiting on customer since Oct 15");
+    fireEvent.click(screen.getByRole("button", { name: "Review LD-1001" }));
+    const section = screen.getByRole("region", { name: "Payment" });
+    expect(section).toHaveTextContent("Technician said completed Oct 15");
+    expect(section).toHaveTextContent("We asked Shanice for $180 and she has not replied.");
+    expect(section).toHaveTextContent("“Please send $180 today”");
+    expect(section).toHaveTextContent("We asked for payment · Our team");
+    expect(screen.getByRole("region", { name: "Review LD-1001" })).toHaveTextContent("by the daily check");
+  });
+  it("shows a promised date and a failed customer-chat read honestly", () => {
+    const promised = { state: "promised", waiting_since: null, promised_date: "2026-10-30", summary: "", evidence: [], window: { start: "2026-10-14T16:00:00Z", messages: 2, omitted: 0, conversations: 1 } };
+    const failed = { ...job, id: "00000000-0000-4000-8000-000000000005", job_id: "LD-1005", board_status: "payment_pending" as const, assessment: facts({ job_update: "completed", payment_error: "The customer's chat could not be checked. The daily check will retry." }) };
+    state.hook.mockReturnValue(queue([{ ...job, board_status: "payment_pending", assessment: facts({ job_update: "completed", payment: promised }) }, failed]));
+    mount();
+    expect(rowFor("LD-1001")).toHaveTextContent("Customer promised to pay · Oct 30");
+    expect(rowFor("LD-1005")).toHaveTextContent("Customer chat not checked yet");
+    fireEvent.click(screen.getByRole("button", { name: "Review LD-1005" }));
+    expect(within(screen.getByRole("region", { name: "Payment" })).getByRole("alert")).toHaveTextContent("daily check will retry");
   });
   it("auto-checks only unchecked or changed jobs, once, and patches the row with the server status", async () => {
     const changed = { ...job, ai_stale: true };

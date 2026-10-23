@@ -11,7 +11,8 @@ older sections below. Those sections remain as history.
 | --- | --- |
 | Board scope | Technician name or number saved, and a schedule or an active job status. Excludes `paid`, `partial_paid`, `cancelled`, `scammed` (and legacy `done`/`completed`). Lead RLS and per-user status visibility still apply. |
 | Order | Newest lead (`created_at`) first, 25 per page. |
-| Statuses | Payment Pending (saved Payment Pending / Paid Approval Pending / Job Done, or technician said completed) → Send Dose (tech took the job and our message about it has been unanswered 60+ min) → Job In Progress (tech update or saved In Progress) → Not enough details in the chat (AI could not judge) → Take Job Update (appointment passed) → Upcoming. Jobs never checked use only the saved status and schedule. |
+| Statuses | Paid Approval Pending → Payment Pending. Send Dose (tech took the job and our message about it, including a payment question, unanswered 60+ min). Completed (tech said completed, or saved Payment Pending / Job Done) → Payment Pending, then **Payment Overdue** 24 h after the tech's completion message (or the appointment when there is none), unless the customer promised a later date. Then Job In Progress → Not enough details in the chat → Take Job Update (appointment passed) → Upcoming. Jobs never checked use only the saved status and schedule. |
+| Payment (completed jobs) | The customer's own conversations (linked to the lead, or the exact customer number) are read from a day before completion: texts only, CRM mirror. AI reports Waiting on customer / Promised (with date) / Refused or disputes / Says paid / Not asked yet / Unclear, each backed by a verbatim quote; "waiting" is re-checked against the messages (any customer reply after our request cancels it). A failed customer read keeps the technician result and is retried by the daily check. |
 | Filter / counts | Server-side (`p_ai_status`), so counts and filters cover every board job, not one page. |
 | AI input | Tech chat from the first customer mention on/after the day before lead creation, else from that day; texts + speaker-verified call segments + answered calls. Other recent jobs for the tech are named so AI ignores them. Over 60k chars: dispatch + newest messages kept, omitted count shown. |
 | Trust | AI returns facts only. Completion/acceptance need verbatim technician quotes; negated or future wording is rejected; "waiting" must point at our own message. Statuses are computed once, in SQL. AI never writes leads or sends messages. |
@@ -31,20 +32,36 @@ older sections below. Those sections remain as history.
 4. **No duplicates.** One sequential runner per open board, the existing 2-minute
    lease across sessions, backoff for failures, and setup failures wait for a fix.
 
-Recommended next step (needs separate approval): a server-side scheduled worker
-(pg_cron → this function with a service identity) that checks only `ai_stale` /
-unchecked jobs, so the board stays current when nobody has it open. Not built here.
+5. **Customer messages also trigger.** For completed jobs the saved result keeps the
+   customer conversations' latest message time; a new customer message marks the
+   job stale (`processor_customer_last_message`). Non-payment jobs ignore customer chat.
+6. **Daily safety check (server).** `marshmallow_private.dispatch_processor_board_daily`
+   runs every 15 minutes from pg_cron but calls the new `processor-board-daily`
+   function only when completed, unpaid jobs exist that were not checked in 20 hours
+   (3 per call, payment approvals skipped). So each such job is re-read about once a
+   day even when nobody writes, which also catches messages a webhook missed.
+   Unchanged chats reuse the saved answers; audit rows say "Processor Board daily check".
 
 ### Apply / deploy (manual, in order)
 
 1. Apply `supabase/migrations/20261122000000_processor_board_lead_window_statuses.sql`
-   (adds `processor_board_status` and `list_processor_board_jobs`; no table, RLS,
-   index or lead change; the old `list_processor_jobs` stays for the current v10 Edge).
+   (adds `processor_board_status`, `processor_customer_last_message` and
+   `list_processor_board_jobs`; no table, RLS, index or lead change; the old
+   `list_processor_jobs` stays for the current v10 Edge).
+1b. Apply `supabase/migrations/20261122001000_processor_board_daily_check.sql`
+   (lets a NULL actor save as the daily check, adds the candidate query, the
+   dispatcher and the `processor-board-daily-check` cron entry). It does nothing
+   until step 3b.
 2. Regenerate `src/integrations/supabase/types.ts` (the two new functions are not
    in it; the CRM does not call them directly, so the build does not depend on it).
 3. Deploy `processor-board` (policy 10) **and publish the CRM together**. The new
    CRM shows "backend is out of date" against the old function (no fabricated rows);
    the old CRM cannot parse v2 results, so do not leave old CRM + new function live.
+3b. Daily check (separately approved): generate a random secret; set it as Edge
+   secret `PROCESSOR_DAILY_CRON_SECRET`; store it in Vault as
+   `processor_board_daily_cron_secret` and the project URL as
+   `processor_board_daily_project_url`; deploy `processor-board-daily`
+   (`verify_jwt = false`, it checks the secret itself).
 4. No Donut ZIP change.
 
 Rollback: unpublish to the previous CRM and redeploy `processor-board` v10 together,
@@ -52,17 +69,22 @@ then drop the two new functions (SQL in the migration footer). v2 results saved 
 `processor_job_assessments` (advisory cache, `result->>'policy' = '10'`) would make
 the old CRM's strict parser reject its page; clearing those cache rows is a separate
 write that needs approval. `activity_logs` audit rows are kept. No lead data changes.
+For the daily check alone: unschedule `processor-board-daily-check` and follow the
+rollback footer of `20261122001000_processor_board_daily_check.sql`.
 
 ### Verification (local only)
 
 - SQL: `node scripts/test-processor-board-db.mjs <pglite dir>` applies every board
-  migration twice on isolated PGlite and runs harnesses 150–156: **109/109 PASS**,
-  27 of them new in `156_processor_board_lead_window_statuses.sql` (scope, order,
-  each status, stale detection, counts, filter + search, RLS-excluded record,
-  per-user visibility deny, four excluded roles, admin).
+  migration twice on isolated PGlite and runs harnesses 150–157: **128/128 PASS**.
+  `156` covers scope, order, each status incl. Payment Overdue / promised date /
+  approvals / Send Dose after completion, tech and customer staleness, counts,
+  filter + search, RLS, visibility deny, excluded roles and admin. `157` covers daily
+  candidates, idle/unconfigured/configured dispatch (stubbed pg_net/Vault), the
+  daily-check audit name, unknown actor and stale save refusal, and browser denial.
 - Vitest: Edge handler (window, transcripts, reuse, no-chat, unquoted completion,
   unanswered message, mirror behind, denied roles, scope, failures, lease, list
-  filter), lead-window/fact verification, planner, contract and page interactions.
+  filter, customer payment read/reuse/failure, daily worker secret/candidates/no
+  customer data), lead-window, payment verification, planner, contract and page.
 - Not run: shared-production SQL, deployed Edge, signed-in browser QA, live Quo/AI.
 
 ### Efficiency review
@@ -72,6 +94,8 @@ write that needs approval. `activity_logs` audit rows are kept. No lead data cha
   per check batch, rows patched immediately from each result.
 - API/AI: AI only for changed chats; identical windows reuse facts; no-chat leads
   skip AI. The window bound replaces sending all job-linked history since creation.
+  Customer chats are read only for completed jobs; the daily dispatcher makes no
+  Edge call when nothing is due (one indexed query per 15 minutes).
 - Database: one list RPC computes status, counts and the page in one statement over
   the board's base set (left joins on primary keys). No new index; measure with
   `EXPLAIN ANALYZE` on production before proposing one.

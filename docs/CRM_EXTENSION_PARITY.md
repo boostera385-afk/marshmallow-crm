@@ -6,7 +6,7 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Flow | CRM | Donut | Shared authority / verification |
 | --- | --- | --- | --- |
 | Technician intelligence | Technicians → Processing Workflow; map selection up to 8 | Native Technician Intelligence panel for the captured phone, reviewed-label saving, full-workflow link for batch selection/flag approvals/chat actions | `technician-chat-assessment`: Admin/Processor only; identical AI prompt, evidence checks, counts and labels. Missing history is unavailable, not misconduct. |
-| Processor Board | `/processor-board` v2: assigned, unfinished leads (not paid/partial paid/cancelled/scammed), newest lead first; server-side AI status filter and board-wide counts; inline Review, Tech Quick Chat and Open lead per row; overdue schedules in red | No native board/job-specific assessment action; existing technician-wide intelligence is separate. Donut v1.7.0 sources/artifacts unchanged | Authenticated `processor-board` (evidence policy 10, **awaiting deployment**) + `list_processor_board_jobs` / `processor_board_status` (migration `20261122000000`, **awaiting manual application**). Caller JWT/RLS scope, status visibility, leases, revision-checked save and audit kept. AI facts are advisory; status rule lives once in SQL. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
+| Processor Board | `/processor-board` v2: assigned, unfinished leads (not paid/partial paid/cancelled/scammed), newest lead first; server-side AI status filter and board-wide counts; Payment Overdue with customer-chat payment reason and a daily server check; inline Review, Tech Quick Chat and Open lead per row; overdue schedules in red | No native board/job-specific assessment action; existing technician-wide intelligence is separate. Donut v1.7.0 sources/artifacts unchanged | Authenticated `processor-board` (evidence policy 10, **awaiting deployment**) + `list_processor_board_jobs` / `processor_board_status` (migration `20261122000000`, **awaiting manual application**). Caller JWT/RLS scope, status visibility, leases, revision-checked save and audit kept. AI facts are advisory; status rule lives once in SQL. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
 | Technician flags | Admin applies; Processor requests review | Opens full workflow for the same reviewed actions | Existing `request_technician_change` approval RPC and technician flag trigger; never write flags directly in Donut. |
 | Urgent lead review | Latest customer agreement, corrections and missing details | Same check; displays issues, corrections and flags; opens saved-lead review for confirmed corrections/approval | `check-urgent-lead`, urgent verification/review RPCs and database status gate. No duplicate prompt or approval bypass. |
 | Address lookup / map coordinates | Authenticated Census-only lookup and preserved units | Same function for Find Address, coverage preview and submission coordinates | `geocode-lead-address`: only Census coordinates may be cached/persisted for the free map. Google or unlabelled points are rejected by both clients. Preserve Apt/Suite/Unit/#. |
@@ -63,8 +63,13 @@ source, manifest, release JSON or ZIP changed, so no extension release was made.
   Completion/acceptance need verbatim technician quotes; negated/future wording is
   rejected; the unanswered message must be ours.
 - `processor_board_status` (SQL) is the single status rule. Time-based changes
-  (appointment passed, 60 minutes unanswered) need no AI. AI reruns only when the
-  lead or its tech conversation changed (`ai_stale`) or facts are missing/older.
+  (appointment passed, 60 minutes unanswered, 24 hours unpaid) need no AI. AI reruns
+  only when the lead, its tech conversation or (completed jobs) the customer's
+  conversation changed (`ai_stale`), or facts are missing/older.
+- Completed jobs: Payment Overdue after 24 h; the customer's chat says who is waiting
+  (customer, promise, dispute, says paid, not asked). A daily server check
+  (`processor-board-daily`, migration `20261122001000`, **awaiting approval**) re-reads
+  completed, unpaid jobs once a day even when nobody writes.
 
 ## Processor Board simple actions and saved call evidence (2026-10-23; Edge installed, CRM publication pending)
 

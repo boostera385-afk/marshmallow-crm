@@ -3,11 +3,12 @@ import { Link } from "react-router-dom";
 import { STATUS_LABELS } from "@/lib/constants";
 import type { LeadStatus } from "@/types";
 import { Button } from "@/components/ui/button";
-import { processorFacts, processorSetupIssue, processorWorkflowMessage, PROCESSOR_STATUS_UI, type ProcessorJob } from "@/lib/processor-board";
+import { PAYMENT_STATE_UI, processorFacts, processorSetupIssue, processorWorkflowMessage, PROCESSOR_STATUS_UI, type ProcessorJob } from "@/lib/processor-board";
 import { processorLocation } from "@/lib/processor-location";
 
 const UPDATE_LABEL = { none: "No update yet", in_progress: "Working on it", completed: "Completed" } as const;
 const SIGNAL_LABEL = { took_job: "Took the job", in_progress: "Work update", completed: "Completed", waiting: "Our unanswered message" } as const;
+const PAYMENT_SIGNAL_LABEL = { asked: "We asked for payment", promised: "Promise to pay", refused: "Refused / disputed", says_paid: "Says paid" } as const;
 
 /** Inline job review: the AI's facts, their quotes and what part of the chat was read. */
 export function ProcessorReviewPanel({ job, timezone, checking, queued, error, canChat, onCheck, onChat }: {
@@ -44,8 +45,23 @@ export function ProcessorReviewPanel({ job, timezone, checking, queued, error, c
         {facts.window.omitted > 0 && ` ${facts.window.omitted} middle message${facts.window.omitted === 1 ? " was" : "s were"} too long to include; the job dispatch and newest messages were kept.`}
         {` ${facts.call_transcripts.state === "unavailable" ? "Call transcripts could not be read." : `${facts.call_transcripts.checked} call transcript${facts.call_transcripts.checked === 1 ? "" : "s"} included${facts.call_transcripts.missing ? `, ${facts.call_transcripts.missing} unavailable` : ""}.`}`}
         {!facts.history_complete && " Read from the CRM chat mirror; confirm silence in Quo before sending a dose."}
-        {` Checked ${when(facts.checked_at)}${facts.ai_reused ? " · chat unchanged, previous AI answer reused" : ""}.`}
+        {` Checked ${when(facts.checked_at)}${facts.checked_by === "daily_check" ? " by the daily check" : ""}${facts.ai_reused ? " · chat unchanged, previous AI answer reused" : ""}.`}
       </p>
+      {["payment_pending", "payment_overdue"].includes(job.board_status) && <section aria-label="Payment" className="space-y-2 rounded-xl border border-border/50 bg-background/40 p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Payment</p>
+        <p>{facts.completed_at ? `Technician said completed ${when(facts.completed_at)}.` : "No completion message from the technician; unpaid time counts from the appointment."} Overdue 24 hours after that unless the customer promised a later date.</p>
+        {facts.payment_error && <p role="alert" className="text-amber-700 dark:text-amber-300">{facts.payment_error}</p>}
+        {facts.payment && <>
+          <p className="text-sm font-medium">{PAYMENT_STATE_UI[facts.payment.state].label}{facts.payment.waiting_since ? ` since ${when(facts.payment.waiting_since)}` : ""}{facts.payment.promised_date ? ` · promised for ${new Date(`${facts.payment.promised_date}T12:00:00Z`).toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" })}` : ""}</p>
+          {facts.payment.summary && <p className="leading-relaxed">{facts.payment.summary}</p>}
+          {facts.payment.evidence.length > 0 && <ul className="space-y-2" aria-label="Customer chat quotes">{facts.payment.evidence.map((item, index) => <li key={`${item.message_id}:${index}`}>
+            <blockquote className="rounded-lg border-l-2 border-emerald-500 bg-background/60 px-3 py-2">
+              <p className="whitespace-pre-wrap break-words text-sm">“{item.quote}”</p>
+              <footer className="mt-1 text-[10px] text-muted-foreground">{PAYMENT_SIGNAL_LABEL[item.signal]} · {item.from === "customer" ? "Customer" : "Our team"} · {when(item.message_time)}</footer>
+            </blockquote></li>)}</ul>}
+          <p className="text-[11px] text-muted-foreground">Read {facts.payment.window.messages} customer message{facts.payment.window.messages === 1 ? "" : "s"} from {when(facts.payment.window.start)} across {facts.payment.window.conversations} conversation{facts.payment.window.conversations === 1 ? "" : "s"}{facts.payment.window.omitted ? `; ${facts.payment.window.omitted} middle messages were too long to include` : ""}. Texts only, from the CRM chat mirror.</p>
+        </>}
+      </section>}
     </>}
     <div className="grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-2">
       <p>Saved lead status: <span className="text-foreground">{STATUS_LABELS[job.status as LeadStatus] ?? job.status}</span>{workflow ? ` · ${workflow}` : ""}</p>

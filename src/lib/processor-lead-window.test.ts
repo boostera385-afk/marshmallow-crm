@@ -76,6 +76,16 @@ describe("AI fact verification", () => {
     const facts = verifyProcessorFacts({ enough_context: true, tech_took_job: true, job_update: signal, evidence: [{ signal, message_id: "u", quote }] }, uncertainWindow);
     expect(facts).toMatchObject({ job_update: "none", evidence: [] });
   });
+  it("records when the technician first reported completion", () => {
+    const facts = verifyProcessorFacts({ enough_context: true, tech_took_job: true, job_update: "completed", evidence: [{ signal: "took_job", message_id: "ok", quote: "Ok got it" }, { signal: "completed", message_id: "done", quote: "all done there" }] }, window);
+    expect(facts.completed_at).toBe("2026-10-25T18:00:00Z");
+    expect(verifyProcessorFacts({ enough_context: true, job_update: "none" }, window).completed_at).toBeNull();
+  });
+  it("still tracks our unanswered payment question after the technician completed the job", () => {
+    const later: LeadWindow = { ...window, messages: [...window.messages, { id: "paid?", at: "2026-10-25T19:00:00Z", from: "our_team", via: "text", text: "Did Shanice pay you?" }] };
+    const facts = verifyProcessorFacts({ enough_context: true, tech_took_job: true, job_update: "completed", waiting_on_technician_message_id: "paid?", evidence: [{ signal: "took_job", message_id: "ok", quote: "Ok got it" }, { signal: "completed", message_id: "done", quote: "all done there" }] }, later);
+    expect(facts).toMatchObject({ job_update: "completed", waiting_since: "2026-10-25T19:00:00Z" });
+  });
   it("never treats a technician message as our unanswered question", () => {
     expect(verifyProcessorFacts({ enough_context: true, tech_took_job: true, waiting_on_technician_message_id: "done", evidence: [{ signal: "took_job", message_id: "ok", quote: "Ok got it" }] }, window).waiting_since).toBeNull();
   });

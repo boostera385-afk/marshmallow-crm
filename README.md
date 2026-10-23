@@ -364,9 +364,11 @@ appear without a manual refresh.
 partially paid, cancelled or scammed, newest lead first. AI reads the technician
 chat (texts and call transcripts) from where the customer is first mentioned and
 saves advisory facts; the database turns them into Take Job Update / Job In
-Progress / Payment Pending / Send Dose / Not enough details / Upcoming. AI never
-changes lead statuses or sends messages. The v2 migration and Edge Function are
-**awaiting manual application/deployment**. See
+Progress / Payment Pending / Payment Overdue / Send Dose / Not enough details /
+Upcoming. Completed jobs also read the customer's chat for the payment reason and
+are re-checked once a day by `processor-board-daily`. AI never changes lead
+statuses or sends messages. The v2 migrations and Edge Functions are **awaiting
+manual application/deployment**. See
 [Processor Board rollout](docs/PROCESSOR_BOARD_ROLLOUT.md).
 
 **State management** — no Redux or Zustand. Server data lives in TanStack Query

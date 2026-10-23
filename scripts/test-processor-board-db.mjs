@@ -32,6 +32,10 @@ try {
   await db.exec(leadWindow);
   await db.exec(leadWindow);
   results.push(...await db.exec(await sql("supabase/tests/156_processor_board_lead_window_statuses.sql")));
+  const daily = await sql("supabase/migrations/20261122001000_processor_board_daily_check.sql");
+  await db.exec(daily);
+  await db.exec(daily);
+  results.push(...await db.exec(await sql("supabase/tests/157_processor_board_daily_check.sql")));
   const checks = results.flatMap((r) => r.rows).filter((r) => r.name && r.result);
   console.table(checks);
   if (!checks.length || checks.some((c) => c.result !== "PASS")) throw new Error("Processor Board SQL behavioral harness failed");
