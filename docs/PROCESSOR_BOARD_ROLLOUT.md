@@ -1,5 +1,83 @@
 # Processor Board
 
+## v2: lead chat window, six statuses and change-driven checks (2026-10-23; awaiting migration + Edge deployment)
+
+Supersedes the board scope, ordering, statuses and AI input described in the
+older sections below. Those sections remain as history.
+
+### Behavior
+
+| Area | v2 rule |
+| --- | --- |
+| Board scope | Technician name or number saved, and a schedule or an active job status. Excludes `paid`, `partial_paid`, `cancelled`, `scammed` (and legacy `done`/`completed`). Lead RLS and per-user status visibility still apply. |
+| Order | Newest lead (`created_at`) first, 25 per page. |
+| Statuses | Payment Pending (saved Payment Pending / Paid Approval Pending / Job Done, or technician said completed) → Send Dose (tech took the job and our message about it has been unanswered 60+ min) → Job In Progress (tech update or saved In Progress) → Not enough details in the chat (AI could not judge) → Take Job Update (appointment passed) → Upcoming. Jobs never checked use only the saved status and schedule. |
+| Filter / counts | Server-side (`p_ai_status`), so counts and filters cover every board job, not one page. |
+| AI input | Tech chat from the first customer mention on/after the day before lead creation, else from that day; texts + speaker-verified call segments + answered calls. Other recent jobs for the tech are named so AI ignores them. Over 60k chars: dispatch + newest messages kept, omitted count shown. |
+| Trust | AI returns facts only. Completion/acceptance need verbatim technician quotes; negated or future wording is rejected; "waiting" must point at our own message. Statuses are computed once, in SQL. AI never writes leads or sends messages. |
+| UI | Compact table like Urgent leads: lead name + ID, tech name + number, service, terms, schedule (red when passed), AI status, Chat / Review (inline, no sidebar) / Open lead, created date. Status chips filter the board. |
+
+### How checks are triggered (no repeated rechecking)
+
+1. **Time-based changes need no AI.** Facts are time-independent; the list query
+   computes Take Job Update / Send Dose from them and `now()`. The 30 s list poll
+   is a cheap SQL read.
+2. **AI reruns only on change.** A row is checked when it has no v2 facts, was
+   saved for another technician, or `ai_stale` (lead `updated_at` or its tech
+   conversation's `last_message_time` changed). Realtime lead/conversation events
+   refresh the list, which marks the changed rows.
+3. **Unchanged chat reuses the answer.** The server hashes the exact window it would
+   send; an identical hash reuses the saved facts with no AI call.
+4. **No duplicates.** One sequential runner per open board, the existing 2-minute
+   lease across sessions, backoff for failures, and setup failures wait for a fix.
+
+Recommended next step (needs separate approval): a server-side scheduled worker
+(pg_cron → this function with a service identity) that checks only `ai_stale` /
+unchecked jobs, so the board stays current when nobody has it open. Not built here.
+
+### Apply / deploy (manual, in order)
+
+1. Apply `supabase/migrations/20261122000000_processor_board_lead_window_statuses.sql`
+   (adds `processor_board_status` and `list_processor_board_jobs`; no table, RLS,
+   index or lead change; the old `list_processor_jobs` stays for the current v10 Edge).
+2. Regenerate `src/integrations/supabase/types.ts` (the two new functions are not
+   in it; the CRM does not call them directly, so the build does not depend on it).
+3. Deploy `processor-board` (policy 10) **and publish the CRM together**. The new
+   CRM shows "backend is out of date" against the old function (no fabricated rows);
+   the old CRM cannot parse v2 results, so do not leave old CRM + new function live.
+4. No Donut ZIP change.
+
+Rollback: unpublish to the previous CRM and redeploy `processor-board` v10 together,
+then drop the two new functions (SQL in the migration footer). v2 results saved in
+`processor_job_assessments` (advisory cache, `result->>'policy' = '10'`) would make
+the old CRM's strict parser reject its page; clearing those cache rows is a separate
+write that needs approval. `activity_logs` audit rows are kept. No lead data changes.
+
+### Verification (local only)
+
+- SQL: `node scripts/test-processor-board-db.mjs <pglite dir>` applies every board
+  migration twice on isolated PGlite and runs harnesses 150–156: **109/109 PASS**,
+  27 of them new in `156_processor_board_lead_window_statuses.sql` (scope, order,
+  each status, stale detection, counts, filter + search, RLS-excluded record,
+  per-user visibility deny, four excluded roles, admin).
+- Vitest: Edge handler (window, transcripts, reuse, no-chat, unquoted completion,
+  unanswered message, mirror behind, denied roles, scope, failures, lease, list
+  filter), lead-window/fact verification, planner, contract and page interactions.
+- Not run: shared-production SQL, deployed Edge, signed-in browser QA, live Quo/AI.
+
+### Efficiency review
+
+- UI: one layout rendered (table or cards), inline review only for the open row.
+- Cache/realtime: existing query key and shared realtime bus; one list invalidation
+  per check batch, rows patched immediately from each result.
+- API/AI: AI only for changed chats; identical windows reuse facts; no-chat leads
+  skip AI. The window bound replaces sending all job-linked history since creation.
+- Database: one list RPC computes status, counts and the page in one statement over
+  the board's base set (left joins on primary keys). No new index; measure with
+  `EXPLAIN ANALYZE` on production before proposing one.
+- Donut: not applicable (no counterpart).
+- No production usage or billing comparison was made.
+
 ## Five action tags, clear check results and saved call transcripts (2026-10-23; Edge installed, CRM publication pending)
 
 This follow-up addresses the new screenshots and supersedes the earlier text-only

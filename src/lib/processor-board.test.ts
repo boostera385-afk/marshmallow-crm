@@ -1,37 +1,53 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { canAccessNavItem } from "./access";
-import { compatibleProcessorAssessment, currentAssessment, processorStatus, processorStatusOrigin, processorReviewMessage, processorWorkflowMessage, processorReadiness, assessProcessorJob, fetchProcessorJobs, type ProcessorJob } from "./processor-board";
+import { assessProcessorJob, fetchProcessorJobs, processorFacts, processorNeedsCheck, processorReadiness, processorSchedulePassed, processorSetupIssue, processorWorkflowMessage, type ProcessorJob } from "./processor-board";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke } } }));
-const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1", customer_name: "John Sample", customer_phone: null, address: null, city: null, state: null, service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-10-15", scheduled_time_start: "10:00:00", scheduled_time_end: null, customer_schedule_requirements: null, terms: null, status: "scheduled", updated_at: "2026-10-15T10:00:00Z", checked_at: null, assessment: null };
-const now = new Date("2026-10-15T18:00:00Z");
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+const processorTestFacts = { policy: 10, tech_phone: "4155550199", enough_context: true, tech_took_job: true, job_update: "completed", waiting_since: null, waiting_message_id: null, summary: "Technician finished.", evidence: [],
+  window: { start: "2026-10-07T15:00:00Z", anchor: "customer_mention", anchor_message_id: "m1", messages: 3, omitted: 0 }, call_transcripts: { state: "available", checked: 0, missing: 0, skipped_segments: 0 },
+  source: "Quo current history", history_complete: true, ai_used: true, ai_reused: false, checked_at: "2026-10-15T17:00:00Z", status: "payment_pending" };
+const chat = { state: "ready" as const, code: "ready", message: "Verified", fingerprint: "fp", conversation_id: "00000000-0000-4000-8000-0000000000c1", last_message_at: null, source: "saved_link" as const };
+const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1", customer_name: "John Sample", customer_phone: null, address: null, city: null, state: null, service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-10-15", scheduled_time_start: "10:00:00", scheduled_time_end: null, customer_schedule_requirements: null, terms: null, status: "scheduled", updated_at: "2026-10-15T10:00:00Z", created_at: "2026-10-08T15:00:00Z",
+  board_status: "take_job_update", ai_stale: false, checked_at: null, assessment: null, chat_setup: chat };
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); invoke.mockReset(); });
 describe("Processor Board contract", () => {
-  it.each(["2026-10-15", "2026-10-25"])("uses schedule %s, not a review blocker, for a legacy no-outcome result", (date) => {
-    const reviewed: ProcessorJob = { ...job, scheduled_date: date, assessment: { status: "needs_review", review_reason: "no_verified_update", evidence: [], messages_reviewed: 4, matched_messages: 1, matched_technician_messages: 1, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: now.toISOString(), summary: "No verified outcome", lead_updated_at: job.updated_at } };
-    expect(processorStatus(reviewed, "America/New_York", now)).toBe(date === "2026-10-15" ? "take_job_update" : "scheduled");
-    expect(processorReviewMessage(reviewed, "America/New_York", now)).toContain("not an AI-confirmed outcome");
-    expect(processorStatusOrigin(reviewed, "America/New_York", now)).toBe("Schedule rule · AI found no verified job update");
-    expect(processorStatus({ ...reviewed, assessment: { ...reviewed.assessment!, review_reason: "job_attribution" } }, "America/New_York", now)).toBe("needs_review");
-    expect(processorStatus({ ...reviewed, assessment: { ...reviewed.assessment!, review_reason: "mirror_incomplete" } }, "America/New_York", now)).toBe("needs_review");
-    expect(reviewed.status).toBe("scheduled");
+  it.each(["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin"] as const)("enforces fixed role access for %s despite grants", (role) => {
+    expect(canAccessNavItem(role, "processor_board", [{ id: "p", user_id: "u", nav_section: "processor_board", allowed: true }])).toBe(["admin", "processor"].includes(role));
   });
-  it("retains a supported previous completion without treating it as a fresh check or a new assignment's result", () => {
-    const reviewed: ProcessorJob = { ...job, checked_at: now.toISOString(), assessment: { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1 completed", message_id: "done", message_time: now.toISOString(), sender: "customer" }], messages_reviewed: 4, matched_messages: 1, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: now.toISOString(), summary: "Verified", lead_updated_at: job.updated_at } };
-    const later = new Date(now.getTime() + 300001);
-    expect(currentAssessment(reviewed, "America/New_York", later)).toBeNull();
-    expect(processorStatus(reviewed, "America/New_York", later)).toBe("payment_pending");
-    expect(processorStatusOrigin(reviewed, "America/New_York", later)).toContain("Previous AI evidence");
-    const reassigned = { ...reviewed, tech_number: "4155550188", updated_at: later.toISOString() };
-    expect(compatibleProcessorAssessment(reassigned, "America/New_York")).toBeNull();
-    expect(processorStatus(reassigned, "America/New_York", later)).toBe("needs_review");
-    expect(processorReviewMessage(reassigned, "America/New_York", later)).toContain("assigned technician");
-    expect(processorStatus(reviewed, "America/Chicago", later)).toBe("needs_review");
+  it("checks only jobs whose chat or lead changed, never because time passed", () => {
+    const checked = { ...job, assessment: processorTestFacts };
+    expect(processorNeedsCheck(job)).toBe(true);
+    expect(processorNeedsCheck(checked)).toBe(false);
+    expect(processorNeedsCheck({ ...checked, ai_stale: true })).toBe(true);
+    expect(processorNeedsCheck({ ...checked, assessment: { status: "send_dose", tech_phone: "4155550199" } })).toBe(true);
+    expect(processorNeedsCheck({ ...checked, tech_number: "4155550188" })).toBe(true);
+    expect(processorNeedsCheck({ ...job, chat_setup: { ...chat, state: "blocked" } })).toBe(false);
+    expect(processorNeedsCheck({ ...job, tech_number: null })).toBe(false);
   });
-  it("never keeps expired Send Dose actionable and rejects materially future checks", () => {
-    const reviewed: ProcessorJob = { ...job, assessment: { status: "send_dose", evidence: [], messages_reviewed: 4, matched_messages: 1, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: now.toISOString(), summary: "Unanswered request", lead_updated_at: job.updated_at } };
-    expect(processorStatus(reviewed, "America/New_York", new Date(now.getTime()+300001))).toBe("needs_review");
-    expect(currentAssessment({ ...reviewed, assessment: { ...reviewed.assessment!, checked_at: new Date(now.getTime()+60000).toISOString() } }, "America/New_York", now)).toBeNull();
+  it("ignores saved facts from another technician or an older backend", () => {
+    expect(processorFacts({ ...job, assessment: processorTestFacts })?.job_update).toBe("completed");
+    expect(processorFacts({ ...job, tech_number: "4155550188", assessment: processorTestFacts })).toBeNull();
+    expect(processorFacts({ ...job, assessment: { ...processorTestFacts, policy: 9 } })).toBeNull();
+  });
+  it("marks the schedule overdue in the chosen timezone", () => {
+    const at = new Date("2026-10-15T14:30:00Z");
+    expect(processorSchedulePassed(job, "America/New_York", at)).toBe(true);
+    expect(processorSchedulePassed(job, "America/Los_Angeles", at)).toBe(false);
+  });
+  it("keeps payment-recorded, cancelled and scammed jobs closed; assigned jobs without a time are checkable", () => {
+    for (const status of ["paid", "partial_paid", "cancelled", "scammed"]) expect(processorReadiness({ ...job, status })).toContain("Closed job");
+    for (const status of ["job_done", "payment_requested", "needs_reschedule"]) expect(processorReadiness({ ...job, status })).toBeNull();
+    expect(processorSetupIssue({ ...job, scheduled_time_start: null })).toBeNull();
+    expect(processorSetupIssue({ ...job, tech_number: null })).toContain("technician number");
+    expect(processorSetupIssue({ ...job, chat_setup: { ...chat, state: "blocked", message: "Save the chat link" } })).toBe("Save the chat link");
+    expect(processorWorkflowMessage("payment_requested")).toContain("Payment approval pending");
+  });
+  it("sends the AI status filter and fails closed on an out-of-date backend", async () => {
+    invoke.mockResolvedValue({ data: { rows: [{ ...job }], total: 1, all_total: 4, counts: { take_job_update: 1 }, observed_at: "2026-10-15T18:00:00Z", timezone: "America/New_York" }, error: null });
+    await expect(fetchProcessorJobs({ offset: 0, search: "", timezone: "America/New_York", aiStatus: "take_job_update" })).resolves.toMatchObject({ total: 1, counts: { take_job_update: 1 } });
+    expect(invoke).toHaveBeenCalledWith("processor-board", expect.objectContaining({ body: { action: "list", offset: 0, search: "", timezone: "America/New_York", aiStatus: "take_job_update" } }));
+    invoke.mockResolvedValue({ data: { rows: [{ ...job, board_status: undefined }], total: 1, observed_at: "x", timezone: "America/New_York" }, error: null });
+    await expect(fetchProcessorJobs({ offset: 0, search: "", timezone: "America/New_York", aiStatus: null })).rejects.toMatchObject({ code: "backend_version", retryable: false });
   });
   it("bounds stalled checks and reports uncertain server completion rather than fabricated success", async () => {
     vi.useFakeTimers();
@@ -42,51 +58,12 @@ describe("Processor Board contract", () => {
     await check;
     expect(vi.getTimerCount()).toBe(0);
   });
-  it.each(["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin"] as const)("enforces fixed role access for %s despite grants", (role) => {
-    expect(canAccessNavItem(role, "processor_board", [{ id: "p", user_id: "u", nav_section: "processor_board", allowed: true }])).toBe(["admin", "processor"].includes(role));
-  });
-  it("derives schedule action without claiming AI reviewed the conversation", () => {
-    expect(processorStatus(job, "America/New_York", now)).toBe("take_job_update");
-    expect(currentAssessment(job, "America/New_York", now)).toBeNull();
-  });
-  it.each(["payment_pending", "partial_paid", "job_in_progress"])("does not regress saved %s from an older rule-only check", (status) => {
-    const assessment: NonNullable<ProcessorJob["assessment"]> = { status: "take_job_update", evidence: [], messages_reviewed: 1, matched_messages: 0, source: "Quo current history", history_complete: true, ai_used: false, timezone: "America/New_York", checked_at: now.toISOString(), lead_updated_at: job.updated_at, summary: "No job update" };
-    expect(processorStatus({ ...job, status, assessment }, "America/New_York", now)).toBe(status === "job_in_progress" ? status : "payment_pending");
-  });
-  it("keeps done/history and approval workflows read-only", () => {
-    for (const status of ["job_done", "paid", "cancelled", "needs_reschedule", "payment_requested"]) {
-      expect(processorStatus({ ...job, status }, "America/New_York", now)).toBe("needs_review");
-      if (["job_done", "paid", "cancelled"].includes(status)) expect(processorReadiness({ ...job, status })).toContain("Closed job");
-      else expect(processorReadiness({ ...job, status })).toBeNull();
-    }
-  });
-  it("never describes saved progress as AI-confirmed when the AI found no verified update", () => {
-    const assessment: NonNullable<ProcessorJob["assessment"]> = { status: "job_in_progress", evidence: [], messages_reviewed: 65, matched_messages: 3, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: now.toISOString(), lead_updated_at: job.updated_at, summary: "No verified update" };
-    expect(processorStatusOrigin({ ...job, status: "job_in_progress", assessment }, "America/New_York", now)).toBe("Saved lead status · AI found no verified job update");
-    expect(processorStatusOrigin({ ...job, assessment: { ...assessment, status: "take_job_update" } }, "America/New_York", now)).toBe("Schedule rule · AI found no verified job update");
-    expect(processorWorkflowMessage("needs_reschedule")).toContain("confirm the customer's new agreement");
-    expect(processorWorkflowMessage("waiting_customer_response")).not.toContain("Closed");
-  });
-  it("retires old, changed-job and wrong-timezone AI evidence", () => {
-    const reviewed = { ...job, assessment: { status: "payment_pending" as const, evidence: [], messages_reviewed: 4, matched_messages: 1, source: "mirror", history_complete: false, timezone: "America/New_York", checked_at: now.toISOString(), summary: "Reviewed", lead_updated_at: job.updated_at } };
-    expect(processorStatus(reviewed, "America/New_York", now)).toBe("payment_pending");
-    expect(processorStatus(reviewed, "America/Chicago", now)).toBe("needs_review");
-    expect(processorStatus({ ...reviewed, updated_at: now.toISOString() }, "America/New_York", now)).toBe("needs_review");
-    expect(processorStatus(reviewed, "America/New_York", new Date(now.getTime() + 300001))).toBe("take_job_update");
-  });
-  it("fails closed on invalid transport rather than rendering fabricated jobs", async () => {
-    invoke.mockResolvedValue({ data: { rows: [{ customer_name: "invalid" }], total: 1 }, error: null });
-    await expect(fetchProcessorJobs({ offset: 0, search: "", history: false, timezone: "America/New_York" })).rejects.toThrow();
-  });
-  it("turns resource-limit shutdowns into actionable errors even when the gateway supplies generic JSON", async () => {
+  it("turns resource-limit shutdowns into actionable errors", async () => {
     invoke.mockResolvedValue({ data: null, error: { context: new Response(JSON.stringify({ error: "CPU Time exceeded" }), { status: 546 }) } });
-    await expect(assessProcessorJob(job.id, "America/New_York")).rejects.toMatchObject({ code: "resource_limit", retryable: true, message: expect.stringContaining("server resource limit") });
+    await expect(assessProcessorJob(job.id, "America/New_York")).rejects.toMatchObject({ code: "resource_limit", retryable: true });
   });
-  it("preserves the server's recovery classification for setup and transient failures", async () => {
+  it("preserves the server's recovery classification for setup failures", async () => {
     invoke.mockResolvedValue({ data: null, error: { context: new Response(JSON.stringify({ error: "Verify technician chat", code: "chat_setup", retryable: false }), { status: 422 }) } });
     await expect(assessProcessorJob(job.id, "America/New_York")).rejects.toMatchObject({ code: "chat_setup", retryable: false });
-    expect(processorReadiness({ ...job, tech_number: null })).toContain("technician number");
-    expect(processorReadiness({ ...job, scheduled_date: null })).toContain("agreed appointment");
-    expect(processorReadiness(job)).toBeNull();
   });
 });

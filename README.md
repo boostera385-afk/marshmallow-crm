@@ -360,11 +360,13 @@ appear without a manual refresh.
 
 ## Architecture notes
 
-**Processor Board** — the new scheduled-job queue uses job-specific verified
-technician evidence and advisory action labels, not automatic lead changes or
-messages. The database migration is installed, types regenerated, and the Edge
-Function deployed through approved MCP operations; CRM publication and signed-in
-provider QA remain separate. See
+**Processor Board** — every lead with an assigned technician that is not paid,
+partially paid, cancelled or scammed, newest lead first. AI reads the technician
+chat (texts and call transcripts) from where the customer is first mentioned and
+saves advisory facts; the database turns them into Take Job Update / Job In
+Progress / Payment Pending / Send Dose / Not enough details / Upcoming. AI never
+changes lead statuses or sends messages. The v2 migration and Edge Function are
+**awaiting manual application/deployment**. See
 [Processor Board rollout](docs/PROCESSOR_BOARD_ROLLOUT.md).
 
 **State management** — no Redux or Zustand. Server data lives in TanStack Query
