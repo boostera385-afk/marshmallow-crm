@@ -42,7 +42,7 @@ export function createProcessorBoardHandler(deps: {
       if (error || !data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.rows) || !data.rows.every(isQueueJob)) return json({ error: "Processor Board database setup is unavailable. Ask Admin to check the reviewed migration." }, 503);
       const rows = data.rows;
       const phones = rows.flatMap((row) => { const phone = phoneKey(row.tech_number); return phone ? [phone] : []; });
-      const monitoring = { ai_configured: Boolean(deps.env("OPENAI_API_KEY")), current_history_configured: Boolean(deps.env("QUO_API_KEY")), evidence_policy: 7 };
+      const monitoring = { ai_configured: Boolean(deps.env("OPENAI_API_KEY")), current_history_configured: Boolean(deps.env("QUO_API_KEY")), evidence_policy: 8 };
       try {
         const chats = await readProcessorChats(caller, phones, monitoring.current_history_configured);
         return json({ ...data, monitoring, rows: rows.map((row) => ({ ...row, chat_setup: chats.get(phoneKey(row.tech_number) ?? "")?.setup ?? null })) });
@@ -99,7 +99,7 @@ export function createProcessorBoardHandler(deps: {
       // Do not claim mirror completeness/freshness if latest metadata is ahead of the available messages.
       if (!directKey && conversation?.last_message_time && Date.parse(conversation.last_message_time) > Date.parse(messages.at(-1)?.message_time ?? "")) return json({ error: "The conversation mirror is behind its latest activity. Sync Quo before reviewing non-response." }, 422);
       const peerIdentities = peers.map((p) => ({ id: p.id, job_id: p.job_id, customer_name: p.customer_name, customer_phone: p.customer_phone, address: p.address }));
-      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, chat: chat.setup.fingerprint, policy: 7 });
+      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, chat: chat.setup.fingerprint, policy: 8 });
       const { data: cache, error: cacheError } = await service.from("processor_job_assessments").select("input_hash,result,checked_at").eq("lead_id", job.id).maybeSingle();
       if (cacheError) throw new Error("Saved assessment could not be read.");
       if (cache?.input_hash === inputHash && now.getTime() - Date.parse(cache.checked_at) < 60_000) return json({ result: cache.result, cached: true });
@@ -152,7 +152,10 @@ export function createProcessorBoardHandler(deps: {
       // finding. Keep saved payment/progress workflows independent of AI evidence.
       if (!replyCount && unassigned) reviewReason = "job_attribution";
       else if (extractable.length && !evidence.some((e) => e.signal !== "update_request")) reviewReason = "no_verified_update";
-      if (reviewReason && !["payment_pending", "partial_paid", "job_in_progress"].includes(job.status)) status = "needs_review";
+      // Ordinary acknowledgements or no verified outcome do not replace the
+      // agreed-schedule action. Ambiguous identity/incomplete silence evidence
+      // still require review; never turn missing evidence into progress.
+      if (reviewReason && reviewReason !== "no_verified_update" && !["payment_pending", "partial_paid", "job_in_progress"].includes(job.status)) status = "needs_review";
       const result = { status, evidence, evidence_hash: evidenceHash, ai_used: extractable.length > 0, matched_technician_messages: direct, context_technician_messages: contextual, unattributed_technician_messages: unassigned, technician_text_messages: diagnostics.technician_text_messages, call_event_messages: diagnostics.call_event_messages, extraction_messages: extractable.length, chat_fingerprint: chat.setup.fingerprint, chat_source: chat.setup.source, messages_reviewed: messages.length, matched_messages: relevant.length,
         ...(reviewReason ? { review_reason: reviewReason } : {}),
         ai_scope: "latest_job_messages_and_keywords", ai_recent_limit: PROCESSOR_RECENT_AI_MESSAGES, ai_messages_omitted: aiOmitted,

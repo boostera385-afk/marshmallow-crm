@@ -4,10 +4,11 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ProcessorBoardPage from "./ProcessorBoardPage";
 import { ProcessorReviewFailure, type ProcessorJob } from "@/lib/processor-board";
-const state = vi.hoisted(() => ({ role: "processor", user: "actor", rows: [] as ProcessorJob[], assess: vi.fn(), hook: vi.fn(), configured: true }));
+const state = vi.hoisted(() => ({ role: "processor", user: "actor", rows: [] as ProcessorJob[], assess: vi.fn(), hook: vi.fn(), configured: true, fetching: false }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: state.user }, role: state.role, canAccess: () => true }) }));
 vi.mock("@/hooks/useProcessorBoard", () => ({ PROCESSOR_QUERY_KEY: ["processor-board"], useProcessorBoard: state.hook }));
 vi.mock("@/lib/processor-board", async (load) => ({ ...await load<object>(), assessProcessorJob: state.assess }));
+vi.mock("@/components/leads/QuoPhoneTrigger", () => ({ default: ({ onClose }: { onClose: () => void }) => <button onClick={onClose}>Return from synthetic chat</button> }));
 const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-AUTO-1", customer_name: "Synthetic Customer", customer_phone: null, service_type: "Repair", address: "10 Sample St", city: "Synthetic", state: "FL", tech_name: "Synthetic Tech", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: null, customer_schedule_requirements: null, terms: null, status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: null, assessment: null,
   chat_setup: { state: "ready", code: "ready", message: "Verified", fingerprint: "setup-a", conversation_id: "00000000-0000-4000-8000-000000000002", last_message_at: null, source: "verified_mirror" } };
 function reviewed(id: string) {
@@ -27,12 +28,101 @@ function mount() {
 }
 beforeEach(() => {
   sessionStorage.clear();
-  vi.clearAllMocks(); state.role = "processor"; state.user = "actor"; state.rows = [structuredClone(job)]; state.configured = true;
+  vi.clearAllMocks(); state.role = "processor"; state.user = "actor"; state.rows = [structuredClone(job)]; state.configured = true; state.fetching = false;
   state.assess.mockImplementation(async (id: string) => reviewed(id));
-  state.hook.mockImplementation(() => ({ data: { rows: state.rows, total: state.rows.length, observed_at: new Date().toISOString(), monitoring: { ai_configured: state.configured, current_history_configured: true } }, isFetching: false, isError: false }));
+  state.hook.mockImplementation(() => ({ data: { rows: state.rows, total: state.rows.length, observed_at: new Date().toISOString(), monitoring: { ai_configured: state.configured, current_history_configured: true } }, isFetching: state.fetching, isError: false }));
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("automatic tracking while the board is open", () => {
+  it("retains unread focused activity when returning from chat during a board recovery read", async () => {
+    const view = mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-1" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Open technician chat in CRM" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    state.fetching = true;
+    state.rows[0] = { ...state.rows[0], chat_setup: { ...job.chat_setup!, fingerprint: "activity-during-chat", last_message_at: "2026-10-23T16:00:00Z" } };
+    view.update();
+    expect(state.assess).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Return from synthetic chat" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("JOB-AUTO-1");
+    state.fetching = false;
+    view.update();
+    await waitFor(() => expect(state.assess).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+    expect(state.rows[0].assessment?.chat_fingerprint).toBe("activity-during-chat");
+  });
+  it("automatically rechecks new activity for only the reviewed job, not another changed page job", async () => {
+    state.rows.push({ ...structuredClone(job), id: "second", job_id: "JOB-AUTO-2" });
+    const view = mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    await waitFor(() => expect(state.assess).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-2" })[0]);
+    expect(state.assess).toHaveBeenCalledTimes(2);
+    state.rows = state.rows.map((row) => ({ ...row, chat_setup: { ...row.chat_setup!, fingerprint: "new-chat-message", last_message_at: "2026-10-23T16:00:00Z" } }));
+    view.update();
+    await waitFor(() => expect(state.assess.mock.calls.map(([id]) => id)).toEqual([job.id, "second", "second"]));
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+    view.update();
+    expect(state.assess).toHaveBeenCalledTimes(3);
+    expect(state.rows[0].assessment?.chat_fingerprint).toBe("setup-a");
+    expect(state.rows[1].assessment?.chat_fingerprint).toBe("new-chat-message");
+  });
+  it.each(["paused", "hidden", "assignment"])("does not auto-check a focused chat update while %s", async (reason) => {
+    state.configured = false;
+    const view = mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    if (reason === "paused") fireEvent.click(screen.getByLabelText("Automatic AI tracking"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-1" })[0]);
+    if (reason === "hidden") {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      fireEvent(document, new Event("visibilitychange"));
+    }
+    state.configured = true;
+    state.rows = [{ ...state.rows[0], ...(reason === "assignment" ? { tech_number: "4155550188", updated_at: "2026-10-23T15:00:00Z" } : {}), chat_setup: { ...job.chat_setup!, fingerprint: "new-message", last_message_at: "2026-10-23T16:00:00Z" } }];
+    view.update();
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it("recovers a failed activity check with job-only retry, without a tight automatic loop", async () => {
+    state.rows.push({ ...structuredClone(job), id: "second", job_id: "JOB-AUTO-2" });
+    const view = mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    await waitFor(() => expect(state.assess).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-1" })[0]);
+    state.assess.mockRejectedValueOnce(new ProcessorReviewFailure("Synthetic new-message failure", true));
+    state.rows[0] = { ...state.rows[0], chat_setup: { ...job.chat_setup!, fingerprint: "new-message", last_message_at: "2026-10-23T16:00:00Z" } };
+    view.update();
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("Synthetic new-message failure"));
+    view.update();
+    expect(state.assess).toHaveBeenCalledTimes(3);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Check this job" }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument());
+    expect(state.assess.mock.calls.map(([id]) => id)).toEqual([job.id, "second", job.id, job.id]);
+  });
+  it("retains a newer chat burst arriving during a focused check and runs one trailing check", async () => {
+    const view = mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-AUTO-1" })[0]);
+    let finish!: (response: ReturnType<typeof reviewed>) => void;
+    state.assess.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const previous = state.rows[0].assessment!;
+    state.rows[0] = { ...state.rows[0], chat_setup: { ...job.chat_setup!, fingerprint: "activity-1", last_message_at: "2026-10-23T16:00:00Z" } };
+    view.update();
+    expect(state.assess).toHaveBeenCalledTimes(2);
+    state.rows[0] = { ...state.rows[0], chat_setup: { ...job.chat_setup!, fingerprint: "activity-2", last_message_at: "2026-10-23T16:01:00Z" } };
+    for (let i = 0; i < 20; i++) view.update();
+    expect(state.assess).toHaveBeenCalledTimes(2);
+    await act(async () => finish({ result: { ...previous, checked_at: new Date().toISOString(), chat_fingerprint: "activity-1" }, cached: false }));
+    await waitFor(() => expect(state.assess).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+    view.update();
+    expect(state.assess).toHaveBeenCalledTimes(3);
+    expect(state.rows[0].assessment?.chat_fingerprint).toBe("activity-2");
+  });
   it("prioritizes only the selected job after the active request and resumes page tracking only on close", async () => {
     state.rows.push({ ...job, id: "second", job_id: "JOB-AUTO-2" }, { ...job, id: "third", job_id: "JOB-AUTO-3" });
     const finish = new Map<string, () => void>();

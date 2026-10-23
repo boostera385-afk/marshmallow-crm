@@ -65,6 +65,79 @@ async function isolatedBoard(page: Page, role = "processor", fail = false, optio
   }, { id: USER, version });
   return actions;
 }
+for (const width of [1440, 390]) {
+  test(`action filters explain their job-specific rules on hover and focus at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const actions = await isolatedBoard(page, "processor", false, { showcase: true });
+    await page.goto("/processor-board");
+    await openFilters(page);
+    const help = [
+      ["Take Job Update", "appointment date and start time have passed"],
+      ["Job In Progress", "explicitly reported arriving, starting or working"],
+      ["Payment Pending", "completing this specific appointment"],
+      ["Send Dose", "at least 60 minutes"],
+    ];
+    for (const [label, explanation] of help) {
+      const button = page.getByLabel("Action counts on this page").getByRole("button", { name: new RegExp(label) });
+      await button.hover();
+      const tooltip = page.getByRole("tooltip", { name: new RegExp(`^${label}`) });
+      await expect(tooltip).toContainText(explanation);
+      await expect(tooltip).toContainText("not a saved status change");
+      const box = await tooltip.locator("..").boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+      await page.keyboard.press("Escape");
+      await expect(tooltip).toHaveCount(0);
+      await page.mouse.move(0, 0);
+      await button.focus();
+      await expect(tooltip).toContainText(explanation);
+      if (label === "Send Dose") await page.screenshot({ path: test.info().outputPath(`processor-action-help-${width}.png`), fullPage: true });
+      await page.keyboard.press("Escape");
+      await button.blur();
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
+    }
+    expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
+  });
+  test(`new chat activity refreshes only the focused job and keeps no-outcome schedules clear at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const actions = await isolatedBoard(page, "processor", false, { auto: true });
+    const ids = [LEAD, "00000000-0000-4000-8000-000000000003"];
+    let revision = 0;
+    let activityAt = new Date().toISOString();
+    const results = new Map<string, object>();
+    const fixture = (id: string, index: number) => ({ id, job_id: `LIVE-${index + 1}`, customer_name: `Synthetic Customer ${index + 1}`, customer_phone: null, service_type: "Repair", address: "10 Sample St", city: "Synthetic", state: "FL", half_address: null, tech_name: "Alex Technician", tech_number: "4155550199", scheduled_date: index ? "2099-01-01" : "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: null, terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: results.has(id) ? new Date().toISOString() : null, assessment: results.get(id) ?? null,
+      chat_setup: { state: "ready", code: "ready", message: "Verified", fingerprint: `live-${revision}`, conversation_id: "00000000-0000-4000-8000-000000000010", last_message_at: revision ? activityAt : null, source: "verified_mirror" } });
+    await page.route("**/functions/v1/processor-board", async (route) => {
+      const body = route.request().postDataJSON(); actions.push(body);
+      if (body.action === "list") return route.fulfill({ json: { rows: ids.map(fixture), total: 2, observed_at: new Date().toISOString(), timezone: "America/New_York", monitoring: { ai_configured: true, current_history_configured: true, evidence_policy: 8 } } });
+      const result = { status: revision ? "payment_pending" : "needs_review", ...(revision ? {} : { review_reason: "no_verified_update" }), evidence: revision ? [{ signal: "completed", message_id: "new-message", message_time: activityAt, sender: "customer", quote: "LIVE-1 is completed and ready for payment." }] : [], messages_reviewed: 12 + revision, matched_messages: 2, matched_technician_messages: 1, context_technician_messages: 0, ai_used: true, source: "Quo current history", history_complete: true, chat_fingerprint: `live-${revision}`, timezone: "America/New_York", lead_updated_at: "2026-01-01T00:00:00Z", checked_at: new Date().toISOString(), summary: revision ? "Synthetic completion verified" : "Synthetic chatter, no work outcome verified" };
+      results.set(body.leadId, result);
+      return route.fulfill({ json: { result, cached: false } });
+    });
+    await page.clock.install();
+    await page.goto("/processor-board");
+    await page.getByLabel("Confirm schedule timezone").check();
+    await expect.poll(() => actions.filter((a) => a.action === "assess").length).toBe(2);
+    await expect(page.getByRole("progressbar")).toHaveCount(0);
+    await expect(page.getByText("No action yet", { exact: true }).filter({ visible: true })).toHaveCount(1);
+    await expect(page.getByText("No verified work update yet", { exact: false }).filter({ visible: true })).toHaveCount(2);
+    await page.getByRole("button", { name: "Review LIVE-1" }).filter({ visible: true }).click();
+    const readsBefore = actions.filter((a) => a.action === "list").length;
+    revision = 1;
+    activityAt = new Date().toISOString();
+    await page.clock.fastForward(30_001);
+    await expect.poll(() => actions.filter((a) => a.action === "list").length).toBeGreaterThan(readsBefore);
+    await expect.poll(() => actions.filter((a) => a.action === "assess").length).toBe(3);
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Payment Pending");
+    await expect(dialog).toContainText("LIVE-1 is completed and ready for payment.");
+    await expect(dialog.getByRole("button", { name: "Check this job" })).toBeEnabled();
+    expect(actions.filter((a) => a.action === "assess").map((a) => a.leadId)).toEqual([ids[0], ids[1], ids[0]]);
+    await page.clock.fastForward(30_001);
+    await expect(dialog.getByRole("button", { name: "Check this job" })).toBeEnabled();
+    expect(actions.filter((a) => a.action === "assess")).toHaveLength(3);
+  });
+}
 for (const width of [1440, 390]) test(`single-job review takes priority and keeps actions visible at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 800 });
   const actions = await isolatedBoard(page, "processor", false, { auto: true });

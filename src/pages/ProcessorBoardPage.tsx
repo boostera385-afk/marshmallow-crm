@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
+import { Portal as TooltipPortal } from "@radix-ui/react-tooltip";
 import { AlertTriangle, ArrowUpRight, ChevronLeft, ChevronRight, ListChecks, Loader2, MessageSquareText, RefreshCw, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessProcessorBoard } from "@/lib/access";
 import { useProcessorBoard, PROCESSOR_QUERY_KEY } from "@/hooks/useProcessorBoard";
-import { assessProcessorJob, compatibleProcessorAssessment, currentAssessment, processorAttributionMessage, processorHasTechnicianReply, processorSetupIssue, processorReviewMessage, processorReviewSignature, processorStatus, processorStatusOrigin, processorWorkflowMessage, ProcessorReviewFailure, PROCESSOR_STATUS_UI, PROCESSOR_TIMEZONES, type ProcessorJob, type ProcessorStatus, type ProcessorQueue } from "@/lib/processor-board";
-import { automaticProcessorJobs, recordProcessorAttempt, type ProcessorAutoAttempts } from "@/lib/processor-auto";
+import { assessProcessorJob, compatibleProcessorAssessment, currentAssessment, processorAttributionMessage, processorHasTechnicianReply, processorSetupIssue, processorReviewMessage, processorReviewSignature, processorStatus, processorStatusOrigin, processorWorkflowMessage, ProcessorReviewFailure, PROCESSOR_ACTION_HELP, PROCESSOR_STATUS_UI, PROCESSOR_TIMEZONES, type ProcessorJob, type ProcessorStatus, type ProcessorQueue } from "@/lib/processor-board";
+import { automaticProcessorJobs, processorFocusHasActivity, processorReviewFocus, recordProcessorAttempt, type ProcessorAutoAttempts, type ProcessorReviewFocus } from "@/lib/processor-auto";
 import { STATUS_LABELS } from "@/lib/constants";
 import type { LeadStatus } from "@/types";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ProcessorJobViewport } from "@/components/processor-board/ProcessorJobViewport";
 import { ProcessorReviewEvidence } from "@/components/processor-board/ProcessorReviewEvidence";
 import QuoPhoneTrigger from "@/components/leads/QuoPhoneTrigger";
@@ -87,6 +89,7 @@ function ProcessorBoard() {
   const latestRows = useRef<ProcessorJob[]>([]);
   const pendingManual = useRef<PendingReview | null>(null);
   const reviewScope = useRef<string | null>(null);
+  const reviewActivity = useRef<ProcessorReviewFocus | null>(null);
   const activeJob = useRef<string | null>(null);
   const timezoneConfirmation = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -126,7 +129,11 @@ function ProcessorBoard() {
   useEffect(() => { if (chatReview && !chatJob) setChatReview(null); }, [chatReview, chatJob]);
   function openReview(id: string) {
     // Focus immediately, before the next promise continuation can start another job.
+    const returningToFocus = reviewScope.current === id;
     reviewScope.current = id;
+    const job = latestRows.current.find((row) => row.id === id);
+    const focus = job ? processorReviewFocus(job, filters.timezone) : null;
+    if (!returningToFocus || reviewActivity.current?.identity !== focus?.identity) reviewActivity.current = focus;
     if (inFlight.current) stopRequested.current = true;
     if (pendingManual.current && (!pendingManual.current.focused || !pendingManual.current.jobs.some((job) => job.id === id))) {
       pendingManual.current = null;
@@ -136,6 +143,7 @@ function ProcessorBoard() {
   }
   function closeReview() {
     reviewScope.current = null;
+    reviewActivity.current = null;
     if (pendingManual.current?.focused) {
       pendingManual.current = null;
       setQueuedManualIds([]);
@@ -189,7 +197,7 @@ function ProcessorBoard() {
     const attempted = new Set<string>();
     try {
       for (const [index, job] of eligible.entries()) {
-        if (!mounted.current || stopRequested.current || (automatic && (document.visibilityState === "hidden" || reviewScope.current)) || (focused && reviewScope.current !== job.id)) break;
+        if (!mounted.current || stopRequested.current || (automatic && (document.visibilityState === "hidden" || (reviewScope.current && !focused))) || (focused && reviewScope.current !== job.id)) break;
         const live = latestRows.current.find((row) => row.id === job.id);
         if (!live || processorReviewSignature(live, filters.timezone) !== processorReviewSignature(job, filters.timezone)) continue;
         activeJob.current = job.id;
@@ -199,6 +207,9 @@ function ProcessorBoard() {
           const response = await assessProcessorJob(job.id, filters.timezone);
           if (processorHasTechnicianReply(response.result)) verified++;
           recordProcessorAttempt(autoAttempts.current, job, filters.timezone, Date.now(), true);
+          // Advance only the activity actually read, not a newer message that
+          // arrived during this request. Its changed fingerprint needs a follow-up.
+          if (reviewScope.current === job.id && reviewActivity.current?.identity === processorReviewFocus(job, filters.timezone).identity) reviewActivity.current = processorReviewFocus(job, filters.timezone);
           // Show each successful result immediately, but never attach it to a changed record.
           queryClient.setQueryData<ProcessorQueue>([...PROCESSOR_QUERY_KEY, user?.id, role, filters], (old) => old ? { ...old, rows: old.rows.map((row) => row.id === job.id && row.updated_at === response.result.lead_updated_at && processorReviewSignature(row, filters.timezone) === processorReviewSignature(job, filters.timezone) && (!row.chat_setup || row.chat_setup.fingerprint === response.result.chat_fingerprint) ? { ...row, assessment: response.result, checked_at: response.result.checked_at } : row) } : old);
           if (mounted.current) setErrors((prev) => { const next = { ...prev }; delete next[job.id]; return next; });
@@ -262,9 +273,17 @@ function ProcessorBoard() {
   autoReviewRef.current = refreshAi;
   const autoReady = query.data?.monitoring?.ai_configured === true && timezoneConfirmed;
   useEffect(() => {
-    if (!autoTracking || !pageVisible || !autoReady || progress || query.isFetching || query.isError || selected || chatJob) return;
-    const candidates = automaticProcessorJobs(rows, filters.timezone, now, autoAttempts.current);
-    if (candidates.length) void autoReviewRef.current(candidates, true, true);
+    const focused = selected ?? chatJob;
+    if (focused) {
+      const next = processorReviewFocus(focused, filters.timezone);
+      if (reviewActivity.current?.identity !== next.identity) { reviewActivity.current = next; return; }
+      // Opening Review never invokes AI. Only later activity in this exact saved
+      // conversation can auto-refresh it; unrelated page jobs stay paused.
+      if (!processorFocusHasActivity(reviewActivity.current, focused, filters.timezone)) return;
+    } else reviewActivity.current = null;
+    if (!autoTracking || !pageVisible || !autoReady || progress || query.isFetching || query.isError) return;
+    const candidates = automaticProcessorJobs(focused ? [focused] : rows, filters.timezone, now, autoAttempts.current);
+    if (candidates.length) void autoReviewRef.current(candidates, true, true, Boolean(focused));
   }, [autoTracking, pageVisible, autoReady, progress, query.isFetching, query.isError, rows, filters.timezone, now, selected, chatJob]);
   const selectedStatus = selected ? displayStatus(selected) : "needs_review";
   const selectedChecking = Boolean(selected && progress?.leadId === selected.id);
@@ -308,17 +327,17 @@ function ProcessorBoard() {
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 text-[11px] text-muted-foreground" aria-label="Automatic tracking controls">
         <label className="flex items-center gap-2"><input type="checkbox" aria-label="Automatic AI tracking" checked={autoTracking} onChange={(e) => { setAutoTracking(e.target.checked); if (!e.target.checked) stopRequested.current = true; }} />Automatic AI tracking · this page</label>
-        <p>{!autoTracking ? "Paused. Manual checks remain available." : !pageVisible ? "Paused while this tab is hidden." : selected || chatJob ? "Page checks pause during this job review or chat. Close it to resume your previous tracking setting." : !timezoneConfirmed ? "Confirm the schedule timezone to start automatic checks; no timezone is inferred from the state." : !query.data?.monitoring ? "Automatic checks need the updated Processor Board backend." : !query.data.monitoring.ai_configured ? "AI is not configured; ask Admin to check server setup." : `Watching ${rows.length} loaded jobs · fresh checks reused for 5 minutes · retries use backoff.`}</p>
+        <p>{!autoTracking ? "Paused. Manual checks remain available." : !pageVisible ? "Paused while this tab is hidden." : selected || chatJob ? "Other page checks pause during Review/chat. New chat activity can refresh only this job; close to resume the page." : !timezoneConfirmed ? "Confirm the schedule timezone to start automatic checks; no timezone is inferred from the state." : !query.data?.monitoring ? "Automatic checks need the updated Processor Board backend." : !query.data.monitoring.ai_configured ? "AI is not configured; ask Admin to check server setup." : `Watching ${rows.length} loaded jobs · fresh checks reused for 5 minutes · retries use backoff.`}</p>
         {query.data?.monitoring && !query.data.monitoring.current_history_configured && <p>Current Quo access is unavailable. Mirror-only checks cannot establish non-response or Send Dose.</p>}
         {query.data?.monitoring && (query.data.monitoring.evidence_policy ?? 0) < 5 && <p className="text-amber-700 dark:text-amber-300">The job-context AI update is not active on this backend. Ask Admin to deploy the latest Processor Board function; existing checks may not attribute replies that omit job identifiers.</p>}
       </div>
       <div aria-label="Evidence quality on this page" className="px-4 py-2 text-[11px] text-muted-foreground">{freshChecks.length} fresh successful checks · {verifiedUpdates} with a technician reply tied to the job · {freshChecks.length - verifiedUpdates} without a tied technician reply.{contextUpdates ? ` ${contextUpdates} rely on this job's saved dispatch; verify in Quo before acting.` : ""} Saved In Progress / Payment Pending labels alone are not AI findings.</div>
       <div aria-label="Action counts on this page" className="flex flex-wrap items-center gap-2 px-4 pt-3">
         <span className="text-[10px] text-muted-foreground">On this page</span>
-        {(["take_job_update", "job_in_progress", "payment_pending", "send_dose"] as const).map((status) => <button key={status} data-processor-status={status} onClick={() => setStatusFilter(statusFilter === status ? "all" : status)} aria-pressed={statusFilter === status}
+        <TooltipProvider delayDuration={200}>{(["take_job_update", "job_in_progress", "payment_pending", "send_dose"] as const).map((status) => <Tooltip key={status}><TooltipTrigger asChild><button data-processor-status={status} onClick={() => setStatusFilter(statusFilter === status ? "all" : status)} aria-pressed={statusFilter === status}
           className="processor-filter inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />{PROCESSOR_STATUS_UI[status].label}<span className="processor-filter-count rounded-full px-1.5 py-0.5 tabular-nums">{counts[status] ?? 0}</span>
-        </button>)}
+        </button></TooltipTrigger><TooltipPortal><TooltipContent side="top" collisionPadding={8} className="max-w-[min(21rem,calc(100vw-1rem))] text-xs leading-relaxed"><p className="font-semibold">{PROCESSOR_STATUS_UI[status].label}</p><p className="mt-1">{PROCESSOR_ACTION_HELP[status]}</p><p className="mt-2 text-muted-foreground">Filters this loaded page only · advisory action, not a saved status change.</p></TooltipContent></TooltipPortal></Tooltip>)}</TooltipProvider>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3">
         <div className="flex flex-wrap items-center gap-3"><label className="flex items-center gap-2 text-xs text-muted-foreground">This page
@@ -343,7 +362,7 @@ function ProcessorBoard() {
           <p>Previously scheduled jobs stay on radar until paid, cancelled or job done/completed. Incomplete scheduled records remain visible for repair; AI waits for a valid assigned technician number and appointment. Pending approvals and reschedules still require existing saved-record actions. Newest appointment date/time comes first; ties use newest job creation. Undated records appear last. Location uses saved city/state, then the full address, then the partial address; nothing is guessed or changed.</p>
           <p>AI interprets job-linked technician messages, not authorization. A reply that names the job is direct evidence; a reply that follows this job's unique saved dispatch in the same 1:1 thread is context-attributed and is labelled so it can be verified in Quo. A reply after another job's dispatch, or one that mentions another job, is never used. Each row identifies whether the action comes from AI evidence, the saved status or a schedule rule. An AI review with no job-linked reply is not a confirmed job outcome.</p>
           <p>Both manual and automatic checks require the saved schedules' timezone to be confirmed. Your explicit confirmation and tracking pause are remembered for this signed-in browser tab; changing the timezone requires confirmation again. The Schedule page stores plain date/time values and displays the browser's GMT offset; that is not proof that every saved job uses that timezone. No customer's timezone is inferred from a state or ZIP.</p>
-          <p>After you confirm the schedule timezone, automatic checks cover this loaded page (up to 25 jobs), not every page or only the five rows in view. They react to saved conversation activity and the 30-second recovery read, reusing fresh results for 5 minutes. Explicit Refresh AI rechecks history even for recent results; unchanged evidence can still reuse server extraction. Opening Review pauses new page checks after the active request. Check this job queues only the selected job next, reuses its active request if already running, and keeps page checks paused through Review/Tech Quick Chat. Closing returns to your previous tracking setting; closing an unstarted job check cancels it. A page-level manual takeover still pauses tracking explicitly. Hidden/closed tabs stop starting checks; an in-flight job may finish. No background worker runs. Setup failures wait for corrected saved details; transient failures retry with backoff.</p>
+          <p>After you confirm the schedule timezone, automatic checks cover this loaded page (up to 25 jobs), not every page or only the five rows in view. They react to saved conversation activity and the 30-second recovery read, reusing fresh results for 5 minutes. Explicit Refresh AI rechecks history even for recent results; unchanged evidence can still reuse server extraction. Opening Review pauses new page checks after the active request without invoking AI. Check this job queues only the selected job next and reuses its active request if already running. With tracking on, later chat activity rechecks only this job through Review/Tech Quick Chat; other page jobs stay paused. Closing returns to your previous tracking setting; closing an unstarted job check cancels it. A page-level manual takeover still pauses tracking explicitly. Hidden/closed tabs stop starting checks; an in-flight job may finish. No background worker runs. Setup failures wait for corrected saved details; transient failures retry with backoff.</p>
           <p>A missing technician-directory link can use one exact-number saved chat on the verified Technician Communications line. Conflicting links, wrong lines and invalid numbers are never guessed or repaired automatically.</p></div></details>
       </details>
       {notice && <p role="status" className="mx-4 mt-3 rounded-lg border bg-muted/40 p-3 text-xs">{notice}</p>}
@@ -387,7 +406,7 @@ function ProcessorBoard() {
           <SheetTitle>{selected.customer_name}</SheetTitle><SheetDescription>{selected.service_type} · {processorLocation(selected).text}</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5" role="region" aria-label="Job review content" tabIndex={0}>
-          <p className="text-[11px] text-muted-foreground">Page checks pause while this review is open. Check this job only; close to resume your previous tracking setting.</p>
+          <p className="text-[11px] text-muted-foreground">Other page checks pause here. With automatic tracking on, new chat activity rechecks only this job. Opening Review alone does not run AI.</p>
           {(selectedChecking || selectedQueued) && <p role="status" aria-label="This job check" className="rounded-lg border border-primary/25 bg-primary/5 p-3 text-xs" aria-live="polite">{selectedChecking ? `Checking only #${selected.job_id}. Reading its assigned technician's job-specific messages; this may take up to two minutes.` : `Waiting for #${progress?.job ?? "the current request"} to finish, then checking only #${selected.job_id}. No other page jobs will be checked while this review is open.`}</p>}
           <div className="rounded-xl border bg-muted/20 p-3">{jobStatus(selected, true)}<p className="mt-2 text-sm font-medium">{PROCESSOR_STATUS_UI[selectedStatus].action}</p>
             <p className="mt-2 text-[11px] text-muted-foreground">Saved lead status: {STATUS_LABELS[selected.status as LeadStatus] ?? selected.status}</p>

@@ -15,6 +15,12 @@ export const PROCESSOR_STATUS_UI: Record<ProcessorStatus, { label: string; actio
   unavailable: { label: "Needs Review", action: "Sync or verify the technician chat, then retry. No outcome was inferred.", color: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300" },
   scheduled: { label: "No action yet", action: "Appointment upcoming. No progress or completion has been verified.", color: "border-border bg-muted/30 text-muted-foreground" },
 };
+export const PROCESSOR_ACTION_HELP = {
+  take_job_update: "The agreed appointment date and start time have passed, with no verified progress or completion for this job. Ask its assigned technician for an update.",
+  job_in_progress: "This job's technician explicitly reported arriving, starting or working, or the saved lead is already In Progress. Acceptance, plans and another customer's updates do not prove work started.",
+  payment_pending: "The technician explicitly reported completing this specific appointment, or its saved lead is already Payment Pending / Partially Paid. Existing payment approvals still apply.",
+  send_dose: "This job was explicitly accepted and its appointment has started. A delivered job-specific update request has gone unanswered for at least 60 minutes, verified against current Quo history. Follow up manually; nothing is sent automatically.",
+} as const;
 const nullableText = z.string().nullable();
 export const processorChatSetupSchema = z.object({
   state: z.enum(["ready", "blocked", "unavailable"]), code: z.string(), message: z.string(), fingerprint: z.string(),
@@ -113,7 +119,11 @@ export function processorStatus(job: ProcessorJob, timezone: string, now: Date):
   const assessment = currentAssessment(job, timezone, now);
   if (assessment) {
     const unlinked = (assessment.matched_technician_messages ?? 0) + (assessment.context_technician_messages ?? 0) === 0 && (assessment.unattributed_technician_messages ?? 0) > 0;
-    if (job.status !== "job_in_progress" && (assessment.review_reason || unlinked)) return "needs_review";
+    if (job.status !== "job_in_progress" && ((assessment.review_reason && assessment.review_reason !== "no_verified_update") || unlinked)) return "needs_review";
+    // Legacy reviews also used Needs Review for ordinary chatter/acknowledgements.
+    // No verified outcome is not a setup error: retain the diagnostic, not a
+    // fabricated progress/completion finding or an unnecessary review blocker.
+    if (job.status === "scheduled" && assessment.review_reason === "no_verified_update") return schedulePassed(job, now, timezone) ? "take_job_update" : "scheduled";
     if (job.status === "job_in_progress" && ["scheduled", "take_job_update"].includes(assessment.status)) return "job_in_progress";
     return assessment.status === "scheduled" && schedulePassed(job, now, timezone) ? "take_job_update" : assessment.status;
   }
@@ -136,7 +146,7 @@ export function processorReviewMessage(job: ProcessorJob, timezone: string, now:
   if (setup) return setup;
   const a = currentAssessment(job, timezone, now);
   if (a?.review_reason === "job_attribution" || (a && (a.matched_technician_messages ?? 0) + (a.context_technician_messages ?? 0) === 0 && (a.unattributed_technician_messages ?? 0) > 0)) return "Cannot confidently match this technician's update to this job. Review the chat.";
-  if (a?.review_reason === "no_verified_update") return "No clear progress or completion was verified. Review this job's messages.";
+  if (a?.review_reason === "no_verified_update") return job.status === "scheduled" ? "No verified work update yet · using the agreed schedule, not an AI-confirmed outcome." : "No clear progress or completion was verified. Review this job's messages.";
   if (a?.review_reason === "mirror_incomplete") return "Current chat history is unavailable. Verify the unanswered request manually.";
   if ((job.checked_at || job.assessment) && !compatibleProcessorAssessment(job, timezone)) return "Job, assigned technician, schedule or conversation changed. Recheck this job; previous evidence is not current.";
   if (!a && compatibleProcessorAssessment(job, timezone)) return "Previous result · refresh due. Rechecking uses only this job and its assigned technician.";

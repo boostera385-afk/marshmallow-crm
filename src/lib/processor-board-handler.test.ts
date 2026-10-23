@@ -48,6 +48,34 @@ function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; 
   return { request, rpc, reads, fetcher, tables };
 }
 describe("Processor Board server boundary", () => {
+  it.each(["John", "Jane"])("isolates %s's outcome in a shared two-job technician conversation", async (customer) => {
+    const peer = { ...job, id: "00000000-0000-4000-8000-000000000002", job_id: "JOB-1002", customer_name: "Jane Example", customer_phone: "4155550102", address: "20 Example Rd" };
+    const progress = "JOB-1001 I have arrived and started working";
+    const completed = "JOB-1002 I finished the repair and cleaned up";
+    const s = setup({ modelEvidence: [{ signal: "progress", message_id: "john", quote: progress }, { signal: "completed", message_id: "jane", quote: completed }] });
+    const target = customer === "John" ? job : peer;
+    s.tables.leads = customer === "John" ? [job, peer] : [peer, job];
+    const saved = structuredClone(s.tables.leads);
+    s.tables.quo_messages = [{ id: "john", sender: "customer", text: progress, message_time: "2026-10-15T15:00:00Z" }, { id: "jane", sender: "customer", text: completed, message_time: "2026-10-15T16:00:00Z" }];
+    const response = await s.request({ action: "assess", leadId: target.id });
+    expect(response.status).toBe(200);
+    expect((await response.json()).result).toMatchObject({ status: customer === "John" ? "job_in_progress" : "payment_pending", messages_reviewed: 2, matched_technician_messages: 1, evidence: [{ message_id: customer === "John" ? "john" : "jane" }] });
+    const aiCall = s.fetcher.mock.calls.find(([url]) => String(url).includes("openai"))!;
+    const prompt = JSON.parse(String(aiCall[1]?.body));
+    expect(JSON.parse(prompt.messages[1].content).untrustedMessages.map((m: { id: string }) => m.id)).toEqual([customer === "John" ? "john" : "jane"]);
+    expect(s.tables.leads).toEqual(saved);
+  });
+  it.each(["2026-10-15", "2026-10-25"])("keeps schedule %s actionable when job-linked chatter verifies no work outcome", async (date) => {
+    const s = setup({ modelEvidence: [] });
+    const saved = { ...job, scheduled_date: date };
+    s.tables.leads = [saved];
+    s.tables.quo_messages[0].text = "JOB-1001 thank you for the details";
+    const response = await s.request();
+    expect(response.status).toBe(200);
+    expect((await response.json()).result).toMatchObject({ status: date === "2026-10-15" ? "take_job_update" : "scheduled", review_reason: "no_verified_update", evidence: [], matched_technician_messages: 1 });
+    expect(s.tables.leads).toEqual([saved]);
+    expect(s.rpc.mock.calls.filter(([name]) => name === "save_processor_job_assessment")).toHaveLength(1);
+  });
   it("does not reuse the previous technician's chat after this job is reassigned", async () => {
     const s = setup();
     s.tables.leads = [{ ...job, tech_number: "4155550188", updated_at: "2026-10-15T17:00:00Z" }];
@@ -60,7 +88,7 @@ describe("Processor Board server boundary", () => {
     const s = setup();
     s.tables.quo_messages[0].text = "JOB-1001 is not completed yet";
     const response = await s.request();
-    expect((await response.json()).result).toMatchObject({ status: "needs_review", review_reason: "no_verified_update", evidence: [], ai_used: true });
+    expect((await response.json()).result).toMatchObject({ status: "take_job_update", review_reason: "no_verified_update", evidence: [], ai_used: true });
     expect(s.tables.leads).toEqual([job]);
   });
   it("filters the provider payload to latest job messages and keywords while retaining response timing history", async () => {
@@ -85,7 +113,7 @@ describe("Processor Board server boundary", () => {
     s.tables.quo_messages.push(...Array.from({ length: 25 }, (_, i) => ({ id: `chatter-${i}`, conversation_id: "mirror", sender: "customer", text: `JOB-1001 fixture note ${i}`, message_time: `2026-10-15T16:${String(i + 1).padStart(2, "0")}:00Z` })));
     const result = await (await s.request()).json();
     expect(result.result.evidence).toEqual([]);
-    expect(result.result).toMatchObject({ status: "needs_review", review_reason: "no_verified_update" });
+    expect(result.result).toMatchObject({ status: "take_job_update", review_reason: "no_verified_update" });
   });
   it.each(["customer_service", "cs_admin", "opr", "opr_admin"])("rejects %s before reading leads/chats or invoking AI", async (role) => {
     const s = setup({ role }); expect((await s.request()).status).toBe(403); expect(s.reads).toEqual(["user_roles"]); expect(s.fetcher).not.toHaveBeenCalled();
@@ -223,7 +251,7 @@ describe("Processor Board server boundary", () => {
     const response = await s.request({ action: "list" }); expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.rows).toHaveLength(25); expect(payload.total).toBe(25);
-    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true, evidence_policy: 7 });
+    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true, evidence_policy: 8 });
     expect(payload.rows.every((row: { chat_setup: { state: string } }) => row.chat_setup.state === "ready")).toBe(true);
     expect(s.reads).toEqual(["user_roles", "technicians", "quo_conversations"]);
     expect(s.rpc.mock.calls.map(([name]) => name)).toEqual(["list_processor_jobs"]);

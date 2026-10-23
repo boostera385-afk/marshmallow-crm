@@ -1,5 +1,116 @@
 # Processor Board
 
+## Action help, no-outcome diagnosis and focused chat activity (2026-10-23; Edge installed, CRM publication pending)
+
+This supersedes the earlier rule that every completed review without extracted
+work evidence becomes Needs Review. Read-only production diagnostics found six
+saved `needs_review / no_verified_update` results, three for future appointments.
+That is an ordinary absence of verified progress/completion, not a broken setup.
+The screenshot's reason matches this path; no customer conversation was printed or
+repaired. True attribution uncertainty and setup/provider failures remain visible.
+
+- The four colored action filters explain their exact scope on hover or keyboard
+  focus, prefer placement above the button, escape the panel's clipping via a
+  portal and remain within the viewport. Escape dismisses them. Filtering still
+  affects only loaded-page advisory actions, not saved statuses or AI invocation.
+  Send Dose explains direct acceptance, a delivered job-specific request, current
+  history and the 60-minute wait; generic acceptance/plans are not work started.
+- A successfully reviewed **scheduled** job with `no_verified_update` uses its
+  confirmed appointment: No action yet before start; Take Job Update after start.
+  The no-verified-work warning and AI/source labels remain. Frontend handles fresh
+  compatible legacy results, while the Edge result now saves the same decision.
+  This does not invent progress/completion, reuse stale or changed assignments,
+  override pending approval workflows, or relax `job_attribution`/mirror warnings.
+- Opening Review still never starts AI and pauses unrelated page assessments after
+  the active request. With automatic tracking enabled and the timezone confirmed,
+  **later** `last_message_at` activity in the exact saved assignment/conversation
+  can now trigger a single focused assessment through Review/read-only chat.
+  Explicitly paused tracking, hidden tabs, setup errors and identity changes do not
+  auto-run it. Failed checks retain existing backoff and job-only manual retry.
+  An activity burst during an in-flight request receives one trailing check; only
+  the activity actually read advances the focus baseline, so newer changes are
+  not swallowed. No unrelated page assessment starts until focus closes.
+- Existing shared realtime/coalesced list reads and the 30-second recovery read
+  already invalidate conversation fingerprints. Outside Review, only eligible
+  loaded jobs whose saved inputs changed or freshness expired are assessed; a
+  shared technician conversation can invalidate multiple jobs because its event
+  does not prove which customer a message concerns. Each server review isolates
+  its own job, and unchanged job-linked evidence reuses extraction. Full available
+  text history in the job's lifetime is checked server-side for identity/silence;
+  AI still receives the latest 20 job-linked messages plus older keyword matches.
+  No global all-job worker, transcript ingestion change or 24/7 tracking is added.
+
+Read-only diagnostics: project reported ACTIVE_HEALTHY. Over the default preceding
+24-hour log window, Processor Board function-edge logs showed 1,399 HTTP 200, 15
+HTTP 401 and one HTTP 405, with no recorded 5xx in that aggregate. HTTP 200 is not
+proof of evidence accuracy. Existing security/performance advisories were reviewed,
+not fixed or attributed to this change. Findings/remediation remain in the
+[Supabase advisors](https://supabase.com/dashboard/project/kxiqholnmhkwhdkhtopp/advisors),
+including existing [mutable function search paths](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable)
+and [per-row auth evaluation](https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan).
+No raw customer messages, credentials, remote writes or new live AI assessments
+were used for this investigation.
+
+Authority/parity: Admin/Processor UI/helper gates, caller-JWT row/status reads,
+RLS/invoker RPC, service-only leases and audited revision-checked saves, terminal
+statuses, approvals and generated types are unchanged. Donut has no native board
+or per-job assessment counterpart; its technician-wide intelligence remains a
+separate unchanged flow. No extension source or release is needed. No migration
+is added. `processor-board` Edge source advertises evidence policy **8** and changes
+only no-outcome action selection/input-cache version, not the evidence extraction
+prompt or matching rules. With the user's explicit approval, `processor-board`
+**v9 ACTIVE** was deployed through MCP to `kxiqholnmhkwhdkhtopp`, with
+`verify_jwt: true`. All **nine** deployed files were read back and matched the exact
+local source/configuration; only `processor-board-handler.ts` differed from the
+previous v8 bundle. Bundle SHA-256:
+`3f5284c33a7daa5f4f1162b53b2ab29eebbeb74d8bfd701f7f3cd5f827590f0f`.
+Live missing-token / invalid-token / CORS preflight checks returned **401/401/200**.
+These boundary checks do not establish signed-in workflow or provider accuracy.
+No schema, secrets, ingestion controls, customer records or outbound messages were
+changed as part of deployment. CRM Publish and real signed-in/provider QA remain
+separate.
+
+Rollback: the previously deployed **v8**, JWT setting, import map and all nine files
+were saved outside the repository before deployment, alongside the verified v9
+source and probe proof, under
+`C:\Users\User 1\AppData\Local\Temp\opencode\processor-actions-release-20261023`.
+Its previous bundle SHA-256 is
+`f648df9c531508bcbc5e5a3df6c8c4eb672f3862f0f3e84c81178e13879918b8`.
+If rollback is approved, redeploy the saved v8 files with its entrypoint/import map
+and JWT verification retained; do not alter schema or attempt to roll back saved
+lead statuses. The temporary loopback transfer bridge was stopped after verification.
+
+Efficiency review: four lightweight tooltip roots; no tooltip API requests. Focus
+activity compares existing metadata in constant time and reuses the in-flight
+guard, caller-scoped query key, attempt backoff and cleanup. No new subscriptions,
+poll interval, endpoint, payload field, worker, database query/index/RLS change or
+storage/download is introduced. Synthetic Windows/jsdom two-job workload: baseline
+Review deferred new activity until close; now two initial checks plus **one**
+selected-job refresh produce `[A, B, A]`, even when both rows' conversation metadata
+changes. Twenty rerenders during a pending activity check produce no parallel
+request and exactly one trailing selected-job check. Existing full-history/AI
+evidence-cache tests continue to check that another job's new text causes no extra
+target AI extraction. These are local correctness/request measurements, not measured
+production latency, billing savings or model accuracy.
+
+Local validation: **1,062/1,062 tests in 111 files** passed with
+`npm test -- --maxWorkers=1`, including all **156** focused Board/planner/handler/
+hook checks in the six affected suites. The **43/43** mocked browser cases passed
+on the full rerun, covering hover/keyboard help, viewport bounds, upcoming/overdue
+no-outcome labels and focused-message recovery on 1440px/390px layouts. The first
+browser run passed the existing 39 cases but failed four new test setups: an
+unscoped locator matched closing/open tooltip animations, and the fake clock was
+installed after application polling timers existed. Tests now wait for complete
+tooltip dismissal, measure the visible content container, and install the clock
+before navigation; no assertions, timeout limits or configuration were weakened.
+Desktop/mobile action-help screenshots were visually inspected after the final run.
+Typecheck, lint (**0 errors / 28 existing warnings**), build, Donut **v1.7.0** source/
+ZIP integrity and `git diff --check` passed. Existing Browserslist, mixed-import
+and bundle-size warnings remain. No SQL harness was run because database code is
+unchanged. Real signed-in/provider accuracy remains unverified. The user approved
+the reviewed backend deployment plus commit/push to `boostera/processor-fix`.
+Pushing the branch does not publish the CRM; CRM Publish remains pending.
+
 ## Focused single-job Review controls (2026-10-23; local frontend update)
 
 The screenshots showed a page-wide spinner on Check this job while unrelated
