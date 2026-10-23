@@ -3,6 +3,10 @@ project_id = "kxiqholnmhkwhdkhtopp"
 [functions.processor-board]
 verify_jwt = true
 
+# Daily Processor Board check: called by pg_cron with its own secret, never a user JWT.
+[functions.processor-board-daily]
+verify_jwt = false
+
 [functions.workflow-inbox]
 verify_jwt = true
 

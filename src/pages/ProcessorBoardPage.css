@@ -1,179 +1,37 @@
-/* Scoped to the CRM board (including its portalled evidence drawer). */
+/* Scoped to the CRM Processor Board. Status colours come from the pill/filter classes. */
 .processor-board [data-processor-status] {
-  --processor-tone: var(--primary);
-}
-
-.processor-board [data-processor-status="take_job_update"] {
-  --processor-tone: var(--warning);
-}
-
-.processor-board [data-processor-status="job_in_progress"] {
-  --processor-tone: var(--status-blue);
-}
-
-.processor-board [data-processor-status="payment_pending"] {
-  --processor-tone: var(--success);
-}
-
-.processor-board [data-processor-status="send_dose"] {
-  --processor-tone: var(--destructive);
-}
-
-.processor-board [data-processor-status="needs_review"] {
-  --processor-tone: 258 72% 60%;
-}
-
-.processor-board [data-processor-status="unavailable"],
-.processor-board [data-processor-status="scheduled"] {
   --processor-tone: var(--status-muted);
 }
+
+.processor-board [data-processor-status="take_job_update"] { --processor-tone: var(--warning); }
+.processor-board [data-processor-status="job_in_progress"] { --processor-tone: var(--status-blue); }
+.processor-board [data-processor-status="payment_pending"] { --processor-tone: var(--success); }
+.processor-board [data-processor-status="send_dose"] { --processor-tone: var(--destructive); }
+.processor-board [data-processor-status="not_enough_details"] { --processor-tone: 258 72% 60%; }
 
 .processor-board .processor-panel {
   background: linear-gradient(180deg, hsl(var(--card) / 0.86), hsl(var(--muted) / 0.28));
 }
 
-.processor-board .processor-titlebar {
-  background: hsl(var(--card) / 0.5);
-}
-
-.processor-board .processor-toolbar {
-  background: linear-gradient(120deg, hsl(var(--primary) / 0.045), hsl(var(--muted) / 0.45));
-  box-shadow: inset 0 1px 0 hsl(var(--foreground) / 0.025);
-}
-
-.processor-board .processor-filter {
-  color: hsl(var(--processor-tone));
-  border-color: hsl(var(--processor-tone) / 0.30);
-  background: hsl(var(--processor-tone) / 0.07);
-  transition: background-color 180ms, border-color 180ms, box-shadow 180ms, transform 180ms;
-}
-
-/* Dark foregrounds retain contrast on the light theme's tinted controls. */
-html:not(.dark) .processor-board .processor-filter {
-  color: hsl(var(--foreground));
-}
-
-.processor-board .processor-filter-count {
-  background: hsl(var(--processor-tone) / 0.16);
-}
-
-.processor-board .processor-filter > span:first-child {
-  background: hsl(var(--processor-tone));
-}
-
-.processor-board .processor-filter[aria-pressed="true"] {
-  background: hsl(var(--processor-tone) / 0.20);
-  border-color: hsl(var(--processor-tone) / 0.75);
-  box-shadow: 0 0 0 2px hsl(var(--processor-tone) / 0.12);
-}
-
-.processor-board .processor-status {
-  box-shadow: inset 0 1px 0 hsl(var(--processor-tone) / 0.10);
-}
-
-.processor-board .processor-row {
-  transition: background-color 180ms;
-}
-
-.processor-board .processor-row > td:first-child,
+/* A thin status-coloured edge keeps rows scannable without another column. */
+.processor-board tr.processor-row > td:first-child,
 .processor-board article.processor-row {
-  box-shadow: inset 2px 0 0 hsl(var(--processor-tone) / 0.25);
+  box-shadow: inset 2px 0 0 hsl(var(--processor-tone) / 0.45);
 }
 
 .processor-board .processor-table table {
-  min-width: 980px;
+  min-width: 940px;
 }
 
-.processor-board .processor-table th:nth-child(1) { width: 14%; }
-.processor-board .processor-table th:nth-child(2) { width: 12%; }
-.processor-board .processor-table th:nth-child(3) { width: 12%; }
-.processor-board .processor-table th:nth-child(4) { width: 23%; }
-.processor-board .processor-table th:nth-child(5) { width: 14%; }
-.processor-board .processor-table th:nth-child(6) { width: 12%; }
-.processor-board .processor-table th:nth-child(7) { width: 7%; }
-.processor-board .processor-table th:nth-child(8) { width: 6%; }
-
-.processor-board .processor-cell-status time,
-.processor-board .processor-cell-status [aria-label="Last checked date and time"] {
-  display: inline;
-  font-size: 9px;
-}
-
-.processor-board .processor-cell-status time::after { content: " · "; }
-
-.processor-board .processor-row { border-color: hsl(var(--border) / 0.4); }
-
-.processor-board .processor-row:focus-within {
-  background-color: hsl(var(--processor-tone) / 0.07);
-}
-
-@media (hover: hover) {
-  .processor-board .processor-filter:hover {
-    background-color: hsl(var(--processor-tone) / 0.15);
-    transform: translateY(-1px);
-  }
-
-  .processor-board .processor-row:hover {
-    background-color: hsl(var(--processor-tone) / 0.07);
-  }
-
-  .processor-board .processor-review-button:hover svg {
-    transform: translate(1px, -1px);
-  }
-}
-
-.processor-board .processor-review-button svg {
-  transition: transform 180ms;
-}
-
-.processor-board .processor-job-viewport {
-  position: relative;
-  max-height: var(--processor-viewport-height, 34rem);
-  overflow: auto;
-  border-radius: 0;
-  scrollbar-gutter: stable;
-}
-
-/* One scroll owner keeps both the vertical and horizontal header positions fixed. */
-.processor-board .processor-job-viewport .data-surface {
-  overflow: visible;
-  padding: 0;
-  border-radius: 0;
-}
-
-.processor-board .processor-job-viewport thead {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.processor-board .processor-job-viewport th {
-  background: hsl(var(--card));
-  box-shadow: 0 1px 0 hsl(var(--border));
-}
-
-@media (max-width: 767px) {
-  .processor-board .processor-job-viewport {
-    max-height: min(var(--processor-viewport-height, 34rem), 70vh);
-    border-radius: 0;
-  }
+.processor-board .processor-filter {
+  transition: background-color 180ms, box-shadow 180ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .processor-board,
-  .processor-board::before,
-  .processor-board::after,
   .processor-board *,
   .processor-board *::before,
   .processor-board *::after {
     animation: none !important;
     transition: none !important;
-    scroll-behavior: auto !important;
-  }
-
-  .processor-board button,
-  .processor-board button:hover,
-  .processor-board .processor-review-button svg {
-    transform: none !important;
   }
 }
