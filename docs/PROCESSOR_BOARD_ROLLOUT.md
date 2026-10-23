@@ -48,6 +48,10 @@ older sections below. Those sections remain as history.
    (adds `processor_board_status`, `processor_customer_last_message` and
    `list_processor_board_jobs`; no table, RLS, index or lead change; the old
    `list_processor_jobs` stays for the current v10 Edge).
+1c. Apply `supabase/migrations/20261122002000_processor_board_stale_never_null.sql`
+   (defect fix: unchecked jobs whose customer has a CRM conversation returned
+   `ai_stale = NULL`, which made the CRM reject the whole page as "backend out of
+   date"; only `list_processor_board_jobs` changes). Apply after 1b.
 1b. Apply `supabase/migrations/20261122001000_processor_board_daily_check.sql`
    (lets a NULL actor save as the daily check, adds the candidate query, the
    dispatcher and the `processor-board-daily-check` cron entry). It does nothing
@@ -75,7 +79,8 @@ rollback footer of `20261122001000_processor_board_daily_check.sql`.
 ### Verification (local only)
 
 - SQL: `node scripts/test-processor-board-db.mjs <pglite dir>` applies every board
-  migration twice on isolated PGlite and runs harnesses 150–157: **128/128 PASS**.
+  migration twice on isolated PGlite and runs harnesses 150–158: **169/169 PASS**
+  (156 runs again after the `ai_stale` fix; 158 is its regression check).
   `156` covers scope, order, each status incl. Payment Overdue / promised date /
   approvals / Send Dose after completion, tech and customer staleness, counts,
   filter + search, RLS, visibility deny, excluded roles and admin. `157` covers daily

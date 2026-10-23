@@ -90,7 +90,12 @@ async function call(body: object, signal?: AbortSignal): Promise<unknown> {
 }
 export async function fetchProcessorJobs(filters: ProcessorFilters, signal?: AbortSignal): Promise<ProcessorQueue> {
   const parsed = processorQueueSchema.safeParse(await call({ action: "list", ...filters }, signal));
-  if (!parsed.success) throw new ProcessorReviewFailure("The Processor Board backend is out of date. Ask Admin to apply the latest Processor Board migration and deploy the processor-board function.", false, "backend_version");
+  if (!parsed.success) {
+    // Name the field (never its value) so a version mismatch or data defect can be traced.
+    const issue = parsed.error.issues[0];
+    const field = issue ? `${issue.path.join(".") || "response"} (${issue.message.toLowerCase()})` : "response";
+    throw new ProcessorReviewFailure(`The Processor Board backend sent data this page cannot read: ${field}. Ask Admin to check that every Processor Board migration is applied and the latest processor-board function is deployed.`, false, "backend_version");
+  }
   return parsed.data;
 }
 export const PROCESSOR_REVIEW_TIMEOUT_MS = 120_000;

@@ -47,7 +47,11 @@ describe("Processor Board contract", () => {
     await expect(fetchProcessorJobs({ offset: 0, search: "", timezone: "America/New_York", aiStatus: "take_job_update" })).resolves.toMatchObject({ total: 1, counts: { take_job_update: 1 } });
     expect(invoke).toHaveBeenCalledWith("processor-board", expect.objectContaining({ body: { action: "list", offset: 0, search: "", timezone: "America/New_York", aiStatus: "take_job_update" } }));
     invoke.mockResolvedValue({ data: { rows: [{ ...job, board_status: undefined }], total: 1, observed_at: "x", timezone: "America/New_York" }, error: null });
-    await expect(fetchProcessorJobs({ offset: 0, search: "", timezone: "America/New_York", aiStatus: null })).rejects.toMatchObject({ code: "backend_version", retryable: false });
+    await expect(fetchProcessorJobs({ offset: 0, search: "", timezone: "America/New_York", aiStatus: null })).rejects.toMatchObject({ code: "backend_version", retryable: false, message: expect.stringContaining("rows.0.board_status") });
+    invoke.mockResolvedValue({ data: { rows: [{ ...job, ai_stale: null, customer_name: "Secret Name" }], total: 1, all_total: 1, counts: {}, observed_at: "x", timezone: "America/New_York" }, error: null });
+    const failure = fetchProcessorJobs({ offset: 0, search: "", timezone: "America/New_York", aiStatus: null });
+    await expect(failure).rejects.toMatchObject({ message: expect.stringContaining("rows.0.ai_stale") });
+    await expect(failure).rejects.not.toMatchObject({ message: expect.stringContaining("Secret Name") });
   });
   it("bounds stalled checks and reports uncertain server completion rather than fabricated success", async () => {
     vi.useFakeTimers();
