@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { claimWorkflowAlert, loadAlertCursor, saveAlertCursor, setWorkflowSounds, workflowSoundsEnabled } from "./workflow-alerts";
+import { claimWorkflowAlert, loadAlertCursor, pollAlertDelay, saveAlertCursor, setWorkflowSounds, workflowSoundsEnabled } from "./workflow-alerts";
 beforeEach(() => {
   localStorage.clear();
   Object.defineProperty(navigator, "locks", { configurable: true, value: { request: (_key: string, action: () => unknown) => Promise.resolve(action()) } });
