@@ -36,6 +36,11 @@ try {
   await db.exec(daily);
   await db.exec(daily);
   results.push(...await db.exec(await sql("supabase/tests/157_processor_board_daily_check.sql")));
+  const staleFix = await sql("supabase/migrations/20261122002000_processor_board_stale_never_null.sql");
+  await db.exec(staleFix);
+  await db.exec(staleFix);
+  results.push(...await db.exec(await sql("supabase/tests/156_processor_board_lead_window_statuses.sql")));
+  results.push(...await db.exec(await sql("supabase/tests/158_processor_board_stale_never_null.sql")));
   const checks = results.flatMap((r) => r.rows).filter((r) => r.name && r.result);
   console.table(checks);
   if (!checks.length || checks.some((c) => c.result !== "PASS")) throw new Error("Processor Board SQL behavioral harness failed");
