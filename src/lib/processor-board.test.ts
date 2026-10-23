@@ -7,6 +7,15 @@ const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: 
 const now = new Date("2026-10-15T18:00:00Z");
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("Processor Board contract", () => {
+  it.each(["2026-10-15", "2026-10-25"])("uses schedule %s, not a review blocker, for a legacy no-outcome result", (date) => {
+    const reviewed: ProcessorJob = { ...job, scheduled_date: date, assessment: { status: "needs_review", review_reason: "no_verified_update", evidence: [], messages_reviewed: 4, matched_messages: 1, matched_technician_messages: 1, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: now.toISOString(), summary: "No verified outcome", lead_updated_at: job.updated_at } };
+    expect(processorStatus(reviewed, "America/New_York", now)).toBe(date === "2026-10-15" ? "take_job_update" : "scheduled");
+    expect(processorReviewMessage(reviewed, "America/New_York", now)).toContain("not an AI-confirmed outcome");
+    expect(processorStatusOrigin(reviewed, "America/New_York", now)).toBe("Schedule rule · AI found no verified job update");
+    expect(processorStatus({ ...reviewed, assessment: { ...reviewed.assessment!, review_reason: "job_attribution" } }, "America/New_York", now)).toBe("needs_review");
+    expect(processorStatus({ ...reviewed, assessment: { ...reviewed.assessment!, review_reason: "mirror_incomplete" } }, "America/New_York", now)).toBe("needs_review");
+    expect(reviewed.status).toBe("scheduled");
+  });
   it("retains a supported previous completion without treating it as a fresh check or a new assignment's result", () => {
     const reviewed: ProcessorJob = { ...job, checked_at: now.toISOString(), assessment: { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1 completed", message_id: "done", message_time: now.toISOString(), sender: "customer" }], messages_reviewed: 4, matched_messages: 1, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: now.toISOString(), summary: "Verified", lead_updated_at: job.updated_at } };
     const later = new Date(now.getTime() + 300001);

@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ProcessorBoardPage from "./ProcessorBoardPage";
-import { ProcessorReviewFailure, type ProcessorJob } from "@/lib/processor-board";
+import { PROCESSOR_ACTION_HELP, ProcessorReviewFailure, type ProcessorJob } from "@/lib/processor-board";
 const state = vi.hoisted(() => ({ role: "processor", canTechChat: true, chat: vi.fn(), assess: vi.fn(), hook: vi.fn(), refetch: vi.fn() }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "actor" }, role: state.role, canAccess: () => state.canTechChat }) }));
 vi.mock("@/lib/quo-chat", () => ({ fetchQuoChatThread: state.chat, sendQuoChatMessage: vi.fn() }));
@@ -29,6 +29,29 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("Processor Board interactions", () => {
+  it.each(["2026-01-01", "2099-01-01"])("keeps no-outcome job %s in its schedule action filter without claiming progress", (date) => {
+    const assessment = { ...reviewResult(), status: "needs_review", review_reason: "no_verified_update", matched_technician_messages: 1, ai_used: true };
+    state.hook.mockReturnValue({ data: { rows: [{ ...job, scheduled_date: date, assessment, checked_at: assessment.checked_at }], total: 1 } });
+    mount();
+    const row = screen.getAllByRole("row")[1];
+    expect(row).toHaveTextContent(date === "2026-01-01" ? "Take Job Update" : "No action yet");
+    expect(row).toHaveTextContent("No verified work update yet");
+    expect(row).not.toHaveTextContent("Needs Review");
+    expect(row).not.toHaveTextContent("Job In Progress");
+    fireEvent.change(screen.getByLabelText("Filter this page"), { target: { value: date === "2026-01-01" ? "take_job_update" : "scheduled" } });
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("JOB-1001");
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it.each(Object.entries(PROCESSOR_ACTION_HELP))("explains %s on keyboard focus without invoking AI", async (status, help) => {
+    mount();
+    const button = screen.getByLabelText("Action counts on this page").querySelector<HTMLButtonElement>(`button[data-processor-status="${status}"]`)!;
+    fireEvent.focus(button);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(help);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("advisory action, not a saved status change");
+    fireEvent.keyDown(button, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
+    expect(state.assess).not.toHaveBeenCalled();
+  });
   it("keeps long diagnostics collapsed once while exposing the next action and job-only controls", async () => {
     const summary = "Synthetic long diagnostic history and filtering explanation.";
     const assessment = { ...reviewResult(), summary, matched_technician_messages: 0, context_technician_messages: 0 };

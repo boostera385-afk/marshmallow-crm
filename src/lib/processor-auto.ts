@@ -1,7 +1,18 @@
 import { currentAssessment, processorReviewSignature, processorSetupIssue, type ProcessorJob } from "./processor-board";
+import { phoneKey } from "../../supabase/functions/_shared/processor-job-status";
 
 export type ProcessorAutoAttempt = { signature: string; retryAt: number; failures: number };
 export type ProcessorAutoAttempts = Map<string, ProcessorAutoAttempt>;
+export type ProcessorReviewFocus = { id: string; identity: string; lastMessageAt: string | null };
+export function processorReviewFocus(job: ProcessorJob, timezone: string): ProcessorReviewFocus {
+  return { id: job.id, identity: `${job.id}:${job.updated_at}:${timezone}:${phoneKey(job.tech_number)}:${job.chat_setup?.conversation_id ?? ""}`, lastMessageAt: job.chat_setup?.last_message_at ?? null };
+}
+export function processorFocusHasActivity(focus: ProcessorReviewFocus, job: ProcessorJob, timezone: string): boolean {
+  const next = processorReviewFocus(job, timezone);
+  const at = Date.parse(next.lastMessageAt ?? "");
+  const before = Date.parse(focus.lastMessageAt ?? "");
+  return next.identity === focus.identity && Number.isFinite(at) && (!Number.isFinite(before) || at > before);
+}
 
 /** Existing UI clock drives this planner: no per-row timer or unbounded retry loop. */
 export function automaticProcessorJobs(jobs: ProcessorJob[], timezone: string, now: Date, attempts: ProcessorAutoAttempts): ProcessorJob[] {
