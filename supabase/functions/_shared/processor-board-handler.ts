@@ -42,7 +42,7 @@ export function createProcessorBoardHandler(deps: {
       if (error || !data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.rows) || !data.rows.every(isQueueJob)) return json({ error: "Processor Board database setup is unavailable. Ask Admin to check the reviewed migration." }, 503);
       const rows = data.rows;
       const phones = rows.flatMap((row) => { const phone = phoneKey(row.tech_number); return phone ? [phone] : []; });
-      const monitoring = { ai_configured: Boolean(deps.env("OPENAI_API_KEY")), current_history_configured: Boolean(deps.env("QUO_API_KEY")), evidence_policy: 6 };
+      const monitoring = { ai_configured: Boolean(deps.env("OPENAI_API_KEY")), current_history_configured: Boolean(deps.env("QUO_API_KEY")), evidence_policy: 7 };
       try {
         const chats = await readProcessorChats(caller, phones, monitoring.current_history_configured);
         return json({ ...data, monitoring, rows: rows.map((row) => ({ ...row, chat_setup: chats.get(phoneKey(row.tech_number) ?? "")?.setup ?? null })) });
@@ -99,7 +99,7 @@ export function createProcessorBoardHandler(deps: {
       // Do not claim mirror completeness/freshness if latest metadata is ahead of the available messages.
       if (!directKey && conversation?.last_message_time && Date.parse(conversation.last_message_time) > Date.parse(messages.at(-1)?.message_time ?? "")) return json({ error: "The conversation mirror is behind its latest activity. Sync Quo before reviewing non-response." }, 422);
       const peerIdentities = peers.map((p) => ({ id: p.id, job_id: p.job_id, customer_name: p.customer_name, customer_phone: p.customer_phone, address: p.address }));
-      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, chat: chat.setup.fingerprint, policy: 6 });
+      const inputHash = await hash({ job, peers: peerIdentities, messages, timezone, source, chat: chat.setup.fingerprint, policy: 7 });
       const { data: cache, error: cacheError } = await service.from("processor_job_assessments").select("input_hash,result,checked_at").eq("lead_id", job.id).maybeSingle();
       if (cacheError) throw new Error("Saved assessment could not be read.");
       if (cache?.input_hash === inputHash && now.getTime() - Date.parse(cache.checked_at) < 60_000) return json({ result: cache.result, cached: true });
@@ -111,7 +111,7 @@ export function createProcessorBoardHandler(deps: {
       // Another job/generic reply changes silence timing, not this job's AI facts.
       // Re-read all current history, but reuse extraction when target text is identical.
       const selectedContext = extractable.filter((message) => contextual_ids.has(message.id)).map((message) => message.id).sort();
-      const evidenceHash = await hash({ job, peers: peerIdentities, extractable, contextual: selectedContext, timezone, source, link: chat.link, policy: 6 });
+      const evidenceHash = await hash({ job, peers: peerIdentities, extractable, contextual: selectedContext, timezone, source, link: chat.link, policy: 7 });
       let evidence = cache?.result?.evidence_hash === evidenceHash
         ? verifyJobEvidence(cache.result.evidence, job, peers, extractable, timezone, now, matches, contextual_ids) : null;
       if (!evidence) {
@@ -141,13 +141,20 @@ export function createProcessorBoardHandler(deps: {
         }
       }
       let status = deriveJobStatus(job, evidence, messages, true, now, timezone);
+      let reviewReason: "job_attribution" | "no_verified_update" | "mirror_incomplete" | undefined;
       // A complete mirror read is not proof of complete Quo ingestion. Never accuse non-response from it.
-      if (status === "send_dose" && !directKey) status = "needs_review";
+      if (status === "send_dose" && !directKey) { status = "needs_review"; reviewReason = "mirror_incomplete"; }
       const direct = diagnostics.matched_technician_messages;
       const contextual = diagnostics.context_technician_messages;
       const unassigned = diagnostics.unattributed_technician_messages;
       const replyCount = direct + contextual;
+      // Another job's chat or an uninterpretable update is not a successful job
+      // finding. Keep saved payment/progress workflows independent of AI evidence.
+      if (!replyCount && unassigned) reviewReason = "job_attribution";
+      else if (extractable.length && !evidence.some((e) => e.signal !== "update_request")) reviewReason = "no_verified_update";
+      if (reviewReason && !["payment_pending", "partial_paid", "job_in_progress"].includes(job.status)) status = "needs_review";
       const result = { status, evidence, evidence_hash: evidenceHash, ai_used: extractable.length > 0, matched_technician_messages: direct, context_technician_messages: contextual, unattributed_technician_messages: unassigned, technician_text_messages: diagnostics.technician_text_messages, call_event_messages: diagnostics.call_event_messages, extraction_messages: extractable.length, chat_fingerprint: chat.setup.fingerprint, chat_source: chat.setup.source, messages_reviewed: messages.length, matched_messages: relevant.length,
+        ...(reviewReason ? { review_reason: reviewReason } : {}),
         ai_scope: "latest_job_messages_and_keywords", ai_recent_limit: PROCESSOR_RECENT_AI_MESSAGES, ai_messages_omitted: aiOmitted,
         source, history_complete: Boolean(directKey), timezone, checked_at: now.toISOString(),
         summary: `${directKey ? "The saved Tech Quick Chat conversation was read from current Quo history; all available text-history pages were included." : "The webhook-stored Tech Quick Chat mirror was read; completeness is not verified. Non-response cannot be established without QUO_API_KEY."} ${replyCount ? `${direct} technician repl${direct === 1 ? "y" : "ies"} name this job directly${contextual ? `; ${contextual} more follow this job's saved dispatch in the same thread and are context-attributed` : ""}.` : "No technician text reply is tied to this job."} ${unassigned ? `${unassigned} technician repl${unassigned === 1 ? "y was" : "ies were"} not tied to this job (they may concern another job).` : ""} Call recordings, transcripts, summaries and reactions are not counted as replies. ${evidence.length ? "Only verified job-specific quotes are shown; verify context-attributed replies in Quo before acting." : "No acceptance, progress or completion is verified yet."} ${!extractable.length ? "No AI extraction was needed because no technician reply is tied to this job. " : ""}Review the verified chat manually when attribution is missing.`,

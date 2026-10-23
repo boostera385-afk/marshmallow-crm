@@ -48,6 +48,21 @@ function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; 
   return { request, rpc, reads, fetcher, tables };
 }
 describe("Processor Board server boundary", () => {
+  it("does not reuse the previous technician's chat after this job is reassigned", async () => {
+    const s = setup();
+    s.tables.leads = [{ ...job, tech_number: "4155550188", updated_at: "2026-10-15T17:00:00Z" }];
+    const response = await s.request();
+    expect(response.status).toBe(422);
+    expect(s.fetcher).not.toHaveBeenCalled();
+    expect(s.rpc.mock.calls.some(([name]) => name === "save_processor_job_assessment")).toBe(false);
+  });
+  it("does not accept model completion from negated source wording", async () => {
+    const s = setup();
+    s.tables.quo_messages[0].text = "JOB-1001 is not completed yet";
+    const response = await s.request();
+    expect((await response.json()).result).toMatchObject({ status: "needs_review", review_reason: "no_verified_update", evidence: [], ai_used: true });
+    expect(s.tables.leads).toEqual([job]);
+  });
   it("filters the provider payload to latest job messages and keywords while retaining response timing history", async () => {
     const s = setup();
     s.tables.quo_messages.push(...Array.from({ length: 50 }, (_, i) => ({ id: `chatter-${i}`, conversation_id: "mirror", sender: "customer", text: `JOB-1001 fixture colour note ${i}`, message_time: `2026-10-15T16:${String(i + 1).padStart(2, "0")}:00Z` })));
@@ -70,7 +85,7 @@ describe("Processor Board server boundary", () => {
     s.tables.quo_messages.push(...Array.from({ length: 25 }, (_, i) => ({ id: `chatter-${i}`, conversation_id: "mirror", sender: "customer", text: `JOB-1001 fixture note ${i}`, message_time: `2026-10-15T16:${String(i + 1).padStart(2, "0")}:00Z` })));
     const result = await (await s.request()).json();
     expect(result.result.evidence).toEqual([]);
-    expect(result.result.status).toBe("take_job_update");
+    expect(result.result).toMatchObject({ status: "needs_review", review_reason: "no_verified_update" });
   });
   it.each(["customer_service", "cs_admin", "opr", "opr_admin"])("rejects %s before reading leads/chats or invoking AI", async (role) => {
     const s = setup({ role }); expect((await s.request()).status).toBe(403); expect(s.reads).toEqual(["user_roles"]); expect(s.fetcher).not.toHaveBeenCalled();
@@ -110,7 +125,7 @@ describe("Processor Board server boundary", () => {
     ];
     const response = await s.request(); expect(response.status).toBe(200);
     const result = (await response.json()).result;
-    expect(result).toMatchObject({ status: "take_job_update", evidence: [], ai_used: false, matched_technician_messages: 0, context_technician_messages: 0, unattributed_technician_messages: 1, extraction_messages: 0 });
+    expect(result).toMatchObject({ status: "needs_review", review_reason: "job_attribution", evidence: [], ai_used: false, matched_technician_messages: 0, context_technician_messages: 0, unattributed_technician_messages: 1, extraction_messages: 0 });
     expect(result.summary).toContain("No technician text reply is tied to this job");
     expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(0);
   });
@@ -178,7 +193,7 @@ describe("Processor Board server boundary", () => {
   it("does not invoke or claim AI when the complete chat only identifies another job", async () => {
     const s = setup(); s.tables.quo_messages[0].text = "JOB-1002 is completed and ready for payment.";
     const response = await s.request(); expect(response.status).toBe(200);
-    expect((await response.json()).result).toMatchObject({ status: "take_job_update", ai_used: false, matched_messages: 0, evidence: [] });
+    expect((await response.json()).result).toMatchObject({ status: "needs_review", review_reason: "job_attribution", ai_used: false, matched_messages: 0, evidence: [] });
     expect(s.fetcher.mock.calls.filter(([url]) => String(url).includes("openai"))).toHaveLength(0);
     expect(s.tables.leads).toEqual([job]);
   });
@@ -208,7 +223,7 @@ describe("Processor Board server boundary", () => {
     const response = await s.request({ action: "list" }); expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.rows).toHaveLength(25); expect(payload.total).toBe(25);
-    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true, evidence_policy: 6 });
+    expect(payload.monitoring).toEqual({ ai_configured: true, current_history_configured: true, evidence_policy: 7 });
     expect(payload.rows.every((row: { chat_setup: { state: string } }) => row.chat_setup.state === "ready")).toBe(true);
     expect(s.reads).toEqual(["user_roles", "technicians", "quo_conversations"]);
     expect(s.rpc.mock.calls.map(([name]) => name)).toEqual(["list_processor_jobs"]);

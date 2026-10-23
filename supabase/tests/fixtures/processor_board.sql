@@ -15,6 +15,7 @@ CREATE FUNCTION public.has_role(uuid,public.app_role_old) RETURNS boolean LANGUA
 CREATE TABLE public.profiles(id uuid PRIMARY KEY,full_name text);
 CREATE TABLE public.lead_status_visibility(user_id uuid,role public.app_role,status text,is_visible boolean);
 CREATE TABLE public.leads(id uuid PRIMARY KEY,job_id text,customer_name text,customer_phone text,service_type text,address text,city text,state text,tech_name text,tech_number text,scheduled_date date,scheduled_time_start time,scheduled_time_end time,customer_schedule_requirements text,terms text,status text,updated_at timestamptz DEFAULT now(),created_at timestamptz DEFAULT now());
+ALTER TABLE public.leads ADD COLUMN half_address text;
 CREATE TABLE public.quo_conversations(id uuid PRIMARY KEY,last_message_time timestamptz);
 CREATE TABLE public.activity_logs(id uuid DEFAULT gen_random_uuid(),user_id uuid,user_name text,action text,target_type text,target_id text,details text);
 ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;

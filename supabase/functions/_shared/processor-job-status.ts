@@ -204,6 +204,14 @@ export function verifyJobEvidence(value: unknown, job: JobIdentity, peers: JobPe
     if ((signal === "update_request") !== (message.sender === "agent")) return [];
     if (signal === "update_request" && message.status !== "delivered") return [];
     if (signal !== "update_request" && message.sender !== "customer") return [];
+    // Defense in depth for common English negation/future wording, even if the
+    // model quotes an affirmative substring from it. Other wording still needs
+    // the model's semantic review; never claim a lexical filter proves accuracy.
+    if (["completed", "progress"].includes(signal)) {
+      const outcome = signal === "completed" ? "(?:done|finish\\w*|complet\\w*)" : "(?:start\\w*|work(?:ing)?|arriv\\w*)";
+      const uncertain = new RegExp(`\\b(?:not|never|haven't|hasn't|isn't|wasn't|didn't|will|might|may|going to|plan to)\\s+(?:\\w+\\s+){0,3}${outcome}\\b`, "i");
+      if (uncertain.test(message.text)) return [];
+    }
     // A prior visit for the same customer cannot establish this appointment's outcome.
     if (["progress", "completed"].includes(signal) && (!job.scheduled_date || localDateTime(new Date(message.message_time), timezone).slice(0, 10) < job.scheduled_date)) return [];
     return [{ signal, quote: quote.trim().slice(0, 1000), message_id: message.id, message_time: message.message_time, sender: message.sender,

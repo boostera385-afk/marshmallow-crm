@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { schedulePassed } from "../../supabase/functions/_shared/processor-job-status";
-import { PROCESSOR_ACTIVE, PROCESSOR_TERMINAL, processorReadiness } from "../../supabase/functions/_shared/processor-review";
+import { PROCESSOR_ACTIVE, PROCESSOR_TERMINAL, processorReadiness, processorWorkflowMessage } from "../../supabase/functions/_shared/processor-review";
 export { processorReadiness, processorWorkflowMessage } from "../../supabase/functions/_shared/processor-review";
 
 export const PROCESSOR_STATUSES = ["take_job_update", "job_in_progress", "payment_pending", "send_dose", "needs_review", "unavailable", "scheduled"] as const;
@@ -12,8 +12,8 @@ export const PROCESSOR_STATUS_UI: Record<ProcessorStatus, { label: string; actio
   payment_pending: { label: "Payment Pending", action: "Review completion and follow the existing payment approval workflow.", color: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
   send_dose: { label: "Send Dose", action: "Review the unanswered request and follow up manually in Quo. Nothing is sent automatically.", color: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300" },
   needs_review: { label: "Needs Review", action: "Verify the saved schedule and job-specific conversation.", color: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300" },
-  unavailable: { label: "Unavailable", action: "Sync or verify the technician chat, then retry. No outcome was inferred.", color: "border-border bg-muted text-muted-foreground" },
-  scheduled: { label: "Scheduled", action: "The saved appointment has not started in the selected timezone.", color: "border-border bg-muted text-muted-foreground" },
+  unavailable: { label: "Needs Review", action: "Sync or verify the technician chat, then retry. No outcome was inferred.", color: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300" },
+  scheduled: { label: "No action yet", action: "Appointment upcoming. No progress or completion has been verified.", color: "border-border bg-muted/30 text-muted-foreground" },
 };
 const nullableText = z.string().nullable();
 export const processorChatSetupSchema = z.object({
@@ -27,10 +27,11 @@ export const processorAssessmentSchema = z.object({
   matched_technician_messages: z.number().int().nonnegative().optional(), context_technician_messages: z.number().int().nonnegative().optional(), unattributed_technician_messages: z.number().int().nonnegative().optional(), technician_text_messages: z.number().int().nonnegative().optional(), call_event_messages: z.number().int().nonnegative().optional(), extraction_messages: z.number().int().nonnegative().optional(),
   source: z.string(), history_complete: z.boolean(), ai_used: z.boolean().optional(), chat_fingerprint: z.string().optional(), chat_source: z.enum(["saved_link", "verified_mirror"]).optional(), timezone: z.string(), checked_at: z.string(), summary: z.string(), lead_updated_at: z.string(),
   ai_scope: z.literal("latest_job_messages_and_keywords").optional(), ai_recent_limit: z.number().int().positive().optional(), ai_messages_omitted: z.number().int().nonnegative().optional(),
+  review_reason: z.enum(["job_attribution", "no_verified_update", "mirror_incomplete"]).optional(),
 });
 export const processorJobSchema = z.object({
   id: z.string().uuid(), job_id: z.string(), customer_name: z.string(), customer_phone: nullableText,
-  service_type: nullableText, address: nullableText, city: nullableText, state: nullableText,
+  service_type: nullableText, address: nullableText, half_address: nullableText.optional(), city: nullableText, state: nullableText,
   tech_name: nullableText, tech_number: nullableText, scheduled_date: nullableText, scheduled_time_start: nullableText, scheduled_time_end: nullableText,
   customer_schedule_requirements: nullableText, terms: nullableText, status: z.string(), updated_at: z.string(),
   assessment: processorAssessmentSchema.nullable(), checked_at: nullableText,
@@ -70,12 +71,20 @@ export const assessProcessorJob = async (leadId: string, timezone: string) => {
     clearTimeout(timeout);
   }
 };
-export function currentAssessment(job: ProcessorJob, timezone: string, now: Date) {
+/** An old check may still describe this exact assignment, but is not fresh. */
+export function compatibleProcessorAssessment(job: ProcessorJob, timezone: string) {
   const a = job.assessment;
-  return a && (!job.chat_setup || a.chat_fingerprint === job.chat_setup.fingerprint) && a.timezone === timezone && Date.parse(a.lead_updated_at) === Date.parse(job.updated_at) && now.getTime() - Date.parse(a.checked_at) < 5 * 60_000 ? a : null;
+  return a && Number.isFinite(Date.parse(a.checked_at)) && (!job.chat_setup || a.chat_fingerprint === job.chat_setup.fingerprint) && a.timezone === timezone && Date.parse(a.lead_updated_at) === Date.parse(job.updated_at) ? a : null;
+}
+export function currentAssessment(job: ProcessorJob, timezone: string, now: Date) {
+  const a = compatibleProcessorAssessment(job, timezone);
+  const age = a ? now.getTime() - Date.parse(a.checked_at) : -1;
+  // The UI clock ticks every 30s; a response can arrive just after its snapshot.
+  // Bound that small skew, but never accept a materially future-dated result.
+  return a && age >= -30_000 && age < 5 * 60_000 ? a : null;
 }
 export function processorSetupIssue(job: ProcessorJob): string | null {
-  return processorReadiness(job) || (job.chat_setup && job.chat_setup.state !== "ready" ? job.chat_setup.message : null);
+  return processorReadiness(job) || (!job.tech_name?.trim() ? "Technician name missing — verify the assigned technician on the saved job." : null) || (job.chat_setup && job.chat_setup.state !== "ready" ? job.chat_setup.message : null);
 }
 export function processorAttributionMessage(job: ProcessorJob, timezone: string, now: Date): string | null {
   const a = currentAssessment(job, timezone, now);
@@ -103,17 +112,42 @@ export function processorStatus(job: ProcessorJob, timezone: string, now: Date):
   if (job.status === "payment_pending" || job.status === "partial_paid") return "payment_pending";
   const assessment = currentAssessment(job, timezone, now);
   if (assessment) {
+    const unlinked = (assessment.matched_technician_messages ?? 0) + (assessment.context_technician_messages ?? 0) === 0 && (assessment.unattributed_technician_messages ?? 0) > 0;
+    if (job.status !== "job_in_progress" && (assessment.review_reason || unlinked)) return "needs_review";
     if (job.status === "job_in_progress" && ["scheduled", "take_job_update"].includes(assessment.status)) return "job_in_progress";
     return assessment.status === "scheduled" && schedulePassed(job, now, timezone) ? "take_job_update" : assessment.status;
   }
   if (job.status === "job_in_progress") return "job_in_progress";
+  const previous = compatibleProcessorAssessment(job, timezone);
+  // Keep supported outcomes visible as PREVIOUS evidence while rechecking. Never
+  // keep an old non-response accusation actionable or reuse a changed assignment.
+  if (previous && Date.parse(previous.checked_at) <= now.getTime()) {
+    if (previous.status === "payment_pending" && previous.evidence.some((e) => e.signal === "completed")) return "payment_pending";
+    if (previous.status === "job_in_progress" && previous.evidence.some((e) => e.signal === "progress")) return "job_in_progress";
+    if (["needs_review", "unavailable", "send_dose"].includes(previous.status)) return "needs_review";
+  }
+  if ((job.checked_at || job.assessment) && !previous) return "needs_review";
   if (!PROCESSOR_ACTIVE.includes(job.status)) return "needs_review";
   return schedulePassed(job, now, timezone) ? "take_job_update" : job.scheduled_date && job.scheduled_time_start ? "scheduled" : "needs_review";
+}
+/** Short, readable remediation on the row; detailed evidence stays in Review. */
+export function processorReviewMessage(job: ProcessorJob, timezone: string, now: Date): string | null {
+  const setup = processorSetupIssue(job);
+  if (setup) return setup;
+  const a = currentAssessment(job, timezone, now);
+  if (a?.review_reason === "job_attribution" || (a && (a.matched_technician_messages ?? 0) + (a.context_technician_messages ?? 0) === 0 && (a.unattributed_technician_messages ?? 0) > 0)) return "Cannot confidently match this technician's update to this job. Review the chat.";
+  if (a?.review_reason === "no_verified_update") return "No clear progress or completion was verified. Review this job's messages.";
+  if (a?.review_reason === "mirror_incomplete") return "Current chat history is unavailable. Verify the unanswered request manually.";
+  if ((job.checked_at || job.assessment) && !compatibleProcessorAssessment(job, timezone)) return "Job, assigned technician, schedule or conversation changed. Recheck this job; previous evidence is not current.";
+  if (!a && compatibleProcessorAssessment(job, timezone)) return "Previous result · refresh due. Rechecking uses only this job and its assigned technician.";
+  return processorWorkflowMessage(job.status);
 }
 /** The status's authority is separate from whether an AI request ran. */
 export function processorStatusOrigin(job: ProcessorJob, timezone: string, now: Date): string {
   const assessment = currentAssessment(job, timezone, now);
   const status = processorStatus(job, timezone, now);
+  const previous = compatibleProcessorAssessment(job, timezone);
+  if (!assessment && previous && ((status === "payment_pending" && previous.evidence.some((e) => e.signal === "completed")) || (status === "job_in_progress" && previous.evidence.some((e) => e.signal === "progress")))) return `Previous ${previous.ai_used ? "AI evidence" : "result"} · ${status === "payment_pending" ? "technician completion" : "technician progress"} · refresh due`;
   const review = !assessment ? job.checked_at ? "previous check stale · refresh AI" : "not AI checked"
     : assessment.ai_used === true ? assessment.evidence.length ? "AI reviewed source quotes" : "AI found no verified job update"
       : assessment.ai_used === false ? "no AI used" : "AI usage not recorded";

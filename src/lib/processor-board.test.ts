@@ -1,12 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { canAccessNavItem } from "./access";
-import { currentAssessment, processorStatus, processorStatusOrigin, processorWorkflowMessage, processorReadiness, assessProcessorJob, fetchProcessorJobs, type ProcessorJob } from "./processor-board";
+import { compatibleProcessorAssessment, currentAssessment, processorStatus, processorStatusOrigin, processorReviewMessage, processorWorkflowMessage, processorReadiness, assessProcessorJob, fetchProcessorJobs, type ProcessorJob } from "./processor-board";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke } } }));
 const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1", customer_name: "John Sample", customer_phone: null, address: null, city: null, state: null, service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-10-15", scheduled_time_start: "10:00:00", scheduled_time_end: null, customer_schedule_requirements: null, terms: null, status: "scheduled", updated_at: "2026-10-15T10:00:00Z", checked_at: null, assessment: null };
 const now = new Date("2026-10-15T18:00:00Z");
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("Processor Board contract", () => {
+  it("retains a supported previous completion without treating it as a fresh check or a new assignment's result", () => {
+    const reviewed: ProcessorJob = { ...job, checked_at: now.toISOString(), assessment: { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1 completed", message_id: "done", message_time: now.toISOString(), sender: "customer" }], messages_reviewed: 4, matched_messages: 1, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: now.toISOString(), summary: "Verified", lead_updated_at: job.updated_at } };
+    const later = new Date(now.getTime() + 300001);
+    expect(currentAssessment(reviewed, "America/New_York", later)).toBeNull();
+    expect(processorStatus(reviewed, "America/New_York", later)).toBe("payment_pending");
+    expect(processorStatusOrigin(reviewed, "America/New_York", later)).toContain("Previous AI evidence");
+    const reassigned = { ...reviewed, tech_number: "4155550188", updated_at: later.toISOString() };
+    expect(compatibleProcessorAssessment(reassigned, "America/New_York")).toBeNull();
+    expect(processorStatus(reassigned, "America/New_York", later)).toBe("needs_review");
+    expect(processorReviewMessage(reassigned, "America/New_York", later)).toContain("assigned technician");
+    expect(processorStatus(reviewed, "America/Chicago", later)).toBe("needs_review");
+  });
+  it("never keeps expired Send Dose actionable and rejects materially future checks", () => {
+    const reviewed: ProcessorJob = { ...job, assessment: { status: "send_dose", evidence: [], messages_reviewed: 4, matched_messages: 1, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: now.toISOString(), summary: "Unanswered request", lead_updated_at: job.updated_at } };
+    expect(processorStatus(reviewed, "America/New_York", new Date(now.getTime()+300001))).toBe("needs_review");
+    expect(currentAssessment({ ...reviewed, assessment: { ...reviewed.assessment!, checked_at: new Date(now.getTime()+60000).toISOString() } }, "America/New_York", now)).toBeNull();
+  });
   it("bounds stalled checks and reports uncertain server completion rather than fabricated success", async () => {
     vi.useFakeTimers();
     invoke.mockImplementationOnce((_name, options) => new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("Aborted")))));
@@ -44,8 +61,8 @@ describe("Processor Board contract", () => {
   it("retires old, changed-job and wrong-timezone AI evidence", () => {
     const reviewed = { ...job, assessment: { status: "payment_pending" as const, evidence: [], messages_reviewed: 4, matched_messages: 1, source: "mirror", history_complete: false, timezone: "America/New_York", checked_at: now.toISOString(), summary: "Reviewed", lead_updated_at: job.updated_at } };
     expect(processorStatus(reviewed, "America/New_York", now)).toBe("payment_pending");
-    expect(processorStatus(reviewed, "America/Chicago", now)).toBe("take_job_update");
-    expect(processorStatus({ ...reviewed, updated_at: now.toISOString() }, "America/New_York", now)).toBe("take_job_update");
+    expect(processorStatus(reviewed, "America/Chicago", now)).toBe("needs_review");
+    expect(processorStatus({ ...reviewed, updated_at: now.toISOString() }, "America/New_York", now)).toBe("needs_review");
     expect(processorStatus(reviewed, "America/New_York", new Date(now.getTime() + 300001))).toBe("take_job_update");
   });
   it("fails closed on invalid transport rather than rendering fabricated jobs", async () => {

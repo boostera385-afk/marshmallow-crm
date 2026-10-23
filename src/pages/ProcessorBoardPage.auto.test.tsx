@@ -33,6 +33,19 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("automatic tracking while the board is open", () => {
+  it("shows checking and queued states on opening, not a fabricated Scheduled AI finding", async () => {
+    state.rows = [{ ...job, scheduled_date: "2099-01-01" }, { ...job, id: "second", job_id: "JOB-AUTO-2", scheduled_date: "2099-01-02" }];
+    let finish!: () => void;
+    state.assess.mockImplementationOnce((id: string) => new Promise((resolve) => { finish = () => resolve(reviewed(id)); }));
+    mount();
+    fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
+    expect(screen.getAllByText("Checking…", { exact: true })).toHaveLength(2);
+    expect(screen.getAllByText("Queued for check", { exact: true })).toHaveLength(2);
+    expect(screen.queryByText("No action yet", { exact: true })).not.toBeInTheDocument();
+    expect(state.assess).toHaveBeenCalledExactlyOnceWith(job.id, "America/New_York");
+    await act(async () => finish());
+    await waitFor(() => expect(state.assess).toHaveBeenCalledTimes(2));
+  });
   it("remembers explicit confirmation on reopening without sharing it with another caller", async () => {
     const first = mount();
     fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));

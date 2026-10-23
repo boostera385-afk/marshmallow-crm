@@ -4,14 +4,16 @@ const version = JSON.parse(readFileSync(new URL("../../public/extension-release.
 const USER = "00000000-0000-4000-8000-000000000001";
 const LEAD = "00000000-0000-4000-8000-000000000002";
 const openFilters = async (page: Page) => page.getByText("Filters & tracking", { exact: true }).first().click();
-async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean; noEvidence?: boolean; context?: boolean; chatGrant?: boolean; failChat?: boolean } = {}) {
+async function isolatedBoard(page: Page, role = "processor", fail = false, options: { setup?: boolean; retryOnce?: boolean; showcase?: boolean; auto?: boolean; noEvidence?: boolean; context?: boolean; chatGrant?: boolean; failChat?: boolean; location?: "full" | "partial" | "missing"; missingChat?: boolean } = {}) {
   const actions: Record<string, unknown>[] = [];
   let reviewed = false;
   let failures = 0;
   const row = () => ({ id: LEAD, job_id: "JOB-1001", customer_name: "John Sample", customer_phone: "4155550101", service_type: "Garage Door Service", address: "10 Sample St Apt 2", city: "Miami", state: "FL", tech_name: "Alex Technician", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only; call before arrival", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: reviewed ? new Date().toISOString() : null,
     assessment: reviewed ? { status: options.noEvidence ? "take_job_update" : "payment_pending", evidence: options.noEvidence ? [] : [{ signal: "completed", quote: options.context ? "I finished the installation and cleaned up." : "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer", identity_basis: options.context ? "thread_context" : undefined }], matched_technician_messages: options.noEvidence || options.context ? 0 : 1, context_technician_messages: options.context ? 2 : 0, unattributed_technician_messages: options.noEvidence ? 8 : 0, extraction_messages: options.noEvidence ? 0 : 1, messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, ai_used: !options.noEvidence, chat_fingerprint: options.auto ? "verified-setup" : undefined, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: options.noEvidence ? "No verified technician outcome for this job. Generic replies were not assigned to the nearest dispatch." : "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
     chat_setup: options.auto ? { state: "ready", code: "ready", message: "Exact saved technician chat verified", fingerprint: "verified-setup", conversation_id: "00000000-0000-4000-8000-000000000010", last_message_at: null, source: "verified_mirror", chat_url: "https://my.quo.com/inbox/PN12345678/c/CN12345678" } : undefined,
-    ...(options.setup ? { tech_number: null, scheduled_date: null, scheduled_time_start: null } : {}) });
+    ...(options.setup ? { tech_number: null, scheduled_date: null, scheduled_time_start: null } : {}),
+    ...(options.location ? { city: null, state: null, address: options.location === "full" ? "House 10, Sample Street" : null, half_address: options.location === "partial" ? "House 12, Side Street" : null } : {}),
+    ...(options.missingChat ? { chat_setup: { state: "blocked", code: "missing_chat_link", message: "Chat not found — verify the assigned technician number and saved conversation.", fingerprint: "blocked", conversation_id: null, last_message_at: null, source: null } } : {}) });
   const rows = () => {
     const base = row();
     if (!options.showcase) return [base];
@@ -32,7 +34,7 @@ async function isolatedBoard(page: Page, role = "processor", fail = false, optio
     if (!url.hostname.endsWith("supabase.co")) return route.abort();
     if (url.pathname.endsWith("/functions/v1/processor-board")) {
       const body = route.request().postDataJSON(); actions.push(body);
-      if (body.action === "list") { const jobs = rows(); return route.fulfill({ json: { rows: jobs, total: jobs.length, observed_at: new Date().toISOString(), timezone: body.timezone, monitoring: options.auto ? { ai_configured: true, current_history_configured: true, evidence_policy: 5 } : undefined } }); }
+      if (body.action === "list") { const jobs = rows(); return route.fulfill({ json: { rows: jobs, total: jobs.length, observed_at: new Date().toISOString(), timezone: body.timezone, monitoring: options.auto ? { ai_configured: true, current_history_configured: true, evidence_policy: 7 } : undefined } }); }
       if (fail || (options.retryOnce && failures++ === 0)) return route.fulfill({ status: 503, json: { error: "Synthetic AI provider unavailable. Previous review retained.", code: "ai_provider", retryable: true } });
       reviewed = true; return route.fulfill({ json: { result: row().assessment, cached: false } });
     }
@@ -62,6 +64,31 @@ async function isolatedBoard(page: Page, role = "processor", fail = false, optio
     localStorage.setItem(`donut-release-notice:${id}:${version}`, "shown");
   }, { id: USER, version });
   return actions;
+}
+for (const width of [1440, 390]) {
+  for (const location of ["full", "partial", "missing"] as const) test(`saved ${location} customer location is honest at ${width}px without extra requests`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const actions = await isolatedBoard(page, "processor", false, { location });
+    await page.goto("/processor-board");
+    const expected = location === "full" ? "House 10, Sample Street" : location === "partial" ? "House 12, Side Street" : "Job location missing";
+    const text = page.getByText(expected, { exact: true }).filter({ visible: true });
+    await expect(text).toBeVisible();
+    if (location !== "missing") await expect(page.getByText("Job location missing")).toHaveCount(0);
+    expect(actions.filter((a) => a.action === "assess")).toHaveLength(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await page.screenshot({ path: test.info().outputPath(`processor-location-${location}-${width}.png`), fullPage: true });
+  });
+  test(`missing assigned technician chat has readable remediation at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const actions = await isolatedBoard(page, "processor", false, { auto: true, missingChat: true });
+    await page.goto("/processor-board");
+    await page.getByLabel("Confirm schedule timezone").check();
+    const note = page.getByText("Chat not found — verify the assigned technician number and saved conversation.", { exact: true }).filter({ visible: true });
+    await expect(note).toBeVisible();
+    expect(await note.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+    await expect(page.getByRole("button", { name: "Refresh AI · this page" })).toBeDisabled();
+    expect(actions.filter((a) => a.action === "assess")).toHaveLength(0);
+  });
 }
 for (const width of [1440, 390]) test(`Processor reviews the correct job and evidence at ${width}px without changing lead status`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });

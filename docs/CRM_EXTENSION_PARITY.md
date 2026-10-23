@@ -6,7 +6,7 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Flow | CRM | Donut | Shared authority / verification |
 | --- | --- | --- | --- |
 | Technician intelligence | Technicians → Processing Workflow; map selection up to 8 | Native Technician Intelligence panel for the captured phone, reviewed-label saving, full-workflow link for batch selection/flag approvals/chat actions | `technician-chat-assessment`: Admin/Processor only; identical AI prompt, evidence checks, counts and labels. Missing history is unavailable, not misconduct. |
-| Processor Board | `/processor-board`: assigned-job radar, newest schedules first, four advisory actions, saved-status filters, exact check date/time, explicit AI-versus-rule labels and timezone-confirmed open-board tracking; job-dispatch context attribution and a pinned read-only internal CRM chat viewer | No native scheduled-job board/job-specific assessment action; existing technician-wide intelligence is separate. Donut sources and v1.7.0 artifacts unchanged | Authenticated `processor-board` **v6 ACTIVE**, JWT verification retained and all nine source files read back exactly. Caller-token scope, leases, revision-checked advisory save and atomic audit preserved. No new migration, lead/status/approval writes or messages. New internal-chat UI still needs CRM Publish; signed-in/provider QA is separate. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
+| Processor Board | `/processor-board`: newest-schedule radar, four advisory actions, explicit AI/rule/saved sources, exact check times, job-specific chat and timezone-confirmed automatic tracking. 2026-10-23 follow-up adds honest pending/review/stale labels, saved address fallback and Urgent-leads-style density | No native board/job-specific assessment action; existing technician-wide intelligence is separate. Donut v1.7.0 sources/artifacts unchanged | Live: authenticated `processor-board` **v8 ACTIVE**, policy 7, JWT verification retained. `20261023041010_processor_board_review_visibility.sql` applied with approval as remote `20261023043949`; six-role lead-visibility matrices unchanged. CRM Publish and signed-in QA separate. Caller scope, leases, revision-checked advisory save, audit and approvals preserved. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
 | Technician flags | Admin applies; Processor requests review | Opens full workflow for the same reviewed actions | Existing `request_technician_change` approval RPC and technician flag trigger; never write flags directly in Donut. |
 | Urgent lead review | Latest customer agreement, corrections and missing details | Same check; displays issues, corrections and flags; opens saved-lead review for confirmed corrections/approval | `check-urgent-lead`, urgent verification/review RPCs and database status gate. No duplicate prompt or approval bypass. |
 | Address lookup / map coordinates | Authenticated Census-only lookup and preserved units | Same function for Find Address, coverage preview and submission coordinates | `geocode-lead-address`: only Census coordinates may be cached/persisted for the free map. Google or unlabelled points are rejected by both clients. Preserve Apt/Suite/Unit/#. |
@@ -43,6 +43,32 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## Processor Board honest review / location fallback (2026-10-23; database + Edge installed)
+
+CRM follows the Urgent leads compact panel styling, shows Checking / Queued for
+check on startup rather than an unverified Scheduled AI finding, retains supported
+previous evidence for the unchanged assigned technician with explicit stale labels,
+and shows readable Needs Review reasons. Source/evidence labels distinguish AI,
+schedule rules and saved statuses. Customer location falls back through saved
+city/state, full address and partial `half_address`; no guessed/persisted location
+or per-row geocoding. NSS was a wording error, not a new filter requirement.
+
+Applied with user approval via MCP:
+`supabase/migrations/20261023041010_processor_board_review_visibility.sql` keeps
+incomplete scheduled records visible for repair and includes partial addresses in
+the existing invoker, scoped, 25-row RPC (remote migration **20261023043949**).
+Harness 155 is disposable-only; exact full-schema baseline 40 ran before and after,
+with all six-role matrix cells unchanged. Edge `processor-board` **v8 ACTIVE**,
+policy 7, JWT verification kept; all nine files read back exactly and boundary
+probes 401/401/200. Twelve live non-persistent checks passed; advisor summaries
+remain unchanged (existing warnings are not claimed resolved). CRM Publish and
+signed-in QA are separate. No record
+status, schedule, approval, lead RLS, generated enum or outbound-send change.
+
+Donut has no native board/job-specific action; the separate technician-wide
+intelligence stays unchanged. No extension release or manual ZIP install is needed.
+See the latest `docs/PROCESSOR_BOARD_ROLLOUT.md` section for rollback and efficiency.
+
 ## Processor Board compact view, assigned-schedules queue and AI input filter (2026-10-22; migration + Edge v7 APPLIED)
 
 CRM-only round: source audit reconfirmed no Donut Processor Board, job queue or
@@ -57,8 +83,8 @@ artifacts are unchanged, so no ZIP release is required.
   number plus appointment date/start time; incomplete jobs remain in All Jobs for
   repair. New migration
   `supabase/migrations/20261022111039_processor_board_assigned_schedules_only.sql`
-  is idempotent, authorization/RLS-preserving and **still needs manual
-  application** (harness 154 must be run alongside).
+   is idempotent, authorization/RLS-preserving and was applied as recorded below.
+   Its historical behavior is tested before the new 2026-10-23 replacement.
 - The AI provider payload is narrowed to the last 20 job-linked messages plus
   older update-keyword matches, with attribution before selection and full-history
   identity/silence checks kept on the server. Edge `processor-board` **v7 is
