@@ -29,7 +29,7 @@
 }
 
 .processor-board .processor-panel {
-  background: linear-gradient(180deg, hsl(var(--card) / 0.94), hsl(var(--muted) / 0.32));
+  background: linear-gradient(180deg, hsl(var(--card) / 0.86), hsl(var(--muted) / 0.28));
 }
 
 .processor-board .processor-titlebar {
@@ -77,8 +77,31 @@ html:not(.dark) .processor-board .processor-filter {
 
 .processor-board .processor-row > td:first-child,
 .processor-board article.processor-row {
-  box-shadow: inset 3px 0 0 hsl(var(--processor-tone) / 0.55);
+  box-shadow: inset 2px 0 0 hsl(var(--processor-tone) / 0.25);
 }
+
+.processor-board .processor-table table {
+  min-width: 980px;
+}
+
+.processor-board .processor-table th:nth-child(1) { width: 14%; }
+.processor-board .processor-table th:nth-child(2) { width: 12%; }
+.processor-board .processor-table th:nth-child(3) { width: 12%; }
+.processor-board .processor-table th:nth-child(4) { width: 23%; }
+.processor-board .processor-table th:nth-child(5) { width: 14%; }
+.processor-board .processor-table th:nth-child(6) { width: 12%; }
+.processor-board .processor-table th:nth-child(7) { width: 7%; }
+.processor-board .processor-table th:nth-child(8) { width: 6%; }
+
+.processor-board .processor-cell-status time,
+.processor-board .processor-cell-status [aria-label="Last checked date and time"] {
+  display: inline;
+  font-size: 9px;
+}
+
+.processor-board .processor-cell-status time::after { content: " · "; }
+
+.processor-board .processor-row { border-color: hsl(var(--border) / 0.4); }
 
 .processor-board .processor-row:focus-within {
   background-color: hsl(var(--processor-tone) / 0.07);

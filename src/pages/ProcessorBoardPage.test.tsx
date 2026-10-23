@@ -12,12 +12,13 @@ vi.mock("@/lib/processor-board", async (load) => ({ ...await load<object>(), ass
 const job: ProcessorJob = { id: "00000000-0000-4000-8000-000000000001", job_id: "JOB-1001", customer_name: "John Sample", customer_phone: null, address: "10 Sample St", city: "Miami", state: "FL", service_type: "Repair", tech_name: "Alex", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: null, assessment: null };
 const reviewResult = () => ({ status: "take_job_update", evidence: [], messages_reviewed: 10, matched_messages: 1, source: "Quo current history", history_complete: true, ai_used: false, timezone: "America/New_York", lead_updated_at: job.updated_at, checked_at: new Date().toISOString(), summary: "No verified technician update" });
 function mount() {
-  const view = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>);
+  const viewClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(<QueryClientProvider client={viewClient}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>);
   const options = screen.queryByText("Filters & tracking", { exact: true });
   if (options) fireEvent.click(options);
   const confirm = screen.queryByLabelText("Confirm schedule timezone");
   if (confirm) fireEvent.click(confirm);
-  return view;
+  return { ...view, client: viewClient };
 }
 beforeEach(() => {
   sessionStorage.clear();
@@ -28,6 +29,56 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("Processor Board interactions", () => {
+  it.each(["assignment", "chat"])("does not attach an in-flight old result after the %s changes", async (change) => {
+    const setup = { state: "ready" as const, code: "ready", message: "Verified", fingerprint: "old-chat", conversation_id: "00000000-0000-4000-8000-000000000123", last_message_at: null, source: "verified_mirror" as const };
+    const original = { ...job, chat_setup: setup };
+    state.hook.mockReturnValue({ data: { rows: [original], total: 1 }, isFetching: false, refetch: state.refetch });
+    let finish!: (response: { result: ReturnType<typeof reviewResult> & { chat_fingerprint: string } }) => void;
+    state.assess.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const view = mount();
+    const key = ["processor-board", "actor", "processor", { offset: 0, search: "", history: false, timezone: "America/New_York" }];
+    view.client.setQueryData(key, { rows: [original], total: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI · this page" }));
+    expect(state.assess).toHaveBeenCalledTimes(1);
+    const changed = change === "assignment" ? { ...original, tech_number: "4155550188", updated_at: "2026-10-23T12:00:00Z" } : { ...original, chat_setup: { ...setup, fingerprint: "new-chat" } };
+    view.client.setQueryData(key, { rows: [changed], total: 1 });
+    finish({ result: { ...reviewResult(), chat_fingerprint: "old-chat" } });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 reviewed"));
+    const cached = view.client.getQueryData<{ rows: ProcessorJob[] }>(key)!;
+    expect(cached.rows[0].assessment).toBeNull();
+    expect(cached.rows[0].tech_number).toBe(changed.tech_number);
+    expect(cached.rows[0].chat_setup?.fingerprint).toBe(changed.chat_setup.fingerprint);
+  });
+  it("keeps supported previous completion visible with a stale label and its original quotes", () => {
+    const checked_at = new Date(Date.now() - 10 * 60_000).toISOString();
+    state.hook.mockReturnValue({ data: { rows: [{ ...job, checked_at, assessment: { ...reviewResult(), status: "payment_pending", checked_at, ai_used: true, evidence: [{ signal: "completed", message_id: "done", message_time: checked_at, sender: "customer", quote: "JOB-1001 is completed" }] } }], total: 1 } });
+    mount();
+    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
+    expect(cell).toHaveTextContent("Payment Pending");
+    expect(cell).toHaveTextContent("Previous AI result · refresh due");
+    fireEvent.click(screen.getAllByRole("button", { name: "Review JOB-1001" })[0]);
+    expect(screen.getByRole("dialog")).toHaveTextContent("This is not a fresh check");
+    expect(screen.getByRole("dialog")).toHaveTextContent("JOB-1001 is completed");
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it("shows saved full and partial job addresses instead of falsely reporting missing area", () => {
+    state.hook.mockReturnValue({ data: { rows: [{ ...job, city: null, state: null, address: "House 10, Sample Street" }, { ...job, id: "00000000-0000-4000-8000-000000000002", job_id: "JOB-1002", city: null, state: null, address: null, half_address: "House 12, Side Street" }], total: 2 } });
+    mount();
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(within(rows[0]).getAllByRole("cell")[4]).toHaveTextContent("House 10, Sample Street");
+    expect(within(rows[1]).getAllByRole("cell")[4]).toHaveTextContent("House 12, Side Street");
+    expect(screen.queryByText("Job location missing")).not.toBeInTheDocument();
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it("keeps missing-chat remediation readable on the row without spending AI", () => {
+    const message = "Chat not found — verify the technician number and saved conversation.";
+    state.hook.mockReturnValue({ data: { rows: [{ ...job, chat_setup: { state: "blocked", code: "missing_chat_link", message, fingerprint: "blocked", conversation_id: null, last_message_at: null, source: null } }], total: 1 } });
+    mount();
+    const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
+    expect(cell).toHaveTextContent("Needs Review");
+    expect(within(cell).getByText(message)).not.toHaveClass("line-clamp-1");
+    expect(state.assess).not.toHaveBeenCalled();
+  });
   it("opens as a compact job table with optional filters closed and technician identity in its own column", async () => {
     render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><ProcessorBoardPage /></MemoryRouter></QueryClientProvider>);
     const options = screen.getByText("Filters & tracking", { exact: true }).closest("details");
@@ -226,7 +277,7 @@ describe("Processor Board interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     const cell = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[3];
     expect(cell).toHaveTextContent("Previous check just now");
-    expect(cell).toHaveTextContent("Unavailable");
+    expect(cell).toHaveTextContent("Needs Review");
     expect(cell.closest("tr")).toHaveAttribute("data-processor-status", "unavailable");
   });
   it("shows technician identity and schedule, and opens this job's evidence instead of another job", () => {
@@ -260,7 +311,7 @@ describe("Processor Board interactions", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Synthetic provider unavailable"));
     expect(screen.queryAllByLabelText("Review JOB-1001")).toHaveLength(0);
     expect(actionCard).toHaveTextContent("0");
-    expect(screen.getByRole("dialog")).toHaveTextContent("Unavailable");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Needs Review");
   });
   it("searches with debounce, changes page on action, and exposes recovery on load failure", async () => {
     mount(); fireEvent.change(screen.getByRole("textbox", { name: "Search jobs or technicians" }), { target: { value: "John" } });

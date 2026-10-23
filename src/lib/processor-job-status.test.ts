@@ -9,6 +9,11 @@ function evidence(messages: JobMessage[], signal = "completed") {
   return verifyJobEvidence(messages.map((m) => ({ signal, message_id: m.id, quote: m.text })), job, [job, peer], messages, "America/New_York", now);
 }
 describe("Processor job isolation", () => {
+  it.each(["JOB-1001 is not completed yet", "JOB-1001 will be completed tomorrow", "JOB-1001 might finish later"])("rejects a false affirmative completion selected by the model: %s", (text) => {
+    const messages = [message(text)];
+    expect(evidence(messages)).toEqual([]);
+    expect(deriveJobStatus(job, evidence(messages), messages, true, now, "America/New_York")).toBe("take_job_update");
+  });
   it("keeps John's completion separate from the other jobs in Alex's chat", () => {
     const messages = [message("JOB-1002 is completed and ready for payment.")];
     expect(evidence(messages)).toEqual([]);

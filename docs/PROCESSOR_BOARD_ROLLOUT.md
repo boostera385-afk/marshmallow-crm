@@ -1,5 +1,123 @@
 # Processor Board
 
+## Urgent-leads-style panel and honest job review (2026-10-23; database + Edge installed, CRM publication pending)
+
+This supersedes the incomplete-row hiding and five-minute display fallback below.
+The user subsequently explicitly approved the Supabase application/deployment and
+remote commit. CRM publication and signed-in provider QA remain separate.
+
+Applied through MCP to Marshmallow `kxiqholnmhkwhdkhtopp`:
+`processor_board_review_visibility` (remote version **20261023043949**, exact local
+migration SHA-256 `4e7b9859be60aa48b151665026bdd469802ab8080b6ba344012285576ba298b4`)
+and `processor-board` **v8 ACTIVE**, evidence policy 7, `verify_jwt: true`.
+All nine deployed files were read back exactly against local source; bundle SHA-256
+`f648df9c531508bcbc5e5a3df6c8c4eb672f3862f0f3e84c81178e13879918b8`.
+No-token/invalid-token/preflight probes returned **401/401/200**. All **12** live
+non-persistent verification checks passed (exact scoped total, page bound, partial
+address projection, incomplete job search, terminal exclusions, invoker/grants and
+the Processor/four excluded role gates). The exact baseline harness 40 ran before
+and after application; all six-role matrix cells match, not just grand totals.
+The reviewed baseline only writes a temporary result table and rolls back; the
+write-based customer-data fixture/harness 155 was NOT run on production.
+
+Read-only pre-application snapshot: 706 matching radar jobs, seven incomplete
+scheduled records newly visible, and 652 records with full saved address text but
+blank city/state. These are timestamped audit counts, not fixed expected totals.
+Existing security/performance advisor summaries are unchanged, not zero findings;
+pre-existing warnings were not repaired or grants broadened as part of this task.
+Relevant existing advisor documentation:
+[RLS with no policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+The board's service-only refresh-lock table deliberately has no browser policy.
+Rollback Edge v7, previous RPC definition, exact source payload, before/after
+matrices, advisor snapshots and verification proof are saved outside the repository
+under `processor-review-release-20261023` in the approved OpenCode temporary directory.
+
+- Keep the Urgent leads panel's restrained glass surface, compact heading/count,
+  small coloured tags, light row accents, contained scroll and small refresh
+  action. Search is below the list. Technician name/number, appointment time and
+  exact check timestamps remain readable; attention reasons wrap instead of
+  disappearing behind a tooltip. Dark/light, keyboard and reduced-motion support
+  remain. No new status dropdown, assistant panel or automatic outbound action.
+- Opening a confirmed, enabled board starts existing serial automatic checks on
+  the loaded newest-first page, not all matching jobs. Unchecked eligible rows say
+  Checking / Queued for check, never Scheduled as an AI finding. A checked future
+  appointment with no actionable evidence says No action yet. The summary shows
+  loaded vs matching counts. Fresh evidence is reused; hidden/paused tabs and
+  caller/assignment changes still retire queued work.
+- Missing/ambiguous chats and failures use Needs Review with a readable next step.
+  Edge evidence policy **7** adds structured job-attribution/no-verified-update/
+  mirror-incomplete reasons; no attributable reply spends zero AI calls. Saved
+  progress/payment workflows are distinct from AI confirmation. Negated/future
+  English outcomes receive an additional conservative source-text check; this is
+  not a promise of model accuracy or a replacement for reviewing quoted evidence.
+- A supported completion/progress check for the exact unchanged assignment can
+  remain visible as Previous AI result after five minutes, with refresh due. It
+  is never counted as fresh, and expired Send Dose is not actionable. Revision,
+  timezone or chat-fingerprint changes invalidate the old result. In-flight UI
+  saves also require the original revision/fingerprint before attaching evidence.
+  The existing 30-second UI clock allows at most 30 seconds of response-clock
+  skew, not materially future-dated checks.
+- Location means saved CUSTOMER job location: city/state first, then the full
+  address unchanged, then `half_address` (including saved house/street details).
+  Incomplete parts are labelled; only exhaustion of all usable saved sources says
+  Job location missing / Update the saved address. No AI/geocode lookup, location
+  guess, map-coordinate change, lead update or bulk repair occurs on board reads.
+- A previously scheduled job must not disappear because its technician name,
+  number or date/start needs repair. New migration
+  `supabase/migrations/20261023041010_processor_board_review_visibility.sql`
+  retains these rows, projects/searches `half_address`, preserves terminal/history
+  and caller/status visibility gates, sorts dated appointments newest first with
+  deterministic ties and undated repairs last, and keeps exact totals/25-row pages.
+  NSS was a wording mistake; no NSS mapping or exclusion is being introduced.
+
+### Application and rollback
+
+1. Keep existing applied migration history; manually apply only the new migration
+   after `20261022111039_processor_board_assigned_schedules_only.sql` (remote
+   version `20261022113108`). **Already applied via approved MCP as 20261023043949;
+   do not apply it again merely because its remote timestamp differs.**
+2. Run `supabase/tests/155_processor_board_review_visibility.sql` only in a
+   disposable/test database; it inserts synthetic rows and rolls back. The runner
+   `node scripts/test-processor-board-db.mjs <PGlite installation directory>`
+   applies each migration twice and checks harnesses 150, 153, 154 and 155 in order.
+   Inspect all PASS/FAIL rows. Existing 154 verifies the previous version before
+   155 verifies the replacement; it is not the final-function contract anymore.
+3. The exact `supabase/tests/40_leads_rls_baseline.sql` matrices were compared
+   before/after approved live application in the full schema; all cells match.
+   No production customer rows were inserted or updated for verification.
+4. Deploy the changed `processor-board` bundle with approval (JWT verification
+   retained), then publish CRM and do signed-in/provider QA. **v8 is deployed and
+   verified**; CRM Publish and real signed-in/provider QA remain pending. A stale
+   policy-6 backend would show a banner instead of silently claiming the new checks.
+5. Roll back only the RPC definition using the previous assigned-schedules-only
+   migration and restore the previous Edge/frontend sources together if required.
+   This hides incomplete rows again; no customer records were altered or need repair.
+
+Permission/parity review: fixed Admin/Processor UI/helper/server gates, invoker RPC,
+lead/assessment RLS, save/audit leases and generated database types/enums remain
+unchanged. No new columns/tables or grants; `half_address` already exists. Donut
+has no native board or job-specific assessment action (source search reconfirmed),
+so no extension source/version/ZIP change or release is required.
+
+Efficiency: existing query keys, coalesced shared realtime and 30-second recovery
+reads remain; no new channel, worker, per-row request, upload or download. Location
+fallback costs zero extra API/AI/geocode calls in synthetic desktop/mobile cases
+(previously zero calls but a false missing-area placeholder). Checking a page still
+batches two chat-setup reads, with one serial assessment at a time and unchanged
+extraction reuse/backoff. Full-history reads and safety caps are preserved. SQL
+adds one existing text column to a bounded page and its search; no new index/RLS
+tuning without query-plan evidence. No production billing or model-accuracy savings
+are claimed.
+
+Final local validation: `npm run validate` passed (full lint **0 errors / 28
+existing warnings**, app/node typechecks, **1,033 tests across 111 files**, and
+production build with Donut v1.7.0 source/ZIP integrity verified). The final mocked
+Playwright board suite passed **37/37** desktop/mobile, light/dark, reduced-motion,
+location-fallback, readable-remediation, approval, failure/recovery and denied-role
+cases. The disposable PGlite runner passed **81/81** SQL checks, applying each
+migration twice. `git diff --check` is clean. These do not substitute for real
+signed-in/model-accuracy QA; no live customer assessment was triggered for testing.
+
 ## Compact simplified board, assigned-schedules-only queue and latest-message AI filter (2026-10-22; migration + Edge v7 APPLIED, CRM publication pending)
 
 Applied live on 2026-10-22 with explicit user approval via MCP: migration
