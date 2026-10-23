@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessNotifications } from "@/lib/access";
 import { fetchWorkflowAlerts, openInboxNotification } from "@/lib/workflow-inbox";
-import { claimWorkflowAlert, claimWorkflowChime, loadAlertCursor, saveAlertCursor } from "@/lib/workflow-alerts";
+import { claimWorkflowAlert, claimWorkflowChime, loadAlertCursor, pollAlertDelay, saveAlertCursor } from "@/lib/workflow-alerts";
 import { playAssignmentSound } from "@/lib/notification-sound";
 import { subscribeToNotifications, realtimeBus } from "@/lib/realtime";
 import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
