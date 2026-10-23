@@ -33,3 +33,12 @@ describe("persistent workflow alert claims", () => {
     expect(loadAlertCursor("user-b", "fallback")).toBe("fallback");
   });
 });
+describe("degraded backend polling backoff", () => {
+  it("polls normally when healthy and doubles the gap per failure up to the cap", () => {
+    expect(pollAlertDelay(0)).toBe(15000);
+    expect(pollAlertDelay(1)).toBe(30000);
+    expect(pollAlertDelay(2)).toBe(60000);
+    expect(pollAlertDelay(3)).toBe(120000);
+    expect(pollAlertDelay(10)).toBe(120000);
+  });
+});
