@@ -7,7 +7,7 @@ import { AlertTriangle, ArrowUpRight, ChevronLeft, ChevronRight, ListChecks, Loa
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessProcessorBoard } from "@/lib/access";
 import { useProcessorBoard, PROCESSOR_QUERY_KEY } from "@/hooks/useProcessorBoard";
-import { assessProcessorJob, compatibleProcessorAssessment, currentAssessment, processorAttributionMessage, processorHasTechnicianReply, processorSetupIssue, processorReviewMessage, processorReviewSignature, processorStatus, processorStatusOrigin, processorWorkflowMessage, ProcessorReviewFailure, PROCESSOR_ACTION_HELP, PROCESSOR_STATUS_UI, PROCESSOR_TIMEZONES, type ProcessorJob, type ProcessorStatus, type ProcessorQueue } from "@/lib/processor-board";
+import { assessProcessorJob, compatibleProcessorAssessment, currentAssessment, processorHasTechnicianReply, processorSetupIssue, processorRowSummary, processorReviewSignature, processorStatus, processorWorkflowMessage, ProcessorReviewFailure, PROCESSOR_ACTION_HELP, PROCESSOR_STATUS_UI, PROCESSOR_TIMEZONES, type ProcessorJob, type ProcessorStatus, type ProcessorQueue } from "@/lib/processor-board";
 import { automaticProcessorJobs, processorFocusHasActivity, processorReviewFocus, recordProcessorAttempt, type ProcessorAutoAttempts, type ProcessorReviewFocus } from "@/lib/processor-auto";
 import { STATUS_LABELS } from "@/lib/constants";
 import type { LeadStatus } from "@/types";
@@ -31,7 +31,7 @@ import "./ProcessorBoardPage.css";
 const EMPTY_JOBS: ProcessorJob[] = [];
 type ReviewIssue = { message: string; retryable: boolean; signature: string };
 type PendingReview = { jobs: ProcessorJob[]; focused: boolean };
-const PAGE_FILTERS = ["all", "setup", "unavailable", "needs_review", "scheduled", "take_job_update", "job_in_progress", "payment_pending", "send_dose"] as const;
+const PAGE_FILTERS = ["all", "setup", "needs_review", "take_job_update", "job_in_progress", "payment_pending", "send_dose"] as const;
 const ROW_LIMITS = [5, 10, 15, 25] as const;
 type PageFilter = typeof PAGE_FILTERS[number];
 const time = (value: string | null) => value ? `${Number(value.slice(0, 2)) % 12 || 12}:${value.slice(3, 5)} ${Number(value.slice(0, 2)) >= 12 ? "PM" : "AM"}` : "Time missing";
@@ -44,9 +44,11 @@ function JobLocation({ job }: { job: ProcessorJob }) {
   return <div className="text-muted-foreground"><p className="line-clamp-2 break-words" title={location.text}>{location.text}</p>{location.note && <p className="mt-0.5 text-[9px]">{location.note}</p>}</div>;
 }
 function StatusPill({ status, pending }: { status: ProcessorStatus; pending?: string | null }) {
+  if (pending) return <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Loader2 className={cn("h-3 w-3", pending === "Checking…" && "motion-safe:animate-spin")} aria-hidden="true" />{pending}</span>;
+  if (status === "scheduled") return <span className="block text-[11px] text-muted-foreground">Appointment upcoming</span>;
   const config = PROCESSOR_STATUS_UI[status];
-  return <Badge variant="outline" data-processor-status={status} className={cn("processor-status gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-medium", pending ? "border-border/60 bg-muted/20 text-muted-foreground" : config.color)}>
-    {pending ? <Loader2 className={cn("h-2.5 w-2.5", pending === "Checking…" && "motion-safe:animate-spin")} aria-hidden="true" /> : <span className="h-1 w-1 rounded-full bg-current" aria-hidden="true" />}{pending ?? config.label}</Badge>;
+  return <Badge variant="outline" data-processor-status={status} className={cn("processor-status gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-medium", config.color)}>
+    <span className="h-1 w-1 rounded-full bg-current" aria-hidden="true" />{config.label}</Badge>;
 }
 function CheckTime({ value, now, timezone, previous = false }: { value: string | null; now: Date; timezone: string; previous?: boolean }) {
   const timestamp = value ? Date.parse(value) : NaN;
@@ -81,6 +83,7 @@ function ProcessorBoard() {
   const manualQueued = queuedManualIds.length > 0;
   const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== "hidden");
   const [notice, setNotice] = useState("");
+  const [lastRun, setLastRun] = useState<{ summary: string; details: string } | null>(null);
   const [now, setNow] = useState(() => new Date());
   const inFlight = useRef(false);
   const stopRequested = useRef(false);
@@ -156,7 +159,11 @@ function ProcessorBoard() {
     return error?.signature === processorReviewSignature(job, filters.timezone) ? [[job.id, error] as const] : [];
   })), [rows, errors, filters.timezone]);
   const awaitingAutomaticCheck = (job: ProcessorJob) => autoTracking && pageVisible && !selected && !chatJob && !query.isError && query.data?.monitoring?.ai_configured && job.chat_setup?.state === "ready" && !compatibleProcessorAssessment(job, filters.timezone);
-  const displayStatus = (job: ProcessorJob): ProcessorStatus => job.chat_setup?.state === "unavailable" ? "unavailable" : processorSetupIssue(job) ? "needs_review" : issues.has(job.id) ? "unavailable" : (!timezoneConfirmed || awaitingAutomaticCheck(job)) && !["job_in_progress", "payment_pending", "partial_paid"].includes(job.status) ? "needs_review" : processorStatus(job, filters.timezone, now);
+  const displayStatus = (job: ProcessorJob): ProcessorStatus => {
+    if (processorSetupIssue(job) || issues.has(job.id) || ((!timezoneConfirmed || awaitingAutomaticCheck(job)) && !["job_in_progress", "payment_pending", "partial_paid"].includes(job.status))) return "needs_review";
+    const status = processorStatus(job, filters.timezone, now);
+    return status === "unavailable" ? "needs_review" : status;
+  };
   const savedStatuses = [...new Set([...rows.map((job) => job.status), ...(savedStatusFilter === "all" ? [] : [savedStatusFilter])])].sort();
   const visible = rows.filter((job) => (savedStatusFilter === "all" || job.status === savedStatusFilter) && (statusFilter === "all" || (statusFilter === "setup" ? !!processorSetupIssue(job) : displayStatus(job) === statusFilter)));
   // At most 25 rows: reuse exactly the displayed decision, not a second subtly
@@ -166,24 +173,18 @@ function ProcessorBoard() {
   const setupCount = rows.filter((job) => !!processorSetupIssue(job)).length;
   const retryableJobs = rows.filter((job) => !processorSetupIssue(job) && issues.get(job.id)?.retryable);
   const latestCheck = rows.reduce<string | null>((latest, job) => job.checked_at && Number.isFinite(Date.parse(job.checked_at)) && (!latest || Date.parse(job.checked_at) > Date.parse(latest)) ? job.checked_at : latest, null);
-  const reviewNote = (job: ProcessorJob) => processorSetupIssue(job) || issues.get(job.id)?.message || (!timezoneConfirmed ? `${["job_in_progress", "payment_pending", "partial_paid"].includes(job.status) ? "Saved lead status · not a fresh AI finding. " : ""}Schedule timezone not confirmed. Saved status is unchanged; confirm before checking evidence or relying on due/overdue rules.` : processorStatusOrigin(job, filters.timezone, now));
+  const reviewNote = (job: ProcessorJob) => processorSetupIssue(job) || issues.get(job.id)?.message || (!timezoneConfirmed ? "Confirm the schedule timezone before checking this job." : processorRowSummary(job, filters.timezone, now));
   const freshChecks = timezoneConfirmed ? rows.flatMap((job) => { const a = currentAssessment(job, filters.timezone, now); return a && !processorSetupIssue(job) && !issues.has(job.id) ? [a] : []; }) : [];
   const verifiedUpdates = freshChecks.filter(processorHasTechnicianReply).length;
   const contextUpdates = freshChecks.filter((a) => (a.context_technician_messages ?? 0) > 0 && !(a.matched_technician_messages ?? 0)).length;
   const jobStatus = (job: ProcessorJob, compact = false) => {
     const assessment = compatibleProcessorAssessment(job, filters.timezone);
-    const fresh = currentAssessment(job, filters.timezone, now);
     const pending = !assessment && !processorSetupIssue(job) && !issues.has(job.id) && timezoneConfirmed
       ? progress?.leadId === job.id ? "Checking…" : queuedManualIds.includes(job.id) ? "Queued for check" : awaitingAutomaticCheck(job) ? "Queued for check" : null : null;
-    const attention = timezoneConfirmed ? processorReviewMessage(job, filters.timezone, now) : null;
     return <div className={compact ? "processor-cell-status space-y-0.5" : "space-y-1.5"}>
     <CheckTime value={job.checked_at} now={now} timezone={filters.timezone} previous={!timezoneConfirmed || !!processorSetupIssue(job) || issues.has(job.id) || !currentAssessment(job, filters.timezone, now)} />
     <StatusPill status={displayStatus(job)} pending={pending} />
-    {assessment?.ai_used && <p className="text-[9px] text-primary">{!fresh || issues.has(job.id) || processorSetupIssue(job) ? "Previous AI result · refresh due" : assessment.ai_scope === "latest_job_messages_and_keywords" ? "AI · latest job updates + keywords" : "AI · previous review"}</p>}
-    <p title={reviewNote(job)} className={cn("text-[10px] leading-snug", compact && !attention && !issues.has(job.id) && !["needs_review", "unavailable"].includes(displayStatus(job)) && "line-clamp-1", issues.has(job.id) ? "text-destructive" : "text-muted-foreground")}>{reviewNote(job)}</p>
-    {attention && !processorSetupIssue(job) && <p className={cn("text-[10px] leading-snug", ["needs_review", "unavailable"].includes(displayStatus(job)) ? "font-medium text-violet-700 dark:text-violet-300" : "text-muted-foreground")}>{attention}</p>}
-    {!compact && timezoneConfirmed && processorAttributionMessage(job, filters.timezone, now) && <p className="text-[10px] leading-relaxed text-muted-foreground">{processorAttributionMessage(job, filters.timezone, now)}</p>}
-    {!compact && processorWorkflowMessage(job.status) && <p className="text-[10px] leading-relaxed text-muted-foreground">{processorWorkflowMessage(job.status)}</p>}
+    <p className={cn("text-[10px] leading-snug", issues.has(job.id) ? "text-destructive" : "text-muted-foreground")}>{reviewNote(job)}</p>
   </div>;
   };
   async function refreshAi(jobs: ProcessorJob[], skipFresh = false, automatic = false, focused = false) {
@@ -225,7 +226,12 @@ function ProcessorBoard() {
       // Recovery list reads must not keep completed AI controls locked. The query
       // owns read errors; individual successful results are already cached above.
       if (done) void queryClient.invalidateQueries({ queryKey: [...PROCESSOR_QUERY_KEY, user?.id, role] }).catch(() => { /* Query errors stay visible. */ });
-      if (mounted.current) setNotice(`${automatic ? "Automatic check: " : ""}${done - failed} reviewed · ${failed} failed · ${jobs.length - eligible.length} skipped (setup needed or evidence still fresh)${done < eligible.length ? ` · ${eligible.length - done} not started` : ""}. ${verified} with a technician reply tied to the job · ${done - failed - verified} without a tied technician reply. ${failed ? "See row details; retry failed jobs without rechecking successful reviews. " : ""}No lead statuses or messages were changed.`);
+      if (mounted.current) {
+        const summary = `${done - failed} checked · ${failed} failed${done < eligible.length ? ` · ${eligible.length - done} not started` : ""}. Saved statuses unchanged.`;
+        const details = `${automatic ? "Automatic check: " : ""}${done - failed} reviewed · ${failed} failed · ${jobs.length - eligible.length} skipped (setup needed or evidence still fresh)${done < eligible.length ? ` · ${eligible.length - done} not started` : ""}. ${verified} with a technician reply tied to the job · ${done - failed - verified} without a tied technician reply. ${failed ? "See row details; retry failed jobs without rechecking successful reviews. " : ""}No lead statuses or messages were changed.`;
+        setLastRun({ summary, details });
+        setNotice(summary);
+      }
     } finally {
       inFlight.current = false;
       activeJob.current = null;
@@ -305,7 +311,7 @@ function ProcessorBoard() {
       </div>
       {progress && <div role="status" className="space-y-2 px-4 py-3"><div className="flex justify-between text-xs text-muted-foreground"><span>{progress.automatic ? "Automatic · " : ""}{progress.job ? `Checking #${progress.job}` : "Preparing reviews"}</span><span>{progress.done} / {progress.total}</span></div><div role="progressbar" aria-label="Job review progress" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-gradient-to-r from-primary to-sky-400 motion-safe:transition-[width]" style={{ width: `${progress.total ? progress.done / progress.total * 100 : 0}%` }} /></div></div>}
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-1.5 text-[10px] text-muted-foreground">
-        <span className="flex items-start gap-1.5"><ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-primary" aria-hidden="true" /><span>{filters.history ? "Scheduled job history" : "Active scheduled jobs"} · AI suggestions only; saved statuses and approvals are unchanged.</span></span>
+        <span className="flex items-start gap-1.5"><ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-primary" aria-hidden="true" /><span>{filters.history ? "Scheduled job history" : "Unfinished scheduled-job radar"} · Includes other saved statuses, not just Scheduled. AI never changes saved statuses.</span></span>
         <span className="text-[11px] text-muted-foreground">{query.isFetching ? "Refreshing…" : query.data ? `Board read ${new Date(query.data.observed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not loaded"} · reads every 30s</span>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-1.5 text-[10px] text-muted-foreground" aria-label="Tracking summary">
@@ -358,14 +364,14 @@ function ProcessorBoard() {
         </div>
       </div>
       <details className="px-4 py-3 text-[11px] text-muted-foreground"><summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">How checks, freshness & timezone work</summary>
-        <div className="mt-2 space-y-1.5 leading-relaxed"><p>Schedule times use the timezone above, not the customer's state. AI reads the same saved Tech Quick Chat conversation shown on the lead: current Quo history when available, otherwise the webhook-stored CRM mirror. Call recordings, transcripts, summaries and reactions are not treated as technician replies; calls need manual review.</p>
+          <div className="mt-2 space-y-1.5 leading-relaxed"><p>Schedule times use the timezone above, not the customer's state. Checks use current Quo texts when available, otherwise saved Tech Quick Chat texts, plus saved structured call transcripts from the same verified technician chat. Only that job's attributable texts and speaker-verified call segments reach AI. Missing transcripts and unknown speakers are reported, never treated as a passed check. Summaries, audio alone and reactions are not proof.</p>
           <p>Previously scheduled jobs stay on radar until paid, cancelled or job done/completed. Incomplete scheduled records remain visible for repair; AI waits for a valid assigned technician number and appointment. Pending approvals and reschedules still require existing saved-record actions. Newest appointment date/time comes first; ties use newest job creation. Undated records appear last. Location uses saved city/state, then the full address, then the partial address; nothing is guessed or changed.</p>
           <p>AI interprets job-linked technician messages, not authorization. A reply that names the job is direct evidence; a reply that follows this job's unique saved dispatch in the same 1:1 thread is context-attributed and is labelled so it can be verified in Quo. A reply after another job's dispatch, or one that mentions another job, is never used. Each row identifies whether the action comes from AI evidence, the saved status or a schedule rule. An AI review with no job-linked reply is not a confirmed job outcome.</p>
           <p>Both manual and automatic checks require the saved schedules' timezone to be confirmed. Your explicit confirmation and tracking pause are remembered for this signed-in browser tab; changing the timezone requires confirmation again. The Schedule page stores plain date/time values and displays the browser's GMT offset; that is not proof that every saved job uses that timezone. No customer's timezone is inferred from a state or ZIP.</p>
           <p>After you confirm the schedule timezone, automatic checks cover this loaded page (up to 25 jobs), not every page or only the five rows in view. They react to saved conversation activity and the 30-second recovery read, reusing fresh results for 5 minutes. Explicit Refresh AI rechecks history even for recent results; unchanged evidence can still reuse server extraction. Opening Review pauses new page checks after the active request without invoking AI. Check this job queues only the selected job next and reuses its active request if already running. With tracking on, later chat activity rechecks only this job through Review/Tech Quick Chat; other page jobs stay paused. Closing returns to your previous tracking setting; closing an unstarted job check cancels it. A page-level manual takeover still pauses tracking explicitly. Hidden/closed tabs stop starting checks; an in-flight job may finish. No background worker runs. Setup failures wait for corrected saved details; transient failures retry with backoff.</p>
           <p>A missing technician-directory link can use one exact-number saved chat on the verified Technician Communications line. Conflicting links, wrong lines and invalid numbers are never guessed or repaired automatically.</p></div></details>
       </details>
-      {notice && <p role="status" className="mx-4 mt-3 rounded-lg border bg-muted/40 p-3 text-xs">{notice}</p>}
+      {notice && <div role="status" className="mx-4 mt-3 rounded-lg border bg-muted/40 p-3 text-xs"><p>{notice}</p>{lastRun?.summary === notice && <details className="mt-1 text-[10px] text-muted-foreground"><summary className="w-fit cursor-pointer">Check details</summary><p className="mt-1">{lastRun.details}</p></details>}</div>}
       {query.isError && <div role="alert" className="m-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm"><p>{query.error.message}</p><Button className="mt-3" variant="outline" onClick={() => void query.refetch()}>Retry loading board</Button></div>}
       {(statusFilter !== "all" || savedStatusFilter !== "all") && <div className="flex items-center gap-2 px-4 pt-3 text-xs">This page: {statusFilter === "all" ? "All actions" : statusFilter === "setup" ? "Setup needed" : PROCESSOR_STATUS_UI[statusFilter].label}{savedStatusFilter !== "all" ? ` · ${STATUS_LABELS[savedStatusFilter as LeadStatus] ?? savedStatusFilter}` : ""}<Button variant="ghost" size="sm" onClick={() => { setStatusFilter("all"); setSavedStatusFilter("all"); }}>Clear filter</Button></div>}
       <p id="processor-scroll-help" className="sr-only">{visible.length} matching jobs on this page · Scroll inside the list to see more. Rows in view only changes its height; AI refresh checks all matching jobs on this page.</p>

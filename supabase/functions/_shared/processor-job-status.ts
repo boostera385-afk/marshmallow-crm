@@ -5,17 +5,17 @@ export type JobIdentity = {
   scheduled_time_start: string | null; scheduled_time_end: string | null;
   status: string; updated_at: string; created_at: string;
 };
-export type JobMessage = { id: string; conversation_id: string; sender: string; text: string | null; message_time: string | null; status?: string | null };
+export type JobMessage = { id: string; conversation_id: string; sender: string; text: string | null; message_time: string | null; status?: string | null; source?: "call_transcript"; source_message_id?: string; call_id?: string };
 export type JobPeer = Pick<JobIdentity, "id" | "job_id" | "customer_name" | "customer_phone" | "address" | "tech_number">;
 export type JobSignal = "accepted" | "progress" | "completed" | "update_request";
-export type JobEvidence = { signal: JobSignal; quote: string; message_id: string; message_time: string; sender: string; identity_basis?: "source_message" | "thread_context" };
+export type JobEvidence = { signal: JobSignal; quote: string; message_id: string; message_time: string; sender: string; identity_basis?: "source_message" | "thread_context"; source?: "call_transcript"; source_message_id?: string; call_id?: string };
 export type ProcessorStatus = "take_job_update" | "job_in_progress" | "payment_pending" | "send_dose" | "needs_review" | "unavailable" | "scheduled";
 // Thread context is bounded: a reply days after the dispatch is not this job's update.
 export const JOB_CONTEXT_WINDOW_MS = 7 * 24 * 60 * 60_000;
-const CALL_EVENT_TEXT = /^(?:call (?:recording )?completed\.?|call summary completed\.?|call transcript:)/i;
+const CALL_EVENT_TEXT = /^(?:call (?:recording )?completed\.?|call summary(?: completed\.?|:)|call transcript(?: completed\.?|:))/i;
 const REACTION_TEXT = /^(?:reacted|liked)\b/i;
 const DISPATCH_TEXT = /(?:customer\s*(?:name|number|address)\s*:|customer\s*#\s*\d)/i;
-const JOB_ID_TEXT = /\bLD-[A-Z0-9]{5,}\b/i;
+const JOB_ID_TEXT = /\b(?:LD-[A-Z0-9]{5,}|JOB-[A-Z0-9]+(?:-[A-Z0-9]+)*)\b/i;
 /** Quo stores call recordings, transcripts, summaries and reactions as inbound rows. */
 export function isCallOrSystemEvent(message: JobMessage): boolean {
   if (typeof message.status === "string" && (message.status.startsWith("call.") || message.status === "no-answer")) return true;
@@ -54,6 +54,8 @@ export function jobAnchors(job: Pick<JobIdentity, "job_id" | "address" | "custom
 }
 /** Compile once per review, not once per message/quote. No cross-request identity cache. */
 export function createJobMatcher(job: JobPeer, peers: JobPeer[]): (text: string) => boolean {
+  const ownJobReference = normalize(job.job_id);
+  const jobReferences = new RegExp(JOB_ID_TEXT.source, "gi");
   const anchors = new Set(jobAnchors(job).filter((a) => !job.address || a !== normalize(job.address)));
   const peerAnchors = new Set<string>();
   const peerPhones = new Set<string>();
@@ -76,6 +78,9 @@ export function createJobMatcher(job: JobPeer, peers: JobPeer[]): (text: string)
   const addressBase = unit?.[1] ?? address;
   const unitPattern = addressBase ? new RegExp(` ${addressBase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} unit (\\S+)(?: |$)`, "g") : null;
   return (text) => {
+    // Unknown/out-of-scope peer IDs still mean another job. They need not be
+    // readable in the caller's peer roster to make this source ambiguous.
+    if ((text.match(jobReferences) ?? []).some((reference) => normalize(reference) !== ownJobReference)) return false;
     const haystack = ` ${normalize(text)} `;
     const addressText = ` ${normalizeAddress(text)} `;
     if (unitPattern && [...addressText.matchAll(unitPattern)].some((m) => m[1] !== unit?.[2])) return false;
@@ -148,10 +153,11 @@ export function attributeTechnicianReplies(job: JobIdentity, peers: JobPeer[], m
   for (const message of ordered) {
     const text = message.text;
     if (anchor && anchor.conversationId !== message.conversation_id) anchor = null;
+    if (message.source === "call_transcript" && message.sender === "unknown") { anchor = null; continue; }
     if (message.sender === "agent") {
       if (!text || isCallOrSystemEvent(message)) continue;
       if (matches(text)) {
-        anchor = message.status === "delivered" ? { id: message.id, at: Date.parse(message.message_time ?? ""), conversationId: message.conversation_id } : null;
+        anchor = message.status === "delivered" || message.source === "call_transcript" ? { id: message.id, at: Date.parse(message.message_time ?? ""), conversationId: message.conversation_id } : null;
         continue;
       }
       // A dispatch for another saved job or an unknown customer-details block ends
@@ -202,7 +208,7 @@ export function verifyJobEvidence(value: unknown, job: JobIdentity, peers: JobPe
     const identified = matches(message.text);
     if (!message.text.includes(quote.trim()) || (!identified && !contextual.has(message.id))) return [];
     if ((signal === "update_request") !== (message.sender === "agent")) return [];
-    if (signal === "update_request" && message.status !== "delivered") return [];
+    if (signal === "update_request" && (message.status !== "delivered" || message.source === "call_transcript")) return [];
     if (signal !== "update_request" && message.sender !== "customer") return [];
     // Defense in depth for common English negation/future wording, even if the
     // model quotes an affirmative substring from it. Other wording still needs
@@ -215,6 +221,7 @@ export function verifyJobEvidence(value: unknown, job: JobIdentity, peers: JobPe
     // A prior visit for the same customer cannot establish this appointment's outcome.
     if (["progress", "completed"].includes(signal) && (!job.scheduled_date || localDateTime(new Date(message.message_time), timezone).slice(0, 10) < job.scheduled_date)) return [];
     return [{ signal, quote: quote.trim().slice(0, 1000), message_id: message.id, message_time: message.message_time, sender: message.sender,
+      ...(message.source === "call_transcript" ? { source: message.source, source_message_id: message.source_message_id, call_id: message.call_id } : {}),
       ...(!identified ? { identity_basis: "thread_context" as const } : !matches(quote) ? { identity_basis: "source_message" as const } : {}) }];
   }).sort((a, b) => a.message_time.localeCompare(b.message_time));
 }
@@ -227,7 +234,7 @@ export function deriveJobStatus(job: JobIdentity, evidence: JobEvidence[], messa
   // Absence is only actionable after an explicitly identified acceptance AND a
   // specific unanswered request. Thread-context replies prevent an accusation, but
   // cannot by themselves prove the technician took this job.
-  const accepted = evidence.find((e) => (e.signal === "accepted" || e.signal === "progress") && e.identity_basis !== "thread_context");
+  const accepted = evidence.find((e) => (e.signal === "accepted" || e.signal === "progress") && e.identity_basis !== "thread_context" && e.source !== "call_transcript");
   const request = [...evidence].reverse().find((e) => e.signal === "update_request");
   if (schedulePassed(job, now, timezone) && accepted && request && request.message_time > accepted.message_time &&
       localDateTime(new Date(request.message_time), timezone).slice(0, 10) >= job.scheduled_date! &&

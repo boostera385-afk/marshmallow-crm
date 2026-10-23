@@ -1,13 +1,11 @@
 import { attributeTechnicianReplies, createJobMatcher, isCallOrSystemEvent, type JobIdentity, type JobMessage, type JobPeer } from "./processor-job-status.ts";
 
 export const PROCESSOR_RECENT_AI_MESSAGES = 20;
-// Candidate selection only, never evidence/authorization. Keep negated/future
-// wording intact for AI to reject; latest messages cover other wording/languages.
-// Job attribution always happens BEFORE this selector.
-const UPDATE_KEYWORDS = /\b(?:accept(?:ed)?|yes|ok(?:ay)?|on (?:my|the) way|en route|arriv\w*|start\w*|work(?:ing)?|progress|finish\w*|complet\w*|done|payment|paid|unanswer\w*|respond\w*|update|status|eta|cancel\w*|reschedul\w*)\b/i;
+// Attribution happens first. Review every attributable source, including older
+// non-keyword/non-English updates; the handler fails explicitly at its context
+// limit instead of silently losing an earlier verified job outcome.
 export function selectProcessorAiMessages(attributable: JobMessage[]): JobMessage[] {
-  const recent = new Set(attributable.slice(-PROCESSOR_RECENT_AI_MESSAGES).map((message) => message.id));
-  return attributable.filter((message) => recent.has(message.id) || UPDATE_KEYWORDS.test(message.text ?? ""));
+  return attributable;
 }
 
 /**
@@ -25,14 +23,14 @@ export function processorReviewDiagnostics(job: JobIdentity, peers: JobPeer[], m
   // A pure dispatch has no technician reply to interpret, so no AI is spent.
   // Otherwise retain every delivered agent message in this job's episode: an
   // update question need not contain an English keyword.
-  const extractable = hasReply ? relevant.filter((message) => message.sender === "customer" || (message.sender === "agent" && message.status === "delivered")) : [];
+  const extractable = hasReply ? relevant.filter((message) => message.sender === "customer" || (message.sender === "agent" && (message.status === "delivered" || message.source === "call_transcript"))) : [];
   return {
     relevant,
     extractable,
     matched_technician_messages: attribution.explicit.size,
     context_technician_messages: attribution.contextual.size,
     unattributed_technician_messages: attribution.unattributed.size,
-    technician_text_messages: attribution.technicianTexts.size,
+    technician_text_messages: messages.filter((m) => attribution.technicianTexts.has(m.id) && m.source !== "call_transcript").length,
     call_event_messages: attribution.callEvents,
     contextual_ids: new Set(attribution.contextual.keys()),
   };

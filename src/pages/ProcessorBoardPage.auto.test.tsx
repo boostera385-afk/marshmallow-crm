@@ -229,7 +229,7 @@ describe("automatic tracking while the board is open", () => {
     fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
     expect(screen.getAllByText("Checking…", { exact: true })).toHaveLength(2);
     expect(screen.getAllByText("Queued for check", { exact: true })).toHaveLength(2);
-    expect(screen.queryByText("No action yet", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("Appointment upcoming", { exact: true })).not.toBeInTheDocument();
     expect(state.assess).toHaveBeenCalledExactlyOnceWith(job.id, "America/New_York");
     await act(async () => finish());
     await waitFor(() => expect(state.assess).toHaveBeenCalledTimes(2));
@@ -280,7 +280,7 @@ describe("automatic tracking while the board is open", () => {
     fireEvent.click(screen.getByLabelText("Confirm schedule timezone"));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Automatic check: 1 reviewed"));
     expect(state.assess).toHaveBeenCalledExactlyOnceWith(job.id, "America/New_York");
-    expect(screen.getAllByText("Schedule rule · AI found no verified job update")).toHaveLength(2);
+    expect(screen.getAllByText("No update found for this job · ask the technician.")).toHaveLength(2);
     expect(state.rows[0].status).toBe("scheduled");
     expect(screen.getByLabelText("Evidence quality on this page")).toHaveTextContent("1 fresh successful checks · 0 with a technician reply tied to the job");
     view.update(); expect(state.assess).toHaveBeenCalledTimes(1);

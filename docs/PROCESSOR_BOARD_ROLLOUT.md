@@ -1,5 +1,126 @@
 # Processor Board
 
+## Five action tags, clear check results and saved call transcripts (2026-10-23; Edge installed, CRM publication pending)
+
+This follow-up addresses the new screenshots and supersedes the earlier text-only
+AI input/filter and No action yet badge descriptions below.
+
+### Count reconciliation — not a missing Scheduled page
+
+Read-only administrator-scope aggregation matched the screenshots: **369** leads
+currently saved as `scheduled`, plus **337** other unfinished leads with saved
+schedules, totals **706** radar jobs. Other statuses included 73 Payment Pending,
+34 In Progress, 24 Partially Paid and previously scheduled follow-up/reschedule/
+approval workflows. The normal Scheduled page counts only its current saved status;
+the Board intentionally keeps unfinished previously scheduled jobs until a terminal
+paid/cancelled/done/completed outcome. It also retains incomplete scheduled records
+for repair. Counts are not interchangeable or global AI outcome totals. The Board
+now says that it includes other saved statuses, not just Scheduled. No record,
+scope rule, exact total, ordering, pagination or visibility predicate was changed.
+
+### Simpler, honest presentation
+
+- Only Take Job Update, Job In Progress, Payment Pending, Send Dose and Needs Review
+  are action badges. Internal legacy `scheduled`/`unavailable` values remain readable
+  for compatibility, but upcoming appointments are a plain schedule note, not an
+  extra No action yet badge or a fabricated progress/follow-up action. Unavailable
+  checks use the same Needs Review filter. The setup filter is not a new action.
+- Rows show exact check time, one action and one short result. No duplicated
+  previous-AI / schedule-rule / technical paragraphs. Saved statuses, earlier
+  evidence, fresh AI evidence and uncertain context still have explicit, readable
+  wording. Context matches retain **verify in chat**; changed assignments never
+  inherit an earlier quote. A fresh unchanged-history check says no new update
+  while retaining its verified work/completion evidence, not that no chat exists.
+- Run summaries are short; their complete checked/failed/skipped/not-started and
+  tied-reply counts remain in a collapsed Check details disclosure. Review retains
+  source quotes, stale/error warnings, exact source times, chat permissions and
+  visible action controls. Call coverage is independently reported, including old
+  text-only results, missing transcripts and excluded unknown speakers.
+
+### Call evidence and complete job-linked input
+
+The old Quo `/messages` read does not supply saved call transcript events. Production
+metadata inspection (no transcript text printed) found **6,069** saved
+`call.transcript.completed` rows with structured `data.object.dialogue` arrays.
+Quo's documented `identifier` is the speaker's phone; a null `userId` alone can
+also mean unknown identity and is **not** proof that the technician spoke.
+
+- One additional caller-JWT, conversation/time-scoped paginated read obtains only
+  saved `call.completed` and `call.transcript.completed` events. It runs alongside
+  text-history retrieval, not as one provider request per call. No new recordings,
+  transcription generation, bulk sync/backfill, webhook change or external sending.
+  Existing `idx_quo_messages_conversation_time` covers conversation/time access;
+  no index, schema, RLS or generated database type changes were added.
+- New `processor-call-transcripts.ts` requires the original saved call, matching
+  technician participant, Quo conversation/line and actual call start/end/answer
+  times. Transcript delivery time never establishes a later appointment's outcome.
+  Only completed structured dialogue with exact-number external speakers can be
+  technician evidence. Internal users remain Our team; unknown/other speakers and
+  invalid segments are excluded and reported. Flattened text, summaries and audio
+  alone are not speaker proof. Missing original calls/transcripts remain partial.
+- A call has its own context boundary: no adjacent SMS dispatch or another call
+  supplies its job identity. A uniquely identified question can anchor the following
+  technician reply in that same call until a different/unknown job or speaker breaks
+  context. Existing peer-job/unit/schedule/negation/future-claim checks still apply.
+  Saved quotes carry original transcript-row and call IDs and show Call transcript
+  vs Text message. They remain advisory, never automatic status/payment approval.
+- Answered calls prevent false non-response even if their transcript is missing.
+  Call-only acceptance/questions cannot satisfy the text-acceptance/delivered-text
+  request requirements for Send Dose. A call-history read failure is independent
+  of successful text evidence, reported explicitly, and blocks a silence finding.
+- AI now receives **all attributable job-linked text/call candidates**, including
+  older non-keyword/non-English updates, not only the previous latest-20/keyword
+  subset. Other jobs' content is still excluded before AI. The existing 80,000-char
+  provider-input boundary fails explicitly rather than silently dropping history.
+  Extraction still reuses unchanged job-specific evidence after rereading history.
+  New optional result fields describe call coverage, unchanged job text and reused
+  extraction; legacy result parsing stays compatible. Input/extraction policy is 9.
+
+Authority/parity: Admin/Processor-only route/helpers/endpoint, caller row/status and
+chat RLS, service-only leases, revision-checked advisory save/audit, terminal statuses
+and approvals remain unchanged. There is no native Donut Board/per-job assessment
+counterpart; its separate technician-wide intelligence and v1.7.0 sources/artifacts
+are unchanged. No migration or database repair is needed. With explicit user
+approval, `processor-board` **v10 ACTIVE / evidence policy 9** is deployed with JWT
+verification retained. All ten deployed files match the reviewed local sources,
+including the new `supabase/functions/_shared/processor-call-transcripts.ts`.
+No-token/invalid-token/preflight boundary probes passed **401/401/200**. Bundle
+SHA-256: `d0208ea5941964b513c427171442e8c1ef4098440643032ca2ae2d137a9ac25d`.
+CRM Publish and real signed-in/provider QA remain separate; boundary probes are
+not evidence of live model accuracy. The prior v9/policy 8 source snapshot and
+verified v10 artifacts are saved outside the repository at
+`C:\Users\User 1\AppData\Local\Temp\opencode\processor-transcripts-release-20261023`.
+Rollback is a separately approved redeployment of the saved v9 source/config with
+JWT verification retained; it requires no migration or customer-data repair.
+
+Efficiency review: existing query keys, shared realtime, 30-second recovery read,
+five-minute reuse/backoff, focused-job scheduling and one-in-flight guard remain.
+No additional frontend fetch, subscription, timer, worker, storage write or download.
+The extra server read is explicitly bounded/paginated and uses the existing caller
+scope/index; no transcript-provider N+1 requests. Full job-linked AI input can cost
+more than the old selector: the synthetic 51-message same-job workload now supplies
+51 candidates vs 21, with zero attributable omissions, while excluding peer-job
+content. Two unchanged checks still use one AI extraction/advisory save; they now
+perform two scoped call reads (one each), rather than none. These are local resource
+counts, not measured production savings, latency or model accuracy. Current
+read-only function logs showed 1,384 HTTP 200, nine 401 and two 429 in the default
+24-hour window, with no 5xx in that aggregate. Existing advisory findings remain
+unchanged; [review them here](https://supabase.com/dashboard/project/kxiqholnmhkwhdkhtopp/advisors).
+
+Validation: **215/215 focused tests across eight suites**, **1,090/1,090 full tests
+across 113 files**, **45/45 browser cases**, typecheck, production build and Donut
+integrity passed. Lint passed (0 errors, 28 existing
+warnings); build retains existing Browserslist, mixed-import and chunk-size
+warnings. The initial browser run passed
+43/45: two legacy theme assertions expected six colors; updated assertions now
+verify the intentional five categories, four distinct advisory colors and shared
+Needs Review styling for unavailable/setup cases. Corrected desktop/mobile call
+evidence screenshots were visually inspected: stable drawer and visible footer
+actions at 1440px and 390px. `git diff --check` passed. Tests use synthetic data
+and mocked provider/database boundaries; real signed-in model accuracy and CRM
+publication remain unverified. No write-based SQL harness was run or needed for
+this schema-unchanged follow-up.
+
 ## Action help, no-outcome diagnosis and focused chat activity (2026-10-23; Edge installed, CRM publication pending)
 
 This supersedes the earlier rule that every completed review without extracted
