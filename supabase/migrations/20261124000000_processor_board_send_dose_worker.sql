@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS marshmallow_private.processor_check_attempts (
   last_code text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- RLS on with no policies: browsers get nothing even if the schema is ever exposed.
+-- The worker reaches it only through the SECURITY DEFINER functions below (owner).
+ALTER TABLE marshmallow_private.processor_check_attempts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON marshmallow_private.processor_check_attempts FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.record_processor_check_attempt(p_lead_id uuid, p_ok boolean, p_code text)

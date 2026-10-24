@@ -124,5 +124,6 @@ FROM public.leads l WHERE public.processor_tech_phone_key(l.tech_number) IS NOT 
 DELETE FROM net.fixture_requests;
 CREATE TEMP TABLE idle AS SELECT marshmallow_private.dispatch_processor_board_daily() AS ok;
 SELECT pg_temp.check_worker('dispatcher makes no call when nothing changed',(SELECT ok FROM idle) IS FALSE AND NOT EXISTS (SELECT 1 FROM net.fixture_requests));
+SELECT pg_temp.check_worker('retry table has row level security on',(SELECT relrowsecurity FROM pg_class WHERE oid='marshmallow_private.processor_check_attempts'::regclass));
 SELECT * FROM worker_checks ORDER BY name;
 ROLLBACK;
