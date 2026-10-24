@@ -32,6 +32,7 @@ import TechniciansPage from "@/pages/TechniciansPage";
 import OptimizationPage from "@/pages/OptimizationPage";
 
 const ProcessorBoardPage = lazy(() => import("@/pages/ProcessorBoardPage"));
+const NotificationsPage = lazy(() => import("@/pages/NotificationsPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -147,6 +148,7 @@ const App = () => (
       <Route path="urgent-review-requests" element={<PageRoute navItem="urgent_review_requests"><UrgentReviewRequests /></PageRoute>} />
               <Route path="get-cx-update" element={<PageRoute navItem="cx_updates"><CxUpdatesPage /></PageRoute>} />
               <Route path="get-tech-update" element={<PageRoute navItem="cx_updates"><TechUpdatesPage /></PageRoute>} />
+              <Route path="notifications" element={<PageRoute navItem="notifications"><Suspense fallback={<PageFallback />}><NotificationsPage /></Suspense></PageRoute>} />
               <Route path="crm-updates" element={<PageRoute navItem="crm_updates"><CrmUpdates /></PageRoute>} />
               <Route path="settings" element={<PageRoute navItem="settings"><Settings /></PageRoute>} />
             </Route>

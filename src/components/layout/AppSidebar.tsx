@@ -23,6 +23,7 @@ ShieldCheck,
   AlertTriangle,
   TrendingUp,
   Wrench,
+  Bell,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
@@ -58,12 +59,14 @@ import { supabase } from "@/integrations/supabase/client";
 import marshmallowLogo from "@/assets/marshmallow-logo.png.asset.json";
 import ChangePasswordDialog from "@/components/auth/ChangePasswordDialog";
 import { useUpdateCount } from "@/hooks/useCxUpdates";
+import { useNotificationUnreadCount } from "@/hooks/useNotificationInbox";
 
 const getNavItems = (role: string) => [
   { title: "All Leads", url: "/leads", icon: Users, navKey: "leads", group: "Work" },
   { title: "QUO Inbox", url: "/quo-monitor", icon: MessageSquare, navKey: "quo_monitor", group: "Work" },
   { title: "AI Assistance", url: "/ai-assistance", icon: Sparkles, navKey: "ai_assistance", group: "Work" },
   { title: "Schedule", url: "/schedule", icon: Calendar, navKey: "schedule", group: "Work" },
+  { title: "Notifications", url: "/notifications", icon: Bell, navKey: "notifications", group: "Work" },
   { title: "Processor Board", url: "/processor-board", icon: ClipboardCheck, navKey: "processor_board", group: "Work" },
   { title: "Map View", url: "/map-view", icon: MapIcon, navKey: "map_view", group: "Work" },
   { title: "Cancellation requests", url: "/lead-cancellation-requests", icon: ClipboardX, navKey: "cancellation_requests", group: "Review" },
@@ -95,6 +98,7 @@ export default function AppSidebar() {
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const cxCount = useUpdateCount("cx");
   const techCount = useUpdateCount("tech");
+  const notificationCount = useNotificationUnreadCount();
   // Leads already announced as Pending to Send, so one status change alerts exactly once.
   const announcedQuotePendingIds = useRef<Set<string>>(new Set());
 
@@ -563,6 +567,7 @@ export default function AppSidebar() {
                               />
                               {item.navKey === "cx_updates" && collapsed && (cxCount.data ?? 0) > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary" />}
                               {item.navKey === "tech_updates" && collapsed && (techCount.data ?? 0) > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" />}
+                              {item.navKey === "notifications" && (notificationCount.data ?? 0) > 0 && <span aria-label={`${notificationCount.data} unread notifications`} className="absolute -right-2 -top-2 rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">{notificationCount.data}</span>}
                               {item.navKey === "cancellation_requests" && pendingCancellationCount > 0 && collapsed && (
                                 <span className="absolute -top-1.5 -right-1.5 flex h-2 w-2 z-20">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
