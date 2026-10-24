@@ -67,8 +67,10 @@ describe("AI fact verification", () => {
     expect(facts).toMatchObject({ job_update: "none", tech_took_job: false, waiting_since: null, evidence: [] });
   });
   it("records the unanswered question time only after the technician took the job", () => {
+    // No technician message after the question in this chat.
+    const silent: LeadWindow = { ...window, messages: window.messages.slice(0, 3) };
     const facts = verifyProcessorFacts({ enough_context: true, tech_took_job: true, job_update: "none", waiting_on_technician_message_id: "ask",
-      evidence: [{ signal: "took_job", message_id: "ok", quote: "I'll take it" }, { signal: "waiting", message_id: "ask", quote: "Any update on Shanice?" }] }, window);
+      evidence: [{ signal: "took_job", message_id: "ok", quote: "I'll take it" }, { signal: "waiting", message_id: "ask", quote: "Any update on Shanice?" }] }, silent);
     expect(facts).toMatchObject({ tech_took_job: true, waiting_since: "2026-10-25T15:30:00Z", waiting_message_id: "ask" });
   });
   it.each([["Not done yet with Shanice", "completed", "done"], ["I will finish Shanice tomorrow", "completed", "finish"], ["Haven't started Shanice", "in_progress", "started"]])("rejects an outcome quoted out of uncertain wording: %s", (text, signal, quote) => {
@@ -85,6 +87,13 @@ describe("AI fact verification", () => {
     const later: LeadWindow = { ...window, messages: [...window.messages, { id: "paid?", at: "2026-10-25T19:00:00Z", from: "our_team", via: "text", text: "Did Shanice pay you?" }] };
     const facts = verifyProcessorFacts({ enough_context: true, tech_took_job: true, job_update: "completed", waiting_on_technician_message_id: "paid?", evidence: [{ signal: "took_job", message_id: "ok", quote: "Ok got it" }, { signal: "completed", message_id: "done", quote: "all done there" }] }, later);
     expect(facts).toMatchObject({ job_update: "completed", waiting_since: "2026-10-25T19:00:00Z" });
+  });
+  it("drops 'waiting on technician' when he replied after our question, even if AI says otherwise", () => {
+    const replied: LeadWindow = { ...window, messages: [...window.messages.slice(0, 3), { id: "reply", at: "2026-10-25T17:00:00Z", from: "technician", via: "text", text: "I spoke with the client and gave a full estimate" }] };
+    const facts = verifyProcessorFacts({ enough_context: true, tech_took_job: true, job_update: "none", waiting_on_technician_message_id: "ask", evidence: [{ signal: "took_job", message_id: "ok", quote: "I'll take it" }] }, replied);
+    expect(facts.waiting_since).toBeNull();
+    const byCall: LeadWindow = { ...window, messages: window.messages.slice(0, 3), all: [...window.messages.slice(0, 3), { id: "call", at: "2026-10-25T16:00:00Z", from: "technician", via: "call", text: "[answered phone call]" }] };
+    expect(verifyProcessorFacts({ enough_context: true, tech_took_job: true, waiting_on_technician_message_id: "ask", evidence: [{ signal: "took_job", message_id: "ok", quote: "I'll take it" }] }, byCall).waiting_since).toBeNull();
   });
   it("never treats a technician message as our unanswered question", () => {
     expect(verifyProcessorFacts({ enough_context: true, tech_took_job: true, waiting_on_technician_message_id: "done", evidence: [{ signal: "took_job", message_id: "ok", quote: "Ok got it" }] }, window).waiting_since).toBeNull();

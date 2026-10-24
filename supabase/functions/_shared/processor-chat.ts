@@ -88,20 +88,26 @@ export async function resolveProcessorChat(phone: string, directory: DirectoryRo
     conversation_id: mirror?.id ?? null, last_message_at: mirror?.last_message_time ?? null, source, chat_url: chatLink }, link: { ...link, chatLink }, mirror: mirror ?? null };
 }
 
-/** Two batched reads per loaded page, not one directory/conversation lookup per row. */
+// Filters per request: the board loads every job, and one OR filter with every
+// technician's number makes a URL too long for the database API.
+const LOOKUP_CHUNK = 40;
+const chunks = <T>(items: T[]): T[][] => Array.from({ length: Math.ceil(items.length / LOOKUP_CHUNK) }, (_, i) => items.slice(i * LOOKUP_CHUNK, (i + 1) * LOOKUP_CHUNK));
+
+/** Batched reads (two per 40 technicians), not one directory/conversation lookup per row. */
 export async function readProcessorChats(caller: SupabaseClient, phones: string[], directConfigured: boolean): Promise<Map<string, ProcessorChat>> {
   const unique = [...new Set(phones)];
   if (!unique.length) return new Map();
   const suffixes = [...new Set(unique.map((phone) => phone.slice(-4)))];
-  const directory = await readProcessorRows<DirectoryRow>((from, to) => caller.from("technicians").select("phone_number,chat_link")
-    .or(suffixes.map((suffix) => `phone_number.ilike.%${suffix}%`).join(",")).order("id").range(from, to));
+  const directory = (await Promise.all(chunks(suffixes).map((part) => readProcessorRows<DirectoryRow>((from, to) => caller.from("technicians").select("phone_number,chat_link")
+    .or(part.map((suffix) => `phone_number.ilike.%${suffix}%`).join(",")).order("id").range(from, to))))).flat();
   const savedIds = [...new Set(directory.filter((row) => unique.includes(phoneKey(row.phone_number) ?? "")).flatMap((row) => {
     const parsed = parseTechnicianQuoLink(row.chat_link); return parsed ? [parsed.conversationId] : [];
   }))];
-  const rawMirrors = await readProcessorRows<unknown>((from, to) => caller.from("quo_conversations")
+  const filters = [...suffixes.map((suffix) => `customer_number.ilike.%${suffix}%`), ...savedIds.map((id) => `quo_conversation_id.eq.${id}`)];
+  const rawMirrors = (await Promise.all(chunks(filters).map((part) => readProcessorRows<unknown>((from, to) => caller.from("quo_conversations")
     .select("id,customer_number,quo_conversation_id,last_message_time,quo_phone_numbers(quo_phone_number_id,number,display_number)")
-    .or([...suffixes.map((suffix) => `customer_number.ilike.%${suffix}%`), ...savedIds.map((id) => `quo_conversation_id.eq.${id}`)].join(","))
-    .order("id").range(from, to));
-  const mirrors = rawMirrors.map(parseMirror);
+    .or(part.join(",")).order("id").range(from, to))))).flat();
+  // A conversation can match more than one batch; keep each once.
+  const mirrors = [...new Map(rawMirrors.map(parseMirror).map((row) => [row.id, row])).values()];
   return new Map(await Promise.all(unique.map(async (phone) => [phone, await resolveProcessorChat(phone, directory, mirrors, directConfigured)] as const)));
 }

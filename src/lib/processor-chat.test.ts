@@ -53,4 +53,21 @@ describe("Processor Board exact saved-chat resolution", () => {
     const failing = { from: () => { const builder = { select: () => builder, or: () => builder, order: () => builder, range: async () => ({ data: null, error: { message: "synthetic outage" } }) }; return builder; } } as unknown as Parameters<typeof readProcessorChats>[0];
     await expect(readProcessorChats(failing, [phone], true)).rejects.toMatchObject({ code: "chat_lookup", retryable: true });
   });
+  it("keeps every request small when the board loads hundreds of technicians", async () => {
+    const phones = Array.from({ length: 300 }, (_, i) => `415555${String(i).padStart(4, "0")}`);
+    const filters: string[] = [];
+    const from = vi.fn((table: string) => {
+      const builder = { select: () => builder, or: (filter: string) => { filters.push(filter); return builder; }, order: () => builder,
+        range: async () => ({ data: table === "technicians" ? [{ phone_number: phones[7], chat_link: null }] : [{ ...mirror, customer_number: `+1${phones[7]}` }], error: null }) };
+      return builder;
+    });
+    const result = await readProcessorChats({ from } as unknown as Parameters<typeof readProcessorChats>[0], phones, true);
+    expect(result.size).toBe(300);
+    expect(result.get(phones[7])?.setup.state).toBe("ready");
+    expect(result.get(phones[8])?.setup.state).toBe("blocked");
+    // 300 technicians -> 8 directory + 8 conversation requests, each with at most 40 conditions.
+    expect(from.mock.calls.length).toBe(16);
+    expect(Math.max(...filters.map((filter) => filter.split(",").length))).toBeLessThanOrEqual(40);
+    expect(Math.max(...filters.map((filter) => filter.length))).toBeLessThan(1500);
+  });
 });
