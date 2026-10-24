@@ -88,7 +88,7 @@ describe("Processor Board server boundary", () => {
     const response = await s.request();
     expect(response.status).toBe(200);
     const { result } = await response.json();
-    expect(result).toMatchObject({ policy: 10, tech_phone: "4155550199", status: "payment_pending", job_update: "completed", tech_took_job: true, enough_context: true, ai_used: true, ai_reused: false, history_complete: !noDirect,
+    expect(result).toMatchObject({ policy: 11, tech_phone: "4155550199", status: "payment_pending", job_update: "completed", tech_took_job: true, enough_context: true, ai_used: true, ai_reused: false, history_complete: !noDirect,
       window: { anchor: "customer_mention", anchor_message_id: "dispatch", messages: 3, omitted: 0 } });
     const prompt = s.prompt();
     expect(prompt.untrustedMessages.map((m: { id: string }) => m.id)).toEqual(["dispatch", "ok", "done"]);
@@ -203,7 +203,7 @@ describe("Processor Board server boundary", () => {
     const response = await s.request({ action: "list", offset: 25, search: "shan", aiStatus: "send_dose" });
     expect(response.status).toBe(200);
     const payload = await response.json();
-    expect(payload).toMatchObject({ total: 2, monitoring: { ai_configured: true, current_history_configured: true, evidence_policy: 10 } });
+    expect(payload).toMatchObject({ total: 2, monitoring: { ai_configured: true, current_history_configured: true, evidence_policy: 11 } });
     expect(payload.rows.every((row: { chat_setup: { state: string } }) => row.chat_setup.state === "ready")).toBe(true);
     expect(s.rpc).toHaveBeenCalledWith("list_processor_board_jobs", { p_offset: 25, p_search: "shan", p_timezone: "America/New_York", p_ai_status: "send_dose" });
     expect(s.reads).toEqual(["user_roles", "technicians", "quo_conversations"]);
@@ -232,67 +232,48 @@ describe("Processor Board server boundary", () => {
     expect(await response.json()).toMatchObject({ total: 2, rows: [{ id: ID, chat_setup: { state: "unavailable", code: "chat_lookup" } }, { chat_setup: { state: "unavailable" } }] });
   });
 
-  describe("completed, unpaid jobs", () => {
-    const customerChat = [
-      text("c-thanks", "customer", "Thanks, the furniture looks great", "2026-10-15T16:30:00Z", "cust"),
-      text("c-ask", "agent", "Hi Shanice, your total is $180. Please send payment today.", "2026-10-15T17:00:00Z", "cust"),
+  describe("exact chat rules", () => {
+    // The team's real templates, with synthetic customer details matching the lead.
+    const DETAILS = "*Customer # 2*\nCustomer Name: Shanice Walker\nCustomer Number: (404) 555-0101\nCustomer Address: 12 Peach St, Atlanta, GA 30301\nService Details: furniture assembly";
+    const flow = [
+      text("d1", "agent", DETAILS, "2026-10-08T14:00:00Z"),
+      text("d2", "agent", "kindly check & confirm if you received complete customer details ?", "2026-10-08T14:01:00Z"),
+      text("d3", "customer", "Yes", "2026-10-08T14:05:00Z"),
+      text("d4", "customer", "Done ✅", "2026-10-15T15:00:00Z"),
+      text("d5", "agent", "Thanks for the update this is the Zelle Email:\n\nActive Zelle:\nsynthetic@example.invalid\n\nHere you can send our shares on Zelle", "2026-10-15T15:10:00Z"),
     ];
-    const waiting: PaymentModel = { state: "waiting_on_customer", summary: "We asked for $180; no reply yet.", evidence: [{ signal: "asked", message_id: "c-ask", quote: "Please send payment today." }] };
-    it("reads the customer's own chat, separately from the tech chat, and records who is waiting", async () => {
-      const s = setup({ paymentModel: waiting }); s.tables.quo_messages.push(...customerChat);
+    it("settles a text-only job from the rules without calling AI", async () => {
+      const s = setup(); s.tables.quo_messages = [...flow];
+      s.tables.quo_conversations[0].last_message_time = "2026-10-15T15:10:00Z";
       const { result } = await (await s.request()).json();
-      expect(result).toMatchObject({ job_update: "completed", completed_at: "2026-10-15T16:00:00Z", customer_last_message_at: "2026-10-15T17:00:00Z",
-        payment: { state: "waiting_on_customer", waiting_since: "2026-10-15T17:00:00Z", evidence: [{ signal: "asked", from: "our_team" }], window: { messages: 2, conversations: 1 } } });
-      expect(s.aiCalls()).toHaveLength(2);
-      expect(s.prompt(0).untrustedMessages.map((m: { id: string }) => m.id)).not.toContain("c-ask");
-      expect(s.prompt(1)).toMatchObject({ today: "2026-10-15", job: { job_id: "LD-1001" } });
-      expect(s.prompt(1).untrustedMessages.map((m: { id: string; from: string }) => [m.id, m.from])).toEqual([["c-thanks", "customer"], ["c-ask", "our_team"]]);
-    });
-    it("does not call the customer silent when they replied after our payment request", async () => {
-      const s = setup({ paymentModel: waiting });
-      s.tables.quo_messages.push(...customerChat, text("c-reply", "customer", "I'll check with my husband", "2026-10-15T17:30:00Z", "cust"));
-      expect((await (await s.request()).json()).result.payment).toMatchObject({ state: "unclear", waiting_since: null });
-    });
-    it("keeps a promised date only with the customer's own words", async () => {
-      const s = setup({ paymentModel: { state: "promised", promised_date: "2026-10-17", evidence: [{ signal: "promised", message_id: "c-promise", quote: "I will pay Friday" }] } });
-      s.tables.quo_messages.push(text("c-promise", "customer", "I will pay Friday", "2026-10-15T17:10:00Z", "cust"));
-      expect((await (await s.request()).json()).result.payment).toMatchObject({ state: "promised", promised_date: "2026-10-17" });
-      const t = setup({ paymentModel: { state: "promised", promised_date: "2026-10-17", evidence: [{ signal: "promised", message_id: "c-ask", quote: "Please send payment today." }] } });
-      t.tables.quo_messages.push(...customerChat);
-      expect((await (await t.request()).json()).result.payment).toMatchObject({ state: "unclear", promised_date: null });
-    });
-    it("reuses both answers when nothing changed and re-asks only about the customer after a new customer message", async () => {
-      const s = setup({ paymentModel: waiting }); s.tables.quo_messages.push(...customerChat);
-      await s.request();
-      expect((await (await s.request()).json())).toMatchObject({ cached: true, result: { ai_reused: true } });
-      expect(s.aiCalls()).toHaveLength(2);
-      s.tables.quo_messages.push(text("c-new", "customer", "Sent it on Zelle just now", "2026-10-15T17:45:00Z", "cust"));
-      await s.request();
-      expect(s.aiCalls()).toHaveLength(3);
-      expect(String(JSON.parse(String(s.aiCalls()[2][1]?.body)).messages[0].content)).toContain("customer's chat");
-    });
-    it("saves the technician result when the customer chat cannot be read, and says so", async () => {
-      const s = setup({ customerFail: true });
-      const response = await s.request();
-      expect(response.status).toBe(200);
-      const { result } = await response.json();
-      expect(result).toMatchObject({ job_update: "completed", payment_error: expect.stringContaining("daily check will retry") });
+      expect(s.aiCalls()).toHaveLength(0);
+      expect(result).toMatchObject({ rules_only: true, ai_used: false, tech_took_job: true, job_update: "completed", completed_at: "2026-10-15T15:00:00Z", share_state: "requested",
+        timeline: { job_tag: "2", took_job: { quote: "Yes" }, completed: { by: "technician" }, share_requested: { at: "2026-10-15T15:10:00Z" } } });
+      expect(result.evidence.map((e: { signal: string }) => e.signal)).toEqual(["took_job", "completed", "share_requested"]);
       expect(result.payment).toBeUndefined();
-      expect(s.tables.processor_job_assessments).toHaveLength(1);
     });
-    it("does not read customer chats for jobs that are not completed", async () => {
-      const s = setup({ model: { enough_context: true, tech_took_job: true, job_update: "in_progress", evidence: [{ signal: "took_job", message_id: "ok", quote: "Ok got it" }, { signal: "in_progress", message_id: "done", quote: "Shanice job" }] } });
-      s.tables.quo_messages.push(...customerChat);
+    it("records the technician sending our share and passes the rule facts to AI when calls need reading", async () => {
+      const s = setup({ noDirect: true, model: { enough_context: true, tech_took_job: true, job_update: "none", evidence: [] } });
+      s.tables.quo_messages = [...flow, text("d6", "customer", "Just sent you the money", "2026-10-15T16:00:00Z"),
+        { id: "call-row", quo_message_id: "AC1:call.completed", conversation_id: "mirror", sender: "agent", status: "completed", text: "Call completed.", message_time: "2026-10-15T16:30:00Z", raw_payload: { type: "call.completed", data: { object: { id: "AC1", conversationId: "CN12345678", phoneNumberId: "PN12345678", from: "+17475887812", to: ["+14155550199"], createdAt: "2026-10-15T16:20:00Z", answeredAt: "2026-10-15T16:20:01Z", completedAt: "2026-10-15T16:21:00Z" } } } }];
+      s.tables.quo_conversations[0].last_message_time = "2026-10-15T16:00:00Z";
       const { result } = await (await s.request()).json();
-      expect(result.payment).toBeUndefined();
       expect(s.aiCalls()).toHaveLength(1);
-      expect(s.rpc.mock.calls.map(([name]) => name)).not.toContain("processor_customer_last_message");
+      expect(s.prompt().knownFacts).toMatchObject({ job_tag: "*Customer # 2*", took_job: { quote: "Yes" }, completed: { by: "technician" }, share_state: "sent" });
+      // AI missed it; the exact rules still hold: completed, share sent.
+      expect(result).toMatchObject({ job_update: "completed", tech_took_job: true, share_state: "sent", rules_only: false });
     });
-    it("checks the customer chat for a lead saved as Payment Pending even without a tech completion message", async () => {
-      const s = setup({ model: { enough_context: true, tech_took_job: true, job_update: "none", evidence: [{ signal: "took_job", message_id: "ok", quote: "Ok got it" }] }, paymentModel: waiting });
-      s.tables.leads = [{ ...job, status: "payment_pending" }, peer]; s.tables.quo_messages.push(...customerChat);
-      const { result } = await (await s.request()).json();
-      expect(result).toMatchObject({ completed_at: null, payment: { state: "waiting_on_customer" } });
+    it("lets a later AI 'in progress' (return visit) beat an earlier rule completion", async () => {
+      const s = setup({ model: { enough_context: true, tech_took_job: true, job_update: "in_progress", evidence: [{ signal: "in_progress", message_id: "d7", quote: "need to go back Monday for the part" }] } });
+      s.tables.quo_messages = [flow[0], flow[1], flow[2], flow[3], text("d7", "customer", "Actually I need to go back Monday for the part", "2026-10-15T17:00:00Z")];
+      s.tables.quo_conversations[0].last_message_time = "2026-10-15T17:00:00Z";
+      expect((await (await s.request()).json()).result).toMatchObject({ job_update: "in_progress", completed_at: null });
+    });
+    it("never reads the customer's chat any more", async () => {
+      const s = setup(); s.tables.quo_messages = [...flow, text("c1", "agent", "Please pay $180", "2026-10-15T17:00:00Z", "cust")];
+      s.tables.quo_conversations[0].last_message_time = "2026-10-15T15:10:00Z";
+      await s.request();
+      expect(s.rpc.mock.calls.map(([name]) => name)).not.toContain("processor_customer_last_message");
     });
   });
 
@@ -305,8 +286,7 @@ describe("Processor Board server boundary", () => {
       }
     });
     it("checks the database's candidates as the daily check and returns no customer data", async () => {
-      const s = setup({ candidates: [ID], paymentModel: { state: "waiting_on_customer", evidence: [{ signal: "asked", message_id: "c-ask", quote: "Please send payment" }] } });
-      s.tables.quo_messages.push(text("c-ask", "agent", "Please send payment", "2026-10-15T17:00:00Z", "cust"));
+      const s = setup({ candidates: [ID] });
       const response = await s.dailyRequest("synthetic-server-key", { limit: 50 });
       expect(response.status).toBe(200);
       const payload = await response.json();

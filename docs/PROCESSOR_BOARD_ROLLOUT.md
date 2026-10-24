@@ -1,5 +1,37 @@
 # Processor Board
 
+## v4 job timeline rules from real chats (2026-10-24; migration 20261125000000 + both Edge functions awaiting approval)
+
+Built from an analysis of 1,079 exported technician chats (614 technicians, ~99,000
+messages, Aug–Oct 2026; 84% call-transcript lines). Every job follows the same
+steps: offer → full customer details tagged **"*Customer # N*"** (98.5% tagged; no
+job IDs are ever sent) → "confirm if you received complete customer details?" →
+"Yes/Ok" (took the job) → automated visit reminder → update request → "Done" →
+share request ("Active Zelle … send our shares") → "sent" → "we received the
+payment". **Payment is the technician sending our share**, not the customer.
+
+| Area | v4 rule |
+| --- | --- |
+| Exact rules (`_shared/processor-job-timeline.ts`) | Find this lead's details message by exact customer phone, full name or street; take its tag; read the standard steps from texts after it. Reactions are ignored; replies after another job's details count only when they name this job; nothing before this job's details counts. Without the details message the rules say nothing. |
+| AI | Still reads calls and free-form replies, now given the rule facts (`knownFacts`) and the share definition. Rule facts and AI facts are merged; a later AI "in progress" (parts, return visit) beats an earlier rule completion. AI is skipped only for a text-only job whose completion the rules found and where the tech wrote nothing else after it. |
+| Payment / Send Dose | Share state from the tech chat: requested → promised → sent → received. Any share step means the job is done. Sent/received → Payment Pending (verify, mark Paid); requested/promised not sent 3+ days after the schedule → Send Dose. The customer chat is no longer read. |
+| Re-check | Results from v3 (policy 10) keep showing; the worker re-checks every job once with the new rules (policy 11), changed jobs first. Daily re-check runs until the share is received. |
+| Review | New **Job timeline** (each step with time and quote) and **Our share** sections. |
+
+Offline evaluation (`npx vite-node scripts/evaluate-processor-timeline.ts -- <export.csv>`,
+aggregate counts only, nothing leaves the machine) on the export: all 1,085 jobs
+matched their own details message; tag found 1,075; took job 394; visit confirmed
+211; update requested 510; completed 431 (64 from the tech's own words, 367 from our
+share request); share requested 427, sent 89, received 29; 41 settled by rules
+alone. Hand-checked samples: took-job, update-request and payment-received hits were
+correct; completion/sent rules were tightened after the first sample (reactions,
+"wants it done", "sent you the contact info") and re-checked.
+
+Apply `supabase/migrations/20261125000000_processor_board_job_timeline.sql`, then
+redeploy **both** `processor-board` and `processor-board-daily`, then publish the
+CRM. SQL harness `160` (11 checks): **209/209 PASS** with every board migration
+applied twice on isolated PGlite. Rollback: see the migration footer.
+
 ## v3 rules after user testing (2026-10-24; migration 20261124000000 + both Edge functions awaiting approval)
 
 Supersedes the status, payment-overdue, auto-check and pagination parts of the v2

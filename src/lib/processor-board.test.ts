@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { canAccessNavItem } from "./access";
-import { assessProcessorJob, fetchProcessorDetail, fetchProcessorJobs, processorFacts, processorPaymentNote, processorReadiness, processorSchedulePassed, processorSetupIssue, processorSummary, processorWorkflowMessage, PROCESSOR_BOARD_STATUSES, type ProcessorJob } from "./processor-board";
+import { assessProcessorJob, fetchProcessorDetail, fetchProcessorJobs, processorFacts, processorShareNote, processorReadiness, processorSchedulePassed, processorSetupIssue, processorSummary, processorWorkflowMessage, PROCESSOR_BOARD_STATUSES, type ProcessorJob } from "./processor-board";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke } } }));
 const fullFacts = { policy: 10, tech_phone: "4155550199", enough_context: true, tech_took_job: true, job_update: "completed", waiting_since: null, waiting_message_id: null, summary: "Technician finished.", evidence: [],
@@ -27,11 +27,13 @@ describe("Processor Board contract", () => {
     expect(processorSummary({ ...job, ai_summary: { ...summary, tech_phone: "4155550188" } })).toBeNull();
     expect(processorSummary({ ...job, ai_summary: { status: "send_dose" } as ProcessorJob["ai_summary"] })).toBeNull();
   });
-  it("shows the payment reason only for completed, unpaid jobs", () => {
-    const paid = { ...job, board_status: "send_dose" as const, ai_summary: { ...summary, payment_state: "waiting_on_customer" as const, payment_waiting_since: "2026-10-15T17:00:00Z" } };
-    expect(processorPaymentNote(paid, "America/New_York")).toEqual({ text: "Waiting on customer since Oct 15", attention: true });
-    expect(processorPaymentNote({ ...paid, board_status: "job_in_progress", ai_summary: { ...paid.ai_summary, job_update: "in_progress" } }, "America/New_York")).toBeNull();
-    expect(processorPaymentNote({ ...paid, ai_summary: { ...summary, payment_error: true } }, "America/New_York")).toEqual({ text: "Customer chat not checked yet", attention: false });
+  it("shows our share status only for done, unpaid jobs", () => {
+    const done = { ...job, board_status: "send_dose" as const, ai_summary: { ...summary, share_state: "requested" as const, share_at: "2026-10-15T17:00:00Z" } };
+    expect(processorShareNote(done, "America/New_York")).toEqual({ text: "Share requested · Oct 15", attention: true });
+    expect(processorShareNote({ ...done, board_status: "payment_pending", ai_summary: { ...summary, share_state: "sent" } }, "America/New_York")).toEqual({ text: "Tech says share sent · verify & mark Paid", attention: false });
+    expect(processorShareNote({ ...done, ai_summary: { ...summary, share_state: undefined } }, "America/New_York")).toEqual({ text: "Share not requested yet", attention: true });
+    expect(processorShareNote({ ...done, board_status: "job_in_progress", ai_summary: { ...summary, job_update: "in_progress" } }, "America/New_York")).toBeNull();
+    expect(processorShareNote({ ...done, ai_summary: { ...summary, policy: 11 } }, "America/New_York")).not.toBeNull();
   });
   it("marks the schedule overdue in the chosen timezone", () => {
     const at = new Date("2026-10-15T14:30:00Z");

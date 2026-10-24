@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { phoneKey, schedulePassed } from "../../supabase/functions/_shared/processor-job-status";
-import { PROCESSOR_BOARD_STATUSES, PROCESSOR_POLICY, type ProcessorBoardStatus } from "../../supabase/functions/_shared/processor-lead-window";
+import { PROCESSOR_BOARD_STATUSES, SHARE_STATES, type ProcessorBoardStatus, type ShareState } from "../../supabase/functions/_shared/processor-lead-window";
 import { processorReadiness } from "../../supabase/functions/_shared/processor-review";
-import { PAYMENT_STATES, type PaymentState } from "../../supabase/functions/_shared/processor-payment";
 export { processorReadiness, processorWorkflowMessage } from "../../supabase/functions/_shared/processor-review";
 export { PROCESSOR_BOARD_STATUSES };
 export type ProcessorStatus = ProcessorBoardStatus;
@@ -18,16 +17,16 @@ export const PROCESSOR_STATUS_UI: Record<ProcessorStatus, { label: string; help:
   upcoming: { label: "Upcoming", help: "The appointment has not started yet and no follow-up is due.", color: "border-border bg-muted/40 text-muted-foreground" },
 };
 
-/** What the customer's own chat says about the open payment. */
-export const PAYMENT_STATE_UI: Record<PaymentState, { label: string; attention: boolean }> = {
-  no_chat: { label: "No customer chat found", attention: false },
-  not_asked: { label: "Customer not asked for payment yet", attention: true },
-  waiting_on_customer: { label: "Waiting on customer", attention: true },
-  promised: { label: "Customer promised to pay", attention: false },
-  refused: { label: "Customer refused or disputes", attention: true },
-  customer_says_paid: { label: "Customer says paid · verify", attention: true },
-  unclear: { label: "Payment talk unclear", attention: false },
+/** Our share: the technician sends it after the job (Zelle / Cash App / Venmo). */
+export const SHARE_STATE_UI: Record<ShareState, { label: string; attention: boolean }> = {
+  none: { label: "Share not requested yet", attention: true },
+  requested: { label: "Share requested", attention: true },
+  promised: { label: "Tech promised to send share", attention: true },
+  sent: { label: "Tech says share sent · verify & mark Paid", attention: false },
+  received: { label: "Share received · mark Paid", attention: false },
 };
+/** Results saved by these rules (11) or the previous version (10) are both shown. */
+const SAVED_POLICIES = [10, 11];
 
 const nullableText = z.string().nullable();
 export const processorChatSetupSchema = z.object({
@@ -36,20 +35,23 @@ export const processorChatSetupSchema = z.object({
   chat_url: z.string().regex(/^https:\/\/my\.quo\.com\/inbox\/PN[A-Za-z0-9_-]{6,}\/c\/CN[A-Za-z0-9_-]{6,}$/).optional(),
 });
 /** Facts saved by the current backend. Older saved results stay readable but are ignored. */
+const timelineEvent = z.object({ at: z.string(), message_id: z.string(), quote: z.string() }).nullable().optional();
 export const processorFactsSchema = z.object({
-  policy: z.literal(PROCESSOR_POLICY), tech_phone: z.string(),
+  policy: z.union([z.literal(10), z.literal(11)]), tech_phone: z.string(),
   enough_context: z.boolean(), tech_took_job: z.boolean(), job_update: z.enum(["none", "in_progress", "completed"]),
   completed_at: nullableText.optional(), waiting_since: nullableText, waiting_message_id: nullableText, summary: z.string(),
-  evidence: z.array(z.object({ signal: z.enum(["took_job", "in_progress", "completed", "waiting"]), quote: z.string(), message_id: z.string(), message_time: z.string(), from: z.enum(["technician", "our_team"]), via: z.enum(["text", "call"]) })),
+  evidence: z.array(z.object({ signal: z.enum(["took_job", "in_progress", "completed", "waiting", "share_requested", "share_promised", "share_sent", "share_received"]), quote: z.string(), message_id: z.string(), message_time: z.string(), from: z.enum(["technician", "our_team"]), via: z.enum(["text", "call"]) })),
   window: z.object({ start: z.string(), anchor: z.enum(["customer_mention", "lead_created"]), anchor_message_id: nullableText, messages: z.number().int().nonnegative(), omitted: z.number().int().nonnegative() }),
   call_transcripts: z.object({ state: z.enum(["available", "partial", "unavailable"]), checked: z.number().int().nonnegative(), missing: z.number().int().nonnegative(), skipped_segments: z.number().int().nonnegative() }),
   source: z.string(), history_complete: z.boolean(), ai_used: z.boolean(), ai_reused: z.boolean(), checked_at: z.string(), lead_updated_at: z.string().optional(),
-  payment: z.object({
-    state: z.enum(PAYMENT_STATES), waiting_since: nullableText, promised_date: nullableText, summary: z.string(),
-    evidence: z.array(z.object({ signal: z.enum(["asked", "promised", "refused", "says_paid"]), quote: z.string(), message_id: z.string(), message_time: z.string(), from: z.enum(["customer", "our_team"]) })),
-    window: z.object({ start: z.string(), messages: z.number().int().nonnegative(), omitted: z.number().int().nonnegative(), conversations: z.number().int().nonnegative() }),
+  share_state: z.enum(SHARE_STATES).optional(), rules_only: z.boolean().optional(),
+  timeline: z.object({
+    job_tag: z.string().nullable(), details: timelineEvent, took_job: timelineEvent, visit_confirmed: timelineEvent, update_requested: timelineEvent,
+    completed: z.object({ at: z.string(), message_id: z.string(), quote: z.string(), by: z.enum(["technician", "share_request"]) }).nullable().optional(),
+    share_requested: timelineEvent, share_promised: timelineEvent, share_sent: timelineEvent, share_received: timelineEvent,
+    share_state: z.enum(SHARE_STATES), other_jobs_in_window: z.boolean(),
   }).optional(),
-  payment_error: z.string().optional(), checked_by: z.enum(["user", "daily_check"]).optional(),
+  checked_by: z.enum(["user", "daily_check"]).optional(),
   status: z.enum(PROCESSOR_BOARD_STATUSES).nullable(),
 });
 export type ProcessorFacts = z.infer<typeof processorFactsSchema>;
@@ -62,9 +64,8 @@ export const processorJobSchema = z.object({
   // Compact list summary; full evidence is loaded only when Review opens.
   ai_summary: z.object({
     policy: z.number().optional(), tech_phone: z.string().optional(), job_update: z.string().optional(), tech_took_job: z.boolean().optional(),
-    enough_context: z.boolean().optional(), completed_at: z.string().optional(), payment_state: z.enum(PAYMENT_STATES).optional(),
-    payment_waiting_since: z.string().optional(), payment_promised_date: z.string().optional(), payment_error: z.boolean().optional(),
-    checked_by: z.string().optional(),
+    enough_context: z.boolean().optional(), completed_at: z.string().optional(), share_state: z.enum(SHARE_STATES).optional(),
+    share_at: z.string().optional(), took_job_at: z.string().optional(), rules_only: z.boolean().optional(), checked_by: z.string().optional(),
   }).nullable(),
   checked_at: nullableText,
   chat_setup: processorChatSetupSchema.nullable().optional(),
@@ -131,7 +132,7 @@ export function processorFacts(job: ProcessorJob, result: unknown): ProcessorFac
 /** The list summary, only when saved by this version for the technician now assigned. */
 export function processorSummary(job: ProcessorJob) {
   const summary = job.ai_summary;
-  return summary && summary.policy === PROCESSOR_POLICY && summary.tech_phone === phoneKey(job.tech_number) ? summary : null;
+  return summary && SAVED_POLICIES.includes(summary.policy ?? 0) && summary.tech_phone === phoneKey(job.tech_number) ? summary : null;
 }
 export function processorSetupIssue(job: ProcessorJob): string | null {
   return processorReadiness(job) || (job.chat_setup && job.chat_setup.state !== "ready" ? job.chat_setup.message : null);
@@ -140,14 +141,13 @@ export function processorSetupIssue(job: ProcessorJob): string | null {
 export const processorCheckSignature = (job: ProcessorJob) => `${job.updated_at}:${job.tech_number ?? ""}:${job.chat_setup?.fingerprint ?? ""}:${job.chat_setup?.last_message_at ?? ""}`;
 export const processorSchedulePassed = (job: ProcessorJob, timezone: string, now: Date) => schedulePassed(job, now, timezone);
 export const PROCESSOR_TIMEZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"];
-/** One short line on who the open payment is waiting on, for completed jobs only. */
-export function processorPaymentNote(job: ProcessorJob, timezone: string): { text: string; attention: boolean } | null {
+/** One short line on our share, for jobs that are done but not marked Paid. */
+export function processorShareNote(job: ProcessorJob, timezone: string): { text: string; attention: boolean } | null {
   const summary = processorSummary(job);
-  if (!summary || !["payment_pending", "send_dose"].includes(job.board_status) || (summary.job_update !== "completed" && !["payment_pending", "job_done"].includes(job.status))) return null;
-  if (!summary.payment_state) return summary.payment_error ? { text: "Customer chat not checked yet", attention: false } : null;
-  const ui = PAYMENT_STATE_UI[summary.payment_state];
-  const day = (value: string) => new Date(value).toLocaleDateString([], { month: "short", day: "numeric", timeZone: timezone });
-  const detail = summary.payment_waiting_since ? ` since ${day(summary.payment_waiting_since)}`
-    : summary.payment_promised_date ? ` · ${new Date(`${summary.payment_promised_date}T12:00:00Z`).toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" })}` : "";
-  return { text: `${ui.label}${detail}`, attention: ui.attention };
+  if (!summary || !["payment_pending", "send_dose"].includes(job.board_status)) return null;
+  const state = summary.share_state ?? "none";
+  if (state === "none" && summary.job_update !== "completed" && !["payment_pending", "job_done"].includes(job.status)) return null;
+  const ui = SHARE_STATE_UI[state];
+  const when = summary.share_at ? ` · ${new Date(summary.share_at).toLocaleDateString([], { month: "short", day: "numeric", timeZone: timezone })}` : "";
+  return { text: `${ui.label}${when}`, attention: ui.attention };
 }

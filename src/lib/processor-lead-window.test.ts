@@ -50,7 +50,7 @@ describe("Lead chat window", () => {
 });
 
 describe("AI fact verification", () => {
-  const window: LeadWindow = { start: "2026-10-08T16:00:00Z", anchor: "customer_mention", anchor_message_id: "d", omitted: 0, messages: [
+  const window: LeadWindow = { start: "2026-10-08T16:00:00Z", anchor: "customer_mention", anchor_message_id: "d", omitted: 0, all: [], messages: [
     { id: "d", at: "2026-10-08T16:00:00Z", from: "our_team", via: "text", text: "New job for Shanice at 12 Peach St" },
     { id: "ok", at: "2026-10-08T16:05:00Z", from: "technician", via: "text", text: "Ok got it, I'll take it" },
     { id: "ask", at: "2026-10-25T15:30:00Z", from: "our_team", via: "text", text: "Any update on Shanice?" },

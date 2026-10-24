@@ -136,20 +136,33 @@ describe("Processor Board", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review LD-1001" }));
     expect(within(screen.getByRole("region", { name: "Review LD-1001" })).getByRole("alert")).toHaveTextContent("could not be loaded");
   });
-  it("shows who an unpaid job is waiting on, on the row and in Review", () => {
-    const payment = { state: "waiting_on_customer", waiting_since: "2026-10-15T17:00:00Z", promised_date: null, summary: "We asked Shanice for $180 and she has not replied.",
-      evidence: [{ signal: "asked", quote: "Please send $180 today", message_id: "c1", message_time: "2026-10-15T17:00:00Z", from: "our_team" }], window: { start: "2026-10-14T16:00:00Z", messages: 4, omitted: 0, conversations: 1 } };
-    state.hook.mockReturnValue(queue([{ ...job, board_status: "send_dose", ai_summary: { ...summary, job_update: "completed", payment_state: "waiting_on_customer", payment_waiting_since: "2026-10-15T17:00:00Z", checked_by: "daily_check" } }]));
-    state.detail.mockReturnValue({ data: facts({ job_update: "completed", completed_at: "2026-10-15T16:00:00Z", payment, checked_by: "daily_check" }), isLoading: false, isError: false });
+  it("shows our share and the job timeline for a done, unpaid job", () => {
+    const step = (at: string, quote: string) => ({ at, message_id: `m-${at}`, quote });
+    const timeline = { job_tag: "2", details: step("2026-10-08T14:00:00Z", "*Customer # 2* ..."), took_job: step("2026-10-08T14:05:00Z", "Yes"), visit_confirmed: null, update_requested: null,
+      completed: { ...step("2026-10-15T15:00:00Z", "Done ✅"), by: "technician" }, share_requested: step("2026-10-15T15:10:00Z", "Active Zelle: ..."), share_promised: null, share_sent: null, share_received: null,
+      share_state: "requested", other_jobs_in_window: false };
+    state.hook.mockReturnValue(queue([{ ...job, board_status: "send_dose", ai_summary: { ...summary, job_update: "completed", share_state: "requested", share_at: "2026-10-15T15:10:00Z", checked_by: "daily_check" } }]));
+    state.detail.mockReturnValue({ data: facts({ job_update: "completed", completed_at: "2026-10-15T15:00:00Z", share_state: "requested", timeline, rules_only: true, checked_by: "daily_check" }), isLoading: false, isError: false });
     mount();
     expect(rowFor("LD-1001")).toHaveTextContent("Send Dose");
-    expect(rowFor("LD-1001")).toHaveTextContent("Waiting on customer since Oct 15");
+    expect(rowFor("LD-1001")).toHaveTextContent("Share requested · Oct 15");
     fireEvent.click(screen.getByRole("button", { name: "Review LD-1001" }));
-    const section = screen.getByRole("region", { name: "Payment" });
-    expect(section).toHaveTextContent("Technician said completed Oct 15");
-    expect(section).toHaveTextContent("Becomes Send Dose 3 days after the scheduled date");
-    expect(section).toHaveTextContent("“Please send $180 today”");
+    const steps = screen.getByRole("region", { name: "Job timeline" });
+    expect(steps).toHaveTextContent("*Customer # 2*");
+    expect(steps).toHaveTextContent("✓ Technician took the job");
+    expect(steps).toHaveTextContent("“Yes”");
+    expect(steps).toHaveTextContent("✓ Job completed");
+    expect(steps).toHaveTextContent("– Tech says share sent");
+    expect(steps).toHaveTextContent("no AI was needed");
+    expect(screen.getByRole("region", { name: "Our share" })).toHaveTextContent("until the technician sends our share");
     expect(screen.getByRole("region", { name: "Review LD-1001" })).toHaveTextContent("by the daily check");
+  });
+  it("says when this lead's details message was not found in the chat", () => {
+    state.hook.mockReturnValue(queue([job]));
+    state.detail.mockReturnValue({ data: facts({ timeline: { job_tag: null, details: null, took_job: null, visit_confirmed: null, update_requested: null, completed: null, share_requested: null, share_promised: null, share_sent: null, share_received: null, share_state: "none", other_jobs_in_window: false } }), isLoading: false, isError: false });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Review LD-1001" }));
+    expect(screen.getByRole("region", { name: "Job timeline" })).toHaveTextContent("customer-details message was not found");
   });
   it("Check again checks only that job, once, then reloads the board", async () => {
     state.hook.mockReturnValue(queue([job, future]));
