@@ -23,6 +23,15 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Notification refresh efficiency | Bell and eligible urgent, job-in-progress, incomplete-details and quote-updated popups share one recipient-filtered channel through `realtimeBus`; same-turn refreshes coalesce and in-flight changes get a trailing read | No native notification bell or these popup consumers in Donut; no extension source change required | Existing notification RLS, recipient filters, OPR assignment scope, exact bell counts, per-popup 100-row limits, quote cutoff, sounds, priority, acknowledgement writes and 15/20/25-second polling are preserved. Late retired subscriptions/results cannot affect a replacement scope. No new RPC or production configuration. |
 | Request resolution / notification center / schedule monitor (2026-10-20; local) | Requester-owned Mark Resolved, audited Admin reassignment, revision-safe follow-ups/history; complete recipient notification page, sound controls and five-second notices. Off-by-default, shadow-first schedule monitor with trusted service-ingestion snapshots, Admin-verified bindings and a guarded tag-only transition | No native saved-request queue, notification inbox or schedule monitor. No extension source, manifest, release metadata or ZIP change; shared server ingestion/lead triggers cover both clients | Same caller-authenticated request authority; server-owned event metadata and current-access notification RLS. Separate cron-secret worker; SQL authorization/evidence guards independent of advisory AI. New migrations, regenerated types, three function deployments, secrets/cron setup, CRM Publish, signed-in/provider QA and later automatic activation remain separate pending release steps. See `docs/WORKFLOW_INBOX_ROLLOUT.md`. |
 
+October 24 backend efficiency follow-up (local): notification RPC predicate
+pushdown retains current-recipient RLS, exact global unread totals and complete
+alert/history pagination. Schedule worker failure accounting no longer counts
+one failed job twice. Neither flow has a native Donut counterpart; extension
+sources/artifacts are unchanged. New migration
+`supabase/migrations/20261024095119_optimize_workflow_notification_reads.sql` and
+the worker fix await approved application/deployment. See the latest section in
+`docs/WORKFLOW_INBOX_ROLLOUT.md` for MCP evidence, regression checks and rollout.
+
 Historical pilot notes (superseded locally by the 2026-10-19 pause below):
 Copilot Admin AI controls are CRM-only. Global AI applies to all allowed Copilot
 users; there is no separate per-user AI permission. The 2026-10-13 audit fixed

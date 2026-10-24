@@ -31,10 +31,13 @@ export function createScheduleMonitorHandler(deps: {
           lead_id: job.lead_id, lease: job.lease, generation: job.generation, mode: batch.mode, timezone: batch.timezone,
           config_changed_at: batch.config_changed_at, result, provider_status: result.provider_status,
         } });
-        if (finish.error) failed++;
-        else if (finish.data !== true) stale++;
-        else saved++;
-        if (result.decision === "unavailable") failed++;
+        if (!finish.error) {
+          if (finish.data !== true) stale++;
+          else saved++;
+        }
+        // Failed counts jobs, not error stages: provider + persistence failure
+        // for the same job must not inflate the batch's failure count.
+        if (finish.error || result.decision === "unavailable") failed++;
       }
       // Partial provider failures are explicit, never a misleading healthy 200.
       return reply({ mode: batch.mode, total: batch.rows.length, saved, failed, stale }, failed ? 503 : 200);

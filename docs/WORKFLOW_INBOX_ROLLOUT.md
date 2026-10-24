@@ -1,5 +1,125 @@
 # Request resolution, notifications and schedule monitoring
 
+## October 24 backend efficiency follow-up — awaiting application/deployment
+
+This follow-up used **read-only Supabase MCP** on `kxiqholnmhkwhdkhtopp`.
+The request/inbox/monitor RPCs already exist in that project's current schema;
+the older local-only release notes below are historical, not instructions to
+reapply those migrations. No remote schema, customer data, secrets, cron,
+ingestion, deployment or publication was changed during this follow-up.
+
+### Evidence and scoped fixes
+
+- Project status: ACTIVE_HEALTHY, Postgres 17.6.1.084. At inspection there were
+  16,036 notifications, 2,217 unread rows and 20 workflow metadata rows.
+- Cumulative `pg_stat_statements` recorded 66,993 notification RPC calls averaging
+  1,184.07 ms (statistics reset August 7; this is **not** a daily workload/bill).
+  The inspected 24-hour logs contained 678 inbox HTTP 503 responses; a subsequent
+  snapshot counted 679 SQLSTATE 57014 query cancellations for this RPC. The
+  windows differ slightly and do not establish a one-to-one error correlation.
+- A bounded read-only authenticated Admin alert EXPLAIN ANALYZE took 448.676 ms
+  with 24,330 shared-buffer hits. The existing `(user_id, read, created_at DESC)`
+  index supports recipient/unread/date restriction; no new index is justified
+  for this change. The original multiply-referenced `visible` CTE materializes
+  full recipient history, blocking those downstream filters from pushing down.
+- New migration
+  `supabase/migrations/20261024095119_optimize_workflow_notification_reads.sql`
+  inlines that read CTE and resolves caller/role once per RPC. Page filters can
+  narrow their own reads; the separate unread aggregate retains its **exact,
+  globally visible unread count**, without computing unused action expressions.
+  The RPC remains SECURITY INVOKER with the same fixed search path, signature,
+  grants, RLS, customer/technician projections and mutation behavior.
+- The schedule worker counted one job twice when both assessment and persistence
+  failed. It now reports one failed job while still reporting the failure as
+  HTTP 503, processing remaining work, and preserving leases/retries/cooldown.
+
+### Verification and reproduction
+
+```sh
+node scripts/test-workflow-inbox-db.mjs <external-PGlite-installation-directory>
+node scripts/test-workflow-inbox-db.mjs <external-PGlite-installation-directory> --benchmark
+```
+
+The runner has no remote connection. It preserves the previous actual function
+definition only in a disposable database, applies the new migration twice, and
+executes the exact harness files. Latest behavior run: **286 PASS** (32 requests,
+31 schedule guards, 12 installation, 211 notification equivalence/access checks).
+It covers all four permitted roles, both excluded Operator roles, missing
+identity, another recipient/job, revoked participation, status overrides,
+search/date/category/action/unread filters, tied ordering, empty/deep pages,
+exact counts, snapshot reads and bursts beyond the 100-alert page limit.
+
+Focused Vitest: **40 tests passed**, including simultaneous provider/database
+failure and unchanged provider/RPC call counts. Final `npm run validate` passed:
+lint (zero errors, 28 existing warnings), app/Node typecheck, **103 files / 889
+tests**, and build with unchanged Donut v1.7.0 integrity. Existing Browserslist,
+mixed-import and large-chunk warnings remain. An earlier full run during the SQL
+benchmark had an Admin sidebar timeout followed by a cleanup-related failure
+(887/889 passed); a focused sidebar rerun also timed out (3/4 passed). All four
+sidebar tests passed in the final full run after the benchmark finished. No
+assertions, timeout settings or production behavior were changed to mask those
+failures. Deno is not available on PATH.
+The earlier baseline full gate passed 888 tests and build before this follow-up.
+
+The opt-in benchmark uses 16,000 legacy rows (15% unread) plus 20 workflow events,
+the same synthetic Admin and connection, seven alternating warm executions per
+version/workload, exact JSON equality and median timings. Its first foreground
+attempt exceeded 120 seconds; the background rerun completed successfully:
+
+| Workload | Before (ms) | After (ms) | JSON identical |
+| --- | ---: | ---: | --- |
+| History | 6,472 | 1,577 | Yes |
+| Unread history | 7,278 | 440 | Yes |
+| Action-required history | 6,379 | 1,531 | Yes |
+| Search | 5,963 | 889 | Yes |
+| Recent history | 4,289 | 141 | Yes |
+| Recent alerts | 4,195 | 912 | Yes |
+| Empty future alert window | 3,850 | 955 | Yes |
+
+These are local PGlite/WASM timings on Windows, not comparable to the live RPC
+timings above and not proof of reduced production usage/cost. The run overlapped
+other local validation work, although before/after shared the same process and
+alternated order. The expanded 211-check harness ran separately after adding
+burst/status-override cases; its results are reflected in the 286 PASS above.
+Once the benchmark finished, an unchanged full `npm run validate` was run again
+without its CPU load; that final rerun passed all gates as recorded above.
+
+### Efficiency/parity and release boundaries
+
+- UI/rendering and hooks/cache: unchanged; no new fetches, caches or renders.
+- API: unchanged endpoints, payloads, exact totals and complete pagination;
+  this reduces work **per call**, not the number of client requests.
+- Database: predicate pushdown/projection pruning; no RLS or lead/status/index
+  changes, no data repair, no new recurring jobs or write amplification.
+- Realtime, poll intervals, freshness, audible/visual alerts and recovery: intact.
+- Worker: only failure accounting changes; provider budgets, cadence, evidence,
+  approval/tag authority and outbound behavior are unchanged.
+- Storage/bandwidth: no new stored data, attachments or downloads.
+- Donut: searched native extension sources; neither inbox nor schedule worker
+  has a native counterpart. No extension source/artifact changes or ZIP needed.
+
+Security/performance advisors were reviewed, not automatically "fixed": private
+worker tables intentionally have RLS with no browser policies. Other findings
+need separate dependency/caller analysis, including
+[mutable function search paths](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable),
+[anonymous DEFINER execution](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable),
+[unindexed foreign keys](https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys),
+and [leaked-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+No grants were widened or indexes dropped merely to clear advisories.
+
+After review/approval, manually apply **only the new October 24 migration** in the
+intended Supabase SQL Editor; do not run `db push` or replay installed history.
+Then run `supabase/tests/151_workflow_inbox_readonly.sql` and safe signed-in inbox
+QA; compare deployed query plans, latency/cancellations and normalized workload.
+The 152/154 harnesses contain synthetic writes and must stay local. Roll back
+only the notification RPC definition from the earlier migration, retaining RLS
+and history. No generated-type change is needed (signature/schema unchanged).
+The worker fix is **awaiting approved schedule-confirmation-monitor deployment**;
+it does not activate monitoring. CRM Publish and live browser/provider QA remain
+separate. Billing, normalized active-user-hour savings and deployed improvements
+have not been measured. Commits and a branch push publish source only; they do
+not apply this migration, deploy functions, register cron, or publish the CRM.
+
 ## Release state — local, not installed or published
 
 The October 20 implementation is local. No production records, configuration,

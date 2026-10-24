@@ -53,5 +53,16 @@ describe("schedule worker boundary and resource behavior", () => {
     const response = await createScheduleMonitorHandler({ authenticate: async () => ({ rpc }), assess })(new Request("https://synthetic.invalid", { method: "POST" }));
     expect(response.status).toBe(200); expect(assess).not.toHaveBeenCalled();
   });
-
+  it("counts a provider and persistence failure once per job, then continues saving", async () => {
+    const rpc = vi.fn().mockResolvedValueOnce({ data: { mode: "shadow", timezone: "America/New_York", config_changed_at: "2026-10-20T00:00:00Z", rows: [job, { ...job, lead_id: "job-2" }] }, error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: "Database unavailable" } })
+      .mockResolvedValueOnce({ data: true, error: null });
+    const assess = vi.fn().mockResolvedValueOnce({ decision: "unavailable", reason: "Provider timed out" })
+      .mockResolvedValueOnce({ decision: "needs_review", reason: "Human review required" });
+    const response = await createScheduleMonitorHandler({ authenticate: async () => ({ rpc }), assess })(new Request("https://synthetic.invalid", { method: "POST" }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ total: 2, saved: 1, failed: 1, stale: 0 });
+    expect(assess).toHaveBeenCalledTimes(2);
+    expect(rpc).toHaveBeenCalledTimes(3);
+  });
 });
