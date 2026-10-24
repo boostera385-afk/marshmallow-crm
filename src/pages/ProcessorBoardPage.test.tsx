@@ -17,6 +17,37 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("Processor Board interactions", () => {
+  it("shows exact check dates and distinguishes AI use from schedule rules without a request", () => {
+    const checked_at = new Date().toISOString();
+    const assessment = { status: "payment_pending", evidence: [{ quote: "JOB-1001 completed" }], checked_at, timezone: "America/New_York", lead_updated_at: job.updated_at };
+    state.hook.mockReturnValue({ data: { rows: [
+      { ...job, checked_at, assessment: { ...assessment, ai_used: true } },
+      { ...job, id: "second", job_id: "JOB-1002", checked_at, assessment: { ...assessment, ai_used: false } },
+    ], total: 2, observed_at: checked_at } });
+    mount();
+    const cells = screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[2]);
+    expect(cells[0]).toHaveTextContent("AI reviewed · job-specific evidence verified");
+    expect(cells[1]).toHaveTextContent("Schedule / saved-status rule · no AI used");
+    expect(within(cells[0]).getByLabelText("Last checked date and time")).toHaveTextContent(new Date(checked_at).getUTCFullYear().toString());
+    expect(within(cells[0]).getByLabelText("Last checked date and time").textContent).toMatch(/\d{1,2}:\d{2}/);
+    expect(state.assess).not.toHaveBeenCalled();
+  });
+  it("filters by saved status independently of AI actions and keeps approval jobs read-only", () => {
+    state.hook.mockReturnValue({ data: { rows: [job, { ...job, id: "reschedule", job_id: "JOB-RESCHEDULE", status: "needs_reschedule" }, { ...job, id: "approval", job_id: "JOB-APPROVAL", status: "cancellation_requested" }], total: 3 } });
+    mount();
+    fireEvent.change(screen.getByLabelText("Saved status on this page"), { target: { value: "needs_reschedule" } });
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(screen.queryAllByLabelText("Review JOB-1001")).toHaveLength(0);
+    expect(screen.getAllByLabelText("Review JOB-RESCHEDULE")).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText("Saved status on this page"), { target: { value: "cancellation_requested" } });
+    fireEvent.click(screen.getAllByLabelText("Review JOB-APPROVAL")[0]);
+    expect(screen.getByRole("button", { name: "Check this job" })).toBeDisabled();
+    expect(screen.getByRole("dialog")).toHaveTextContent("another approval workflow");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(screen.getAllByRole("row")).toHaveLength(4);
+    expect(state.assess).not.toHaveBeenCalled();
+  });
   it("defaults to five rows in view but keeps all matching jobs in the page-level AI review", async () => {
     const rows = Array.from({ length: 6 }, (_, index) => ({ ...job, id: `synthetic-${index}`, job_id: `JOB-${index}` }));
     state.hook.mockReturnValue({ data: { rows, total: 26, observed_at: new Date().toISOString() }, refetch: state.refetch });
@@ -67,7 +98,7 @@ describe("Processor Board interactions", () => {
     expect(check.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(check).toHaveAttribute("datetime", checkedAt);
     expect(check.getAttribute("title")).toBeTruthy();
-    expect(screen.getByLabelText("Latest AI check on this page")).toHaveTextContent("Checked 2m ago");
+    expect(screen.getByLabelText("Latest job check on this page")).toHaveTextContent("Checked 2m ago");
     expect(screen.getAllByText("Checked 2m ago")).toHaveLength(3);
     fireEvent.click(screen.getAllByLabelText("Review JOB-1001")[0]);
     expect(within(screen.getByRole("dialog")).getByText("Checked 2m ago")).toBeInTheDocument();

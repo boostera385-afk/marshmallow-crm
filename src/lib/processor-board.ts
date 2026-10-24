@@ -18,7 +18,7 @@ const nullableText = z.string().nullable();
 export const processorAssessmentSchema = z.object({
   status: z.enum(PROCESSOR_STATUSES), evidence: z.array(z.object({ signal: z.enum(["accepted", "progress", "completed", "update_request"]), quote: z.string(), message_id: z.string(), message_time: z.string(), sender: z.string() })),
   messages_reviewed: z.number().int().nonnegative(), matched_messages: z.number().int().nonnegative(),
-  source: z.string(), history_complete: z.boolean(), timezone: z.string(), checked_at: z.string(), summary: z.string(), lead_updated_at: z.string(),
+  source: z.string(), history_complete: z.boolean(), ai_used: z.boolean().optional(), timezone: z.string(), checked_at: z.string(), summary: z.string(), lead_updated_at: z.string(),
 });
 export const processorJobSchema = z.object({
   id: z.string().uuid(), job_id: z.string(), customer_name: z.string(), customer_phone: nullableText,
@@ -54,10 +54,13 @@ export function currentAssessment(job: ProcessorJob, timezone: string, now: Date
   return a && a.timezone === timezone && Date.parse(a.lead_updated_at) === Date.parse(job.updated_at) && now.getTime() - Date.parse(a.checked_at) < 5 * 60_000 ? a : null;
 }
 export function processorStatus(job: ProcessorJob, timezone: string, now: Date): ProcessorStatus {
-  if (!["scheduled", "job_in_progress", "job_done", "payment_pending", "partial_paid"].includes(job.status)) return "needs_review";
+  if (!["scheduled", "job_in_progress", "payment_pending", "partial_paid"].includes(job.status)) return "needs_review";
+  if (job.status === "payment_pending" || job.status === "partial_paid") return "payment_pending";
   const assessment = currentAssessment(job, timezone, now);
-  if (assessment) return assessment.status === "scheduled" && schedulePassed(job, now, timezone) ? "take_job_update" : assessment.status;
-  if (job.status === "payment_pending" || job.status === "job_done" || job.status === "partial_paid") return "payment_pending";
+  if (assessment) {
+    if (job.status === "job_in_progress" && ["scheduled", "take_job_update"].includes(assessment.status)) return "job_in_progress";
+    return assessment.status === "scheduled" && schedulePassed(job, now, timezone) ? "take_job_update" : assessment.status;
+  }
   if (job.status === "job_in_progress") return "job_in_progress";
   return schedulePassed(job, now, timezone) ? "take_job_update" : job.scheduled_date && job.scheduled_time_start ? "scheduled" : "needs_review";
 }

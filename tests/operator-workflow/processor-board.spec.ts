@@ -8,7 +8,7 @@ async function isolatedBoard(page: Page, role = "processor", fail = false, optio
   let reviewed = false;
   let failures = 0;
   const row = () => ({ id: LEAD, job_id: "JOB-1001", customer_name: "John Sample", customer_phone: "4155550101", service_type: "Garage Door Service", address: "10 Sample St Apt 2", city: "Miami", state: "FL", tech_name: "Alex Technician", tech_number: "4155550199", scheduled_date: "2026-01-01", scheduled_time_start: "10:00:00", scheduled_time_end: "12:00:00", customer_schedule_requirements: "Afternoons only; call before arrival", terms: "Quoted", status: "scheduled", updated_at: "2026-01-01T00:00:00Z", checked_at: reviewed ? new Date().toISOString() : null,
-    assessment: reviewed ? { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer" }], messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
+    assessment: reviewed ? { status: "payment_pending", evidence: [{ signal: "completed", quote: "JOB-1001 is completed and ready for payment.", message_id: "m1", message_time: "2026-01-01T18:00:00Z", sender: "customer" }], messages_reviewed: 534, matched_messages: 4, source: "Quo current history", history_complete: true, ai_used: true, timezone: "America/New_York", checked_at: new Date().toISOString(), summary: "Job-specific source quotes verified.", lead_updated_at: "2026-01-01T00:00:00Z" } : null,
     ...(options.setup ? { tech_number: null, scheduled_date: null, scheduled_time_start: null } : {}) });
   const rows = () => {
     const base = row();
@@ -78,6 +78,8 @@ for (const width of [1440, 390]) test(`Processor reviews the correct job and evi
   const checked = status.locator("time");
   await expect(checked).toHaveText("Checked just now");
   await expect(checked).toHaveAttribute("title", /.+/);
+  await expect(status.getByLabel("Last checked date and time")).toContainText(new Date().getUTCFullYear().toString());
+  await expect(status).toContainText("AI reviewed · job-specific evidence verified");
   const checkedBox = await checked.boundingBox();
   const statusBox = await status.getByText("Payment Pending", { exact: true }).boundingBox();
   expect(checkedBox!.y + checkedBox!.height).toBeLessThanOrEqual(statusBox!.y);
@@ -89,6 +91,20 @@ test("failed provider review remains explicit and does not advance the job", asy
   await page.getByRole("button", { name: "Check this job" }).click();
   await expect(page.getByRole("alert")).toContainText("Synthetic AI provider unavailable");
   await expect(page.getByRole("dialog")).toContainText("Saved lead status: Scheduled");
+});
+for (const width of [1440, 390]) test(`saved-status filtering preserves the board and makes no AI calls at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const actions = await isolatedBoard(page, "processor", false, { showcase: true });
+  await page.goto("/processor-board");
+  await page.getByLabel("Saved status on this page").selectOption("job_in_progress");
+  const job = page.getByRole("button", { name: "Review JOB-1002" }).filter({ visible: true });
+  await expect(job).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review JOB-1001" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Clear filter" }).click();
+  await expect(page.getByRole("button", { name: "Review JOB-1001" }).filter({ visible: true })).toBeVisible();
+  expect(actions.filter((action) => action.action === "list")).toHaveLength(1);
+  expect(actions.filter((action) => action.action === "assess")).toHaveLength(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
 for (const width of [1440, 390]) {
   test(`incomplete jobs show a repair path without an AI request at ${width}px`, async ({ page }) => {
