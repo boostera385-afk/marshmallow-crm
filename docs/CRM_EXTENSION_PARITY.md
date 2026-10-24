@@ -6,7 +6,7 @@ and include behavior tests. `AGENTS.md` and `GEMINI.md` make this mandatory.
 | Flow | CRM | Donut | Shared authority / verification |
 | --- | --- | --- | --- |
 | Technician intelligence | Technicians → Processing Workflow; map selection up to 8 | Native Technician Intelligence panel for the captured phone, reviewed-label saving, full-workflow link for batch selection/flag approvals/chat actions | `technician-chat-assessment`: Admin/Processor only; identical AI prompt, evidence checks, counts and labels. Missing history is unavailable, not misconduct. |
-| Processor Board | `/processor-board` v2: assigned, unfinished leads (not paid/partial paid/cancelled/scammed), newest lead first; server-side AI status filter and board-wide counts; Payment Overdue with customer-chat payment reason and a daily server check; inline Review, Tech Quick Chat and Open lead per row; overdue schedules in red | No native board/job-specific assessment action; existing technician-wide intelligence is separate. Donut v1.7.0 sources/artifacts unchanged | Authenticated `processor-board` (evidence policy 10, **awaiting deployment**) + `list_processor_board_jobs` / `processor_board_status` (migration `20261122000000`, **awaiting manual application**). Caller JWT/RLS scope, status visibility, leases, revision-checked save and audit kept. AI facts are advisory; status rule lives once in SQL. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
+| Processor Board | `/processor-board` v3: assigned, unfinished leads, newest first, every job in one list; server-side status filter/counts incl. Send Dose (3 days unpaid) and Wrong Tech Number; inline Review (evidence loaded on open), Tech Quick Chat, Open lead | No native board/job-specific assessment action; existing technician-wide intelligence is separate. Donut v1.7.0 sources/artifacts unchanged | `processor-board` + `processor-board-daily` (policy 10, **awaiting redeploy**), migration `20261124000000` (**awaiting manual application**). Server-only checks with retry backoff; caller JWT/RLS scope, leases, audit kept. See `docs/PROCESSOR_BOARD_ROLLOUT.md`. |
 | Technician flags | Admin applies; Processor requests review | Opens full workflow for the same reviewed actions | Existing `request_technician_change` approval RPC and technician flag trigger; never write flags directly in Donut. |
 | Urgent lead review | Latest customer agreement, corrections and missing details | Same check; displays issues, corrections and flags; opens saved-lead review for confirmed corrections/approval | `check-urgent-lead`, urgent verification/review RPCs and database status gate. No duplicate prompt or approval bypass. |
 | Address lookup / map coordinates | Authenticated Census-only lookup and preserved units | Same function for Find Address, coverage preview and submission coordinates | `geocode-lead-address`: only Census coordinates may be cached/persisted for the free map. Google or unlabelled points are rejected by both clients. Preserve Apt/Suite/Unit/#. |
@@ -42,6 +42,15 @@ prompt, manifest or ZIP changed. With user approval, the pilot RPC migration and
 Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
+
+## Processor Board v3 rules (2026-10-24; migration 20261124000000 + Edge awaiting approval)
+
+CRM-only; Donut still has no Processor Board (no extension change). Send Dose is now
+"took or completed, unpaid, 3+ days after the scheduled date, not still in progress";
+Payment Overdue and the 60-minute rule are gone; Wrong Tech Number is new. All AI
+checks run on the server (message/lead change, first check, daily for completed
+unpaid jobs); opening the board never runs AI. The list shows every job without
+pagination and loads Review evidence on demand.
 
 ## Processor Board v2: lead chat window and six statuses (2026-10-23; migration + Edge awaiting approval)
 

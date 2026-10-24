@@ -4,14 +4,12 @@ import { isCallOrSystemEvent, phoneKey, type JobMessage } from "./processor-job-
 export const PROCESSOR_POLICY = 10;
 /** The lead discussion can start the day before the lead was saved. */
 export const LEAD_WINDOW_LEAD_MS = 24 * 60 * 60_000;
-/** Mirrors the SQL rule: our job question unanswered this long is Send Dose. */
-export const SEND_DOSE_AFTER_MS = 60 * 60_000;
 export const PROCESSOR_PROMPT_CHARS = 60_000;
 const MESSAGE_CHARS = 1500;
 /** Leading messages always kept when trimming: the job dispatch and first replies. */
 const KEEP_LEADING = 8;
 
-export const PROCESSOR_BOARD_STATUSES = ["take_job_update", "job_in_progress", "payment_pending", "payment_overdue", "send_dose", "not_enough_details", "upcoming"] as const;
+export const PROCESSOR_BOARD_STATUSES = ["take_job_update", "job_in_progress", "payment_pending", "send_dose", "wrong_tech_number", "not_enough_details", "upcoming"] as const;
 export type ProcessorBoardStatus = typeof PROCESSOR_BOARD_STATUSES[number];
 
 export type LeadWindowJob = {
@@ -153,7 +151,7 @@ export function verifyProcessorFacts(raw: unknown, window: LeadWindow): Processo
   const tookJob = value.tech_took_job === true && (has("took_job") || has("in_progress") || has("completed"));
   const waitingId = typeof value.waiting_on_technician_message_id === "string" ? value.waiting_on_technician_message_id : null;
   const waiting = waitingId ? byId.get(waitingId) : undefined;
-  // Also after completion: a technician ignoring our payment question is Send Dose.
+  // Shown in Review only (also after completion); it no longer sets the status.
   const pending = tookJob && waiting?.from === "our_team" ? waiting : undefined;
   return {
     enough_context: value.enough_context === true && window.messages.length > 0,

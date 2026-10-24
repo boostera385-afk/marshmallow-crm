@@ -12,7 +12,7 @@ vi.mock("@/lib/realtime", () => ({ subscribeToProcessorActivity: (ids: string[],
 }, subscribeToProcessorBoard: (listener: () => void) => {
   state.listeners.add(listener); return () => { state.listeners.delete(listener); state.releases(); };
 } }));
-const filters = { offset: 0, search: "", timezone: "America/New_York", aiStatus: null };
+const filters = { search: "", timezone: "America/New_York", aiStatus: null };
 const result = { rows: [], total: 0, observed_at: "2026-10-15T18:00:00Z", timezone: "America/New_York" };
 function wrapper({ children }: PropsWithChildren) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
