@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquarePlus, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { canAccessCxUpdates, canCompleteCxUpdate, canCompleteTechUpdate, canRequestCxUpdate, canRequestTechUpdate } from "@/lib/access";
-import { acknowledgeUpdateRequest, completeUpdateRequest, questionMoreUpdateRequest, type CxUpdateRequest, type UpdateRequestKind } from "@/lib/cx-update-requests";
+import { canAccessCxUpdates, canCompleteCxUpdate, canCompleteTechUpdate, canRequestCxUpdate, canRequestTechUpdate, canResolveUpdateRequest } from "@/lib/access";
+import { acknowledgeUpdateRequest, completeUpdateRequest, questionMoreUpdateRequest, updateRequestVersion, reassignUpdateRequest, fetchResolutionOwners, type CxUpdateRequest, type UpdateRequestKind, type UpdateRequestView } from "@/lib/cx-update-requests";
 import { UPDATE_QUERY_KEY, useUpdateQueue } from "@/hooks/useCxUpdates";
 import { formatUSPhone } from "@/lib/phone";
 import { Button } from "@/components/ui/button";
@@ -21,12 +21,19 @@ export default function UpdateRequestsPage({ kind }: Props) {
   const [params, setParams] = useSearchParams();
   const requester = kind === "cx" ? canRequestCxUpdate(role) : canRequestTechUpdate(role);
   const completer = kind === "cx" ? canCompleteCxUpdate(role) : canCompleteTechUpdate(role);
-  const view = requester && params.get("tab") === "updated" ? "updated" : "pending";
+  const tab = params.get("tab");
+  const view: UpdateRequestView = tab === "updated" || tab === "resolved" || tab === "action" || tab === "pending" ? tab : requester ? "action" : "pending";
+  const requestId = params.get("request");
+  const scope = `${user?.id}:${role}:${kind}:${view}:${requestId}`;
   const [offset, setOffset] = useState(0);
-  const queue = useUpdateQueue(kind, view, offset);
+  const queue = useUpdateQueue(kind, view, offset, requestId);
   const client = useQueryClient();
-  const [selected, setSelected] = useState<CxUpdateRequest | null>(null);
-  const [dialogMode, setDialogMode] = useState<"complete" | "question_more">("complete");
+  const [selection, setSelection] = useState<{ request: CxUpdateRequest; scope: string } | null>(null);
+  const selected = selection?.scope === scope ? selection.request : null;
+  const [dialogMode, setDialogMode] = useState<"complete" | "question_more" | "reassign">("complete");
+  const [ownerId, setOwnerId] = useState("");
+  const owners = useQuery({ queryKey: [...UPDATE_QUERY_KEY, "owners", user?.id, role, kind],
+    queryFn: () => fetchResolutionOwners(kind), enabled: role === "admin" && Boolean(selected) && dialogMode === "reassign" });
   const [response, setResponse] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -41,7 +48,7 @@ export default function UpdateRequestsPage({ kind }: Props) {
 
   if (!canAccessCxUpdates(role)) return <p role="alert">You do not have access to update requests.</p>;
   const refresh = () => { void client.invalidateQueries({ queryKey: UPDATE_QUERY_KEY }); };
-  const closeDialog = () => { setSelected(null); setResponse(""); setError(""); };
+  const closeDialog = () => { setSelection(null); setResponse(""); setError(""); };
   const saveDialog = async () => {
     if (!selected || !response.trim() || inFlight.current) return;
     inFlight.current = true;
@@ -49,13 +56,16 @@ export default function UpdateRequestsPage({ kind }: Props) {
     setError("");
     try {
       if (dialogMode === "complete") {
-        await completeUpdateRequest(kind, selected.id, response);
-        toast.success(`${updatedLabel} — returned to ${kind === "cx" ? "Processor/Admin" : "CS/CS Admin"}`);
-      } else {
-        await questionMoreUpdateRequest(kind, selected.id, response);
+        await completeUpdateRequest(kind, selected.id, response, selected.revision);
+        toast.success(`${updatedLabel} — pending resolution by ${selected.owner_name || selected.requester_name || "the requester"}`);
+      } else if (dialogMode === "question_more") {
+        await questionMoreUpdateRequest(kind, selected.id, response, selected.revision);
         toast.success("Follow-up question sent");
+      } else {
+        await reassignUpdateRequest(kind, selected.id, ownerId, response, selected.revision);
+        toast.success("Resolution owner reassigned; original requester retained");
       }
-      setFinished((previous) => new Set(previous).add(selected.id));
+      setFinished((previous) => new Set(previous).add(`${scope}:${updateRequestVersion(selected)}`));
       closeDialog();
       refresh();
     } catch (err) {
@@ -67,17 +77,15 @@ export default function UpdateRequestsPage({ kind }: Props) {
     inFlight.current = true;
     setAckId(request.id);
     try {
-      await acknowledgeUpdateRequest(kind, request.id);
-      setFinished((previous) => new Set(previous).add(request.id));
-      toast.success(`${subject} update acknowledged`);
+      await acknowledgeUpdateRequest(kind, request.id, request.revision);
+      setFinished((previous) => new Set(previous).add(`${scope}:${updateRequestVersion(request)}`));
+      toast.success(`${subject} update resolved`);
       refresh();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Could not acknowledge update"); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Could not resolve update"); }
     finally { setAckId(null); inFlight.current = false; }
   };
-  const rows = queue.data?.rows.filter((request) => !finished.has(request.id)) ?? [];
-  const mayResolve = (request: CxUpdateRequest) => kind === "cx"
-    ? role === "admin" || request.requested_by === user?.id
-    : role === "cs_admin" || request.requested_by === user?.id;
+  const rows = queue.data?.rows.filter((request) => !finished.has(`${scope}:${updateRequestVersion(request)}`)) ?? [];
+  const mayResolve = (request: CxUpdateRequest) => canResolveUpdateRequest(role, user?.id, request.resolution_owner);
 
   return <section className="space-y-5" aria-label={`${subject} update queue`}>
     <header className="flex flex-wrap items-start justify-between gap-3">
@@ -89,13 +97,16 @@ export default function UpdateRequestsPage({ kind }: Props) {
         </p></div>
       <Button variant="outline" onClick={refresh} disabled={queue.isFetching}>Refresh</Button>
     </header>
-    {requester && <div className="flex flex-wrap gap-2" aria-label={`${subject} request views`}>
-      {(["pending", "updated"] as const).map((tab) => <Button key={tab} aria-pressed={view === tab} variant={view === tab ? "default" : "outline"}
-        onClick={() => { setOffset(0); setFinished(new Set()); setParams(tab === "updated" ? { tab } : {}); }}>{tab === "pending" ? "Requested" : updatedLabel}</Button>)}
-    </div>}
+    <div className="flex flex-wrap gap-2" aria-label={`${subject} request views`}>
+      {(["action", "pending", "updated", "resolved"] as const).map((tab) => <Button key={tab} aria-pressed={!requestId && view === tab} variant={!requestId && view === tab ? "default" : "outline"}
+        onClick={() => { setOffset(0); setFinished(new Set()); setParams({ tab }); }}>
+        {{ action: "Needs my action", pending: "Waiting for response", updated: "Awaiting resolution", resolved: "Resolved" }[tab]}
+        {!requestId && view === tab && queue.data ? ` (${queue.data.total})` : ""}</Button>)}
+    </div>
+    <p className="text-xs text-muted-foreground">Reading a notification does not resolve a request. Only its resolution owner can close it.</p>
     {queue.isError ? <div role="alert" className="rounded-xl border border-destructive/40 p-4 text-sm text-destructive">{queue.error.message} <Button variant="outline" onClick={refresh}>Retry</Button></div>
       : queue.isPending ? <p role="status">Loading {subject.toLowerCase()} update requests…</p>
-      : !rows.length ? <p role="status" className="rounded-xl border border-border p-6 text-sm text-muted-foreground">{view === "pending" ? `No pending ${subject} update requests.` : `No ${updatedLabel} responses to review.`}</p>
+      : !rows.length ? <p role="status" className="rounded-xl border border-border p-6 text-sm text-muted-foreground">{requestId ? "This request is unavailable or outside your current access. Select a queue above to continue." : view === "pending" ? `No pending ${subject} update requests.` : view === "resolved" ? "No resolved requests in your authorized history." : view === "action" ? "No requests need your action." : `No ${updatedLabel} responses to review.`}</p>
       : <div className="grid gap-4 xl:grid-cols-2">{rows.map((request) => {
         const customer = request.customer;
         const thread = request.thread?.length ? request.thread : [
@@ -103,7 +114,7 @@ export default function UpdateRequestsPage({ kind }: Props) {
           ...(request.response_text ? [{ type: "response" as const, text: request.response_text, at: request.completed_at ?? request.created_at, by_name: request.completed_by_name }] : []),
         ];
         return <Card key={request.id} className="min-w-0"><CardContent className="space-y-4 p-5">
-          <div className="flex flex-wrap justify-between gap-2"><div><h2 className="font-semibold">{customer.customer_name}</h2><p className="text-xs text-muted-foreground">{customer.job_id} · {view === "pending" ? title : updatedLabel}</p></div>
+          <div className="flex flex-wrap justify-between gap-2"><div><h2 className="font-semibold">{customer.customer_name}</h2><p className="text-xs text-muted-foreground">{customer.job_id} · {request.status === "pending" ? "Awaiting response" : request.acknowledged_at ? "Resolved" : "Response received"}</p></div>
             <p className="text-xs text-muted-foreground">Requested by {request.requester_name || "Team member"}</p></div>
           <dl className="space-y-2 break-words text-sm">
             <div><dt className="text-xs text-muted-foreground">Customer phone</dt><dd>{formatUSPhone(customer.customer_phone) || "Not provided"}{customer.customer_landline ? ` · Landline: ${formatUSPhone(customer.customer_landline)}` : ""}</dd></div>
@@ -116,17 +127,24 @@ export default function UpdateRequestsPage({ kind }: Props) {
           </dl>
           <div className="space-y-2 rounded-xl bg-primary/5 p-3" aria-label="Update conversation">
             {thread.map((entry, index) => <div key={`${entry.at}-${index}`} className={entry.type === "response" ? "border-l-2 border-emerald-500/50 pl-3" : "border-l-2 border-primary/40 pl-3"}>
-              <p className="text-xs font-semibold text-muted-foreground">{entry.type === "response" ? "Response" : "Question"}{entry.by_name ? ` · ${entry.by_name}` : ""}</p>
+              <p className="text-xs font-semibold text-muted-foreground">{entry.type === "response" ? "Response" : "Question"}{entry.by_name ? ` · ${entry.by_name}` : ""} · <time dateTime={entry.at}>{new Date(entry.at).toLocaleString()}</time></p>
               <p className="mt-0.5 whitespace-pre-wrap break-words text-sm">{entry.text}</p>
             </div>)}
           </div>
+          <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm" role="status">
+            {request.acknowledged_at
+              ? `${request.resolved_by_name ? `Resolved by ${request.resolved_by_name}` : "Previously acknowledged"} · ${new Date(request.acknowledged_at).toLocaleString()}`
+              : request.status === "pending" ? "Awaiting responder · not yet resolved"
+              : `Pending resolution by ${request.owner_name || request.requester_name || "unassigned owner — Admin reassignment needed"}`}
+          </div>
           {kind === "cx" && <p className="text-xs text-muted-foreground">Assigned to {request.recipient_name ? `${request.recipient_name} + CS Admin` : "CS Admin (no assigned CS agent)"}</p>}
           <div className="flex flex-wrap gap-2">
-            {view === "pending" && completer && <Button onClick={() => { setSelected(request); setDialogMode("complete"); setResponse(""); setError(""); }}>Mark {updatedLabel}</Button>}
+            {role === "admin" && !request.acknowledged_at && <Button variant="outline" onClick={() => { setSelection({ request, scope }); setDialogMode("reassign"); setOwnerId(""); setResponse(""); setError(""); }}>Reassign resolution owner</Button>}
+            {request.status === "pending" && !request.acknowledged_at && completer && <Button onClick={() => { setSelection({ request, scope }); setDialogMode("complete"); setResponse(""); setError(""); }}>Mark {updatedLabel}</Button>}
             {(role === "admin" || role === "processor") && <Button variant="outline" asChild><Link to={`/leads/${request.lead_id}`}>Open lead</Link></Button>}
-            {view === "updated" && mayResolve(request) && <>
-              <Button disabled={Boolean(ackId)} onClick={() => { void acknowledge(request); }}>{ackId === request.id ? "Acknowledging…" : "Acknowledge"}</Button>
-              <Button variant="outline" disabled={Boolean(ackId)} onClick={() => { setSelected(request); setDialogMode("question_more"); setResponse(""); setError(""); }}>Question More</Button>
+            {request.status !== "pending" && !request.acknowledged_at && mayResolve(request) && <>
+              <Button disabled={Boolean(ackId)} onClick={() => { void acknowledge(request); }}>{ackId === request.id ? "Resolving…" : "Mark Resolved"}</Button>
+              <Button variant="outline" disabled={Boolean(ackId)} onClick={() => { setSelection({ request, scope }); setDialogMode("question_more"); setResponse(""); setError(""); }}>Question More</Button>
             </>}
           </div>
         </CardContent></Card>;
@@ -137,12 +155,15 @@ export default function UpdateRequestsPage({ kind }: Props) {
       <Button variant="outline" disabled={offset + 20 >= queue.data.total} onClick={() => setOffset(offset + 20)}>Next</Button>
     </nav>}
     <Dialog open={Boolean(selected)} onOpenChange={(value) => { if (!value && !inFlight.current) closeDialog(); }}>
-      <DialogContent><DialogHeader><DialogTitle>{dialogMode === "complete" ? `Mark ${updatedLabel}` : "Question More"}</DialogTitle>
-        <DialogDescription>{dialogMode === "complete" ? `Record the ${kind === "cx" ? "customer" : "technician/job"} response. This returns the request without changing the lead.` : "Ask a focused follow-up. The request returns to the responder queue and keeps the prior conversation."}</DialogDescription></DialogHeader>
-        <Label htmlFor="update-response">{dialogMode === "complete" ? responseLabel : "Follow-up question"}</Label>
-        <Textarea id="update-response" value={response} disabled={saving} maxLength={4000} onChange={(event) => setResponse(event.target.value)} />
+      <DialogContent><DialogHeader><DialogTitle>{dialogMode === "complete" ? `Mark ${updatedLabel}` : dialogMode === "reassign" ? "Reassign resolution owner" : "Question More"}</DialogTitle>
+        <DialogDescription>{dialogMode === "complete" ? `Record the ${kind === "cx" ? "customer" : "technician/job"} response. This returns the request without changing the lead.` : dialogMode === "reassign" ? "Use when the original requester cannot review this work. The original requester remains recorded and your reason is audited. This does not resolve the request." : "Ask a focused follow-up. The request returns to the responder queue and keeps the prior conversation."}</DialogDescription></DialogHeader>
+        {dialogMode === "reassign" && <><Label htmlFor="resolution-owner">New resolution owner</Label><select id="resolution-owner" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={ownerId} onChange={(event) => setOwnerId(event.target.value)} disabled={owners.isPending || saving}>
+          <option value="">Choose a team member</option>{owners.data?.map((owner) => <option key={owner.id} value={owner.id}>{owner.name || "Unnamed user"} · {owner.role}</option>)}</select>
+          {owners.isError && <p role="alert" className="text-sm text-destructive">Could not load eligible owners. <Button variant="link" onClick={() => { void owners.refetch(); }}>Retry</Button></p>}</>}
+        <Label htmlFor="update-response">{dialogMode === "complete" ? responseLabel : dialogMode === "reassign" ? "Reassignment reason" : "Follow-up question"}</Label>
+        <Textarea id="update-response" value={response} disabled={saving} maxLength={dialogMode === "complete" ? 4000 : 2000} onChange={(event) => setResponse(event.target.value)} />
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <DialogFooter><Button variant="outline" disabled={saving} onClick={closeDialog}>Cancel</Button><Button disabled={saving || !response.trim()} onClick={() => { void saveDialog(); }}>{saving ? "Saving…" : dialogMode === "complete" ? `Save ${updatedLabel}` : "Send question"}</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" disabled={saving} onClick={closeDialog}>Cancel</Button><Button disabled={saving || !response.trim() || (dialogMode === "reassign" && (!ownerId || response.trim().length < 10))} onClick={() => { void saveDialog(); }}>{saving ? "Saving…" : dialogMode === "complete" ? `Save ${updatedLabel}` : dialogMode === "reassign" ? "Reassign owner" : "Send question"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </section>;

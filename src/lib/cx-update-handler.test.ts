@@ -13,7 +13,7 @@ describe("CX Edge Function boundary", () => {
     const rpc = vi.fn().mockResolvedValue({ data: { saved: true, id }, error: null });
     const handler = createCxUpdateHandler(async () => ({ userId: id, db: { rpc } }));
     expect((await handler(request({ kind: "tech", action: "create", leadId: id, requestId: id, text: "Confirm", role: "admin", status: "paid", tech_name: "private" }))).status).toBe(200);
-    expect(rpc).toHaveBeenCalledWith("update_requests", { p_kind: "tech", p_action: "create", p_lead_id: id, p_request_id: id, p_text: "Confirm", p_offset: 0 });
+    expect(rpc).toHaveBeenCalledWith("workflow_requests", { p_input: { kind: "tech", action: "create", leadId: id, requestId: id, text: "Confirm", offset: 0, revision: null, ownerId: null } });
   });
   it.each([{ kind: "cx", action: "execute_sql" }, { kind: "tech", action: "complete", requestId: id, text: " " }, { kind: "cx", action: "list_pending", offset: -1 }, { kind: "cx", action: "create", leadId: "invalid", requestId: id, text: "Confirm" }, { kind: "tech", action: "complete", requestId: id, text: "x".repeat(4001) }, { action: "count" }])("rejects invalid input %j without RPC", async (body) => {
     const rpc = vi.fn();

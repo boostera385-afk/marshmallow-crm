@@ -310,6 +310,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canAccess = (navItem: string): boolean => {
     if (navItem === "processor_board") return canAccessProcessorBoard(role);
     if (navItem === "cx_updates") return canAccessCxUpdates(role);
+    if (navItem === "notifications") return canAccessCxUpdates(role);
     if (navItem === "quote_pending_requests") {
       // CS Admins do not work the Quote to Send queue.
       return role === "admin" || profile?.is_quotation_master === true;
