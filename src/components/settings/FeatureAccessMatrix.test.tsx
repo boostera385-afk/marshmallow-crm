@@ -20,39 +20,29 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("desktop feature access navigation", () => {
-  it("pages four features at a time without losing user identities or target controls", () => {
+describe("full per-user feature access view", () => {
+  it("shows every feature together and targets the selected user without paging", () => {
     render(<FeatureAccessMatrix users={users} features={features} />);
-    const previous = screen.getByRole("button", { name: "Previous features" });
-    const next = screen.getByRole("button", { name: "Next features" });
-    expect(previous).toBeDisabled();
-    expect(table().getAllByRole("columnheader")).toHaveLength(5);
+    expect(table().getAllByRole("columnheader")).toHaveLength(10);
     expect(table().queryByText("Workspace Admin")).toBeNull();
-    fireEvent.click(next);
-    expect(screen.getByRole("status")).toHaveTextContent("Features 5–8 of 9");
-    expect(table().queryByRole("columnheader", { name: "Feature 1" })).toBeNull();
-    expect(table().getByText("Alice Operator")).toBeInTheDocument();
-    fireEvent.click(table().getByRole("switch", { name: "Feature 5 for Alice Operator" }));
-    expect(changed).toHaveBeenCalledWith("alice", 5, true);
-    fireEvent.click(next);
-    expect(next).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Features 9–9 of 9");
-    fireEvent.click(previous);
-    expect(table().getByRole("columnheader", { name: "Feature 5" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next features" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Feature permissions table" })).toHaveAttribute("tabindex", "0");
+    fireEvent.click(table().getByRole("switch", { name: "Feature 9 for Alice Operator" }));
+    expect(changed).toHaveBeenCalledExactlyOnceWith("alice", 9, true);
+    expect(table().getByRole("columnheader", { name: "Feature 1" })).toBeInTheDocument();
   });
 
-  it("finds a feature on a later page and keeps the correct user target after filtering", () => {
+  it("finds a feature and keeps the correct user target after filtering", () => {
     render(<FeatureAccessMatrix users={users} features={features} />);
-    fireEvent.click(screen.getByRole("button", { name: "Next features" }));
     fireEvent.change(screen.getByLabelText("Find feature"), { target: { value: "Feature 9" } });
     fireEvent.change(screen.getByLabelText("Find user"), { target: { value: " alice " } });
     expect(table().queryByText("Bob Processor")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent("Features 1–1 of 1");
+    expect(screen.getByRole("status")).toHaveTextContent("1 users · 1 of 9 features");
     fireEvent.click(table().getByRole("switch", { name: "Feature 9 for Alice Operator" }));
     expect(changed).toHaveBeenCalledWith("alice", 9, true);
   });
 
-  it("filters roles and offers recovery from an empty result", () => {
+  it("filters roles and restores all features after clearing filters", () => {
     render(<FeatureAccessMatrix users={users} features={features} />);
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Filter feature access by role" }), { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("option", { name: "Processor" }));
@@ -62,14 +52,14 @@ describe("desktop feature access navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(table().getByText("Alice Operator")).toBeInTheDocument();
     expect(table().getByText("Bob Processor")).toBeInTheDocument();
+    expect(table().getAllByRole("columnheader")).toHaveLength(10);
   });
 
-  it("clamps the page when the feature list shrinks", () => {
+  it("updates the complete view when features change", () => {
     const view = render(<FeatureAccessMatrix users={users} features={features} />);
-    fireEvent.click(screen.getByRole("button", { name: "Next features" }));
-    fireEvent.click(screen.getByRole("button", { name: "Next features" }));
     view.rerender(<FeatureAccessMatrix users={users} features={features.slice(0, 2)} />);
-    expect(screen.getByRole("status")).toHaveTextContent("Features 1–2 of 2");
-    expect(table().getByRole("columnheader", { name: "Feature 1" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("2 users · 2 of 2 features");
+    expect(table().getAllByRole("columnheader")).toHaveLength(3);
+    expect(table().queryByRole("switch", { name: "Feature 9 for Alice Operator" })).toBeNull();
   });
 });

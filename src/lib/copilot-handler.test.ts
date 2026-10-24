@@ -9,7 +9,7 @@ const budget = { rpc: vi.fn() };
 const generate = vi.fn();
 const authenticate = vi.fn();
 const aiConfigured = vi.fn();
-const services: CopilotServices = { authenticate, budgetDb: () => budget, aiConfigured, generate };
+const services: CopilotServices = { enabled: true, authenticate, budgetDb: () => budget, aiConfigured, generate };
 const handle = createCopilotHandler(services);
 const request = (body: object) => new Request("https://synthetic.invalid/copilot", { method: "POST", body: JSON.stringify(body) });
 const ask = (message: string, extra = {}) => request({ action: "ask", message, requestId: id, allowAi: false, ...extra });
@@ -23,6 +23,30 @@ beforeEach(() => {
   generate.mockResolvedValue({ kind: "answer", query: "", text: "A heat pump transfers heat.", inputTokens: 100, outputTokens: 40 });
 });
 describe("authenticated Copilot handler", () => {
+  it.each(["access", "ask", "settings", "configure", "set_permission", "diagnostics", "test_ai"])("blocks %s during the release pause without CRM or AI work", async (action) => {
+    const paused = createCopilotHandler({ ...services, enabled: false });
+    const response = await paused(request({ action, message: "find MM-101", allowAi: true, confirmed: true }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "copilot_paused" });
+    expect(authenticate).toHaveBeenCalledOnce();
+    expect(db.rpc).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled();
+    expect(aiConfigured).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled();
+  });
+  it("retains authentication failures while paused", async () => {
+    authenticate.mockResolvedValue({ userId: "", db });
+    const paused = createCopilotHandler({ ...services, enabled: false });
+    expect((await paused(ask("hello"))).status).toBe(401);
+    expect(db.rpc).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled();
+  });
+  it("reduces the same synthetic search from three CRM RPCs to zero during pause", async () => {
+    expect((await handle(ask("find lead MM-101"))).status).toBe(200);
+    expect(db.rpc.mock.calls.map((call) => call[0])).toEqual(["copilot_get_access", "copilot_search", "copilot_get_access"]);
+    db.rpc.mockClear(); authenticate.mockClear();
+    const paused = createCopilotHandler({ ...services, enabled: false });
+    expect((await paused(ask("find lead MM-101"))).status).toBe(503);
+    expect(authenticate).toHaveBeenCalledOnce();
+    expect(db.rpc).not.toHaveBeenCalled(); expect(budget.rpc).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled();
+  });
   it.each(["admin", "processor"] as const)("opens Processor Board help for %s with no AI or assessment request", async (role) => {
     access.role = role; access.sections.push("processor_board", "cx_updates");
     const response = await handle(ask("open Processor Board", { allowAi: true }));
