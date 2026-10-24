@@ -205,11 +205,11 @@ function ProcessorBoard() {
             {expanded && <div id={`review-${job.id}`}>{panel(job)}</div>}
           </article>;
         })}</div>}
-        {!rows.length && <div className="px-5 py-12 text-center"><ListChecks className="mx-auto mb-3 h-8 w-8 text-muted-foreground/50" aria-hidden="true" /><p className="font-medium">No jobs in this view</p><p className="mt-1 text-xs text-muted-foreground">{filters.aiStatus || filters.search ? "Try another search or status." : "No assigned, unfinished jobs right now."}</p></div>}
+        {!rows.length && <div className="px-5 py-12 text-center"><ListChecks className="mx-auto mb-3 h-8 w-8 text-muted-foreground/50" aria-hidden="true" /><p className="font-medium">No jobs in this view</p><p className="mt-1 text-xs text-muted-foreground">{filters.aiStatus || filters.search ? "Try another search or status." : "No assigned, unfinished leads from the last 30 days."}</p></div>}
       </>}
 
       <div className="border-t border-border/40 px-4 py-2.5 text-xs text-muted-foreground">
-        {query.data ? `${query.data.total} job${query.data.total === 1 ? "" : "s"} · newest leads first` : "0 jobs"}
+        {query.data ? `${query.data.total} job${query.data.total === 1 ? "" : "s"} · leads from the last 30 days · newest first` : "0 jobs"}
       </div>
     </motion.section>
     {chatJob && <QuoPhoneTrigger key={chatJob.id} contactName={chatJob.tech_name || "Technician"} phone={chatJob.tech_number} chatType="tech" conversationId={chatJob.chat_setup?.state === "ready" ? chatJob.chat_setup.conversation_id ?? undefined : undefined} defaultOpen hideTrigger onClose={() => setChatJobId(null)} />}
