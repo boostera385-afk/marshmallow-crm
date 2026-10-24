@@ -1,7 +1,8 @@
 /** Shared chat/time helpers for the Processor Board. Never changes leads. */
 export type JobMessage = { id: string; conversation_id: string; sender: string; text: string | null; message_time: string | null; status?: string | null; source?: "call_transcript"; source_message_id?: string; call_id?: string };
 const CALL_EVENT_TEXT = /^(?:call (?:recording )?completed\.?|call summary(?: completed\.?|:)|call transcript(?: completed\.?|:))/i;
-const REACTION_TEXT = /^(?:reacted|liked)\b/i;
+// Quo stores reactions as texts that quote another message: "Liked “…”", "👍 to “…”".
+const REACTION_TEXT = /^\s*(?:reacted|liked|loved|laughed at|emphasi[sz]ed|questioned|disliked|le gustó|\S{1,4}\s+to\s+[“"])/i;
 /** Quo stores call recordings, transcripts, summaries and reactions as inbound rows. */
 export function isCallOrSystemEvent(message: JobMessage): boolean {
   if (typeof message.status === "string" && (message.status.startsWith("call.") || message.status === "no-answer")) return true;

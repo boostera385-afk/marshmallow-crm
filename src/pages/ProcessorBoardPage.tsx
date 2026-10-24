@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canAccessProcessorBoard } from "@/lib/access";
 import { useProcessorBoard, PROCESSOR_QUERY_KEY } from "@/hooks/useProcessorBoard";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { assessProcessorJob, processorCheckSignature, processorPaymentNote, processorSchedulePassed, processorSetupIssue, processorSummary, ProcessorReviewFailure, PROCESSOR_BOARD_STATUSES, PROCESSOR_STATUS_UI, PROCESSOR_TIMEZONES, type ProcessorFilters, type ProcessorJob, type ProcessorStatus } from "@/lib/processor-board";
+import { assessProcessorJob, processorCheckSignature, processorShareNote, processorSchedulePassed, processorSetupIssue, processorSummary, ProcessorReviewFailure, PROCESSOR_BOARD_STATUSES, PROCESSOR_STATUS_UI, PROCESSOR_TIMEZONES, type ProcessorFilters, type ProcessorJob, type ProcessorStatus } from "@/lib/processor-board";
 import { processorTrackingKey, readProcessorTracking, saveProcessorTracking } from "@/lib/processor-tracking";
 import { cn } from "@/lib/utils";
 import { pageVariants } from "@/lib/motion";
@@ -99,8 +99,8 @@ function ProcessorBoard() {
   const counts = query.data?.counts ?? {};
   const latestCheck = rows.reduce<number | null>((latest, job) => { const at = Date.parse(job.checked_at ?? ""); return Number.isFinite(at) && (latest === null || at > latest) ? at : latest; }, null);
   const setStatusFilter = (aiStatus: ProcessorStatus | null) => { setExpandedId(null); setFilters((f) => ({ ...f, aiStatus })); };
-  const paymentLine = (job: ProcessorJob) => {
-    const note = processorPaymentNote(job, filters.timezone);
+  const shareLine = (job: ProcessorJob) => {
+    const note = processorShareNote(job, filters.timezone);
     return note && <p className={cn("mt-0.5 truncate text-[10px] font-medium", note.attention ? "text-red-600 dark:text-red-400" : "text-foreground/80")} title={note.text}>{note.text}</p>;
   };
   const rowNote = (job: ProcessorJob) => {
@@ -183,7 +183,7 @@ function ProcessorBoard() {
                   <td className="px-2 py-2"><p className="truncate text-muted-foreground" title={job.service_type ?? ""}>{job.service_type || "—"}</p></td>
                   <td className="px-2 py-2 capitalize text-foreground">{terms(job.terms)}</td>
                   <td className="px-2 py-2"><Schedule job={job} overdue={processorSchedulePassed(job, filters.timezone, now)} /></td>
-                  <td className="px-2 py-2"><StatusPill status={job.board_status} />{paymentLine(job)}<p className="mt-0.5 truncate text-[10px] text-muted-foreground">{rowNote(job)}</p></td>
+                  <td className="px-2 py-2"><StatusPill status={job.board_status} />{shareLine(job)}<p className="mt-0.5 truncate text-[10px] text-muted-foreground">{rowNote(job)}</p></td>
                   <td className="px-2 py-1.5">{actions(job, expanded)}</td>
                   <td className="whitespace-nowrap px-2 py-2 text-right text-muted-foreground">{new Date(job.created_at).toLocaleDateString()}</td>
                 </tr>
@@ -200,7 +200,7 @@ function ProcessorBoard() {
               <Schedule job={job} overdue={processorSchedulePassed(job, filters.timezone, now)} />
               <p className="text-muted-foreground">{job.service_type || "—"}</p><p className="capitalize">{terms(job.terms)}</p>
             </div>
-            {paymentLine(job)}<p className="text-[10px] text-muted-foreground">{rowNote(job)}</p>
+            {shareLine(job)}<p className="text-[10px] text-muted-foreground">{rowNote(job)}</p>
             {actions(job, expanded)}
             {expanded && <div id={`review-${job.id}`}>{panel(job)}</div>}
           </article>;

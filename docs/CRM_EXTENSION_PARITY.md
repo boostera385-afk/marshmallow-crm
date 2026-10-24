@@ -43,6 +43,14 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## Processor Board v4 job timeline (2026-10-24; migration 20261125000000 + Edge awaiting approval)
+
+CRM-only; Donut has no Processor Board (no extension change). Exact rules read the
+team's standard technician-chat steps (details "*Customer # N*", took job, reminder,
+update request, done, share requested/sent/received) before AI; payment means the
+technician's share; the customer chat is no longer read. Review shows the job
+timeline. Rules were measured offline on an exported chat sample (aggregates only).
+
 ## Processor Board v3 rules (2026-10-24; migration 20261124000000 + Edge awaiting approval)
 
 CRM-only; Donut still has no Processor Board (no extension change). Send Dose is now

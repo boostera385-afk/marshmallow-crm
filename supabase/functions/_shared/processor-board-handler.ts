@@ -5,7 +5,7 @@ import { readProcessorChats, readProcessorRows, type ProcessorChatSetup } from "
 import { readProcessorHistory } from "./processor-history.ts";
 import { processorCallTranscripts, type StoredProcessorCall, type ProcessorCallCoverage } from "./processor-call-transcripts.ts";
 import { leadWindowStart, NO_CHAT_FACTS, PROCESSOR_BOARD_STATUSES, PROCESSOR_POLICY, PROCESSOR_SYSTEM_PROMPT, selectLeadWindow, verifyProcessorFacts, type ProcessorFacts } from "./processor-lead-window.ts";
-import { PAYMENT_STAGE_STATUSES, PAYMENT_SYSTEM_PROMPT, paymentWindowStart, selectPaymentWindow, verifyPaymentFacts, type PaymentFacts } from "./processor-payment.ts";
+import { buildJobTimeline, mergeTimeline, timelineFacts, timelineSettlesJob } from "./processor-job-timeline.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS", "Cache-Control": "no-store" };
 const LEAD_COLUMNS = "id,job_id,customer_name,customer_phone,address,service_type,tech_number,scheduled_date,scheduled_time_start,scheduled_time_end,status,updated_at,created_at";
@@ -46,7 +46,7 @@ async function askAi(deps: Deps, system: string, user: unknown, maxTokens: numbe
 /**
  * One job check, shared by a signed-in user and the daily worker. `reader` is the
  * caller's client for a user (lead/chat RLS applies) or the service client for the
- * worker. Customer payment chats are always read server-side for this one lead.
+ * worker. Exact rules read the standard texts first; AI covers calls and the rest.
  */
 async function assessLead(deps: Deps, reader: SupabaseClient, service: SupabaseClient, job: Lead, actor: string | null, timezone: string): Promise<Outcome> {
   const readiness = processorReadiness(job);
@@ -100,61 +100,29 @@ async function assessLead(deps: Deps, reader: SupabaseClient, service: SupabaseC
     const { data: cache, error: cacheError } = await service.from("processor_job_assessments").select("input_hash,result").eq("lead_id", job.id).maybeSingle();
     if (cacheError) throw new Error("Saved assessment could not be read.");
     const saved = cache?.result?.policy === PROCESSOR_POLICY ? cache.result : null;
-    const techReused = Boolean(saved) && cache?.input_hash === inputHash;
+    const reused = Boolean(saved) && cache?.input_hash === inputHash;
+    // Exact rules over every in-window message (not just what fits the AI request).
+    const timeline = buildJobTimeline(window.all, job);
+    const skipAi = !reused && window.messages.length > 0 && timelineSettlesJob(timeline, window.all);
     let facts: ProcessorFacts;
-    if (techReused) {
-      facts = { enough_context: saved.enough_context, tech_took_job: saved.tech_took_job, job_update: saved.job_update, completed_at: saved.completed_at ?? null, waiting_since: saved.waiting_since, waiting_message_id: saved.waiting_message_id, summary: saved.summary, evidence: saved.evidence };
+    if (reused) {
+      facts = { enough_context: saved.enough_context, tech_took_job: saved.tech_took_job, job_update: saved.job_update, completed_at: saved.completed_at ?? null, waiting_since: saved.waiting_since, waiting_message_id: saved.waiting_message_id, summary: saved.summary, evidence: saved.evidence, share_state: saved.share_state ?? "none" };
     } else if (!window.messages.length) {
       facts = NO_CHAT_FACTS;
+    } else if (skipAi) {
+      facts = timelineFacts(timeline);
     } else {
       if (!deps.env("OPENAI_API_KEY")) return { status: 503, body: { error: "AI is not configured. Ask Admin to check OPENAI_API_KEY in Edge Function secrets.", code: "ai_setup", retryable: false } };
-      facts = verifyProcessorFacts(await askAi(deps, PROCESSOR_SYSTEM_PROMPT, { target, otherJobs: others, windowStartsAt: window.anchor === "customer_mention" ? "first mention of the target customer" : "day before the lead was created (no customer mention found)", untrustedMessages: window.messages }, 1200), window);
+      const knownFacts = { job_tag: timeline.job_tag ? `*Customer # ${timeline.job_tag}*` : null, details_sent_at: timeline.details?.at ?? null, took_job: timeline.took_job, visit_confirmed: timeline.visit_confirmed,
+        update_requested: timeline.update_requested, completed: timeline.completed, share_state: timeline.share_state };
+      facts = mergeTimeline(verifyProcessorFacts(await askAi(deps, PROCESSOR_SYSTEM_PROMPT, { target, otherJobs: others, knownFacts, windowStartsAt: window.anchor === "customer_mention" ? "first mention of the target customer" : "day before the lead was created (no customer mention found)", untrustedMessages: window.messages }, 1200), window), timeline);
     }
-
-    // Completed and unpaid: also read the customer's own chat to see who is waiting on whom.
-    let payment: PaymentFacts | null = null;
-    let paymentHash: string | null = null;
-    let customerLastMessageAt: string | null = null;
-    let paymentError: string | null = null;
-    let paymentReused = true;
-    if (PAYMENT_STAGE_STATUSES.includes(job.status) || facts.job_update === "completed") {
-      try {
-        const customer = phoneKey(job.customer_phone);
-        const { data: conversations, error: conversationError } = await service.from("quo_conversations").select("id")
-          .or([`linked_lead_id.eq.${job.id}`, ...(customer ? [`customer_number.eq.+1${customer}`] : [])].join(","));
-        if (conversationError) throw new Error("Customer conversations could not be read.");
-        const ids = ((conversations ?? []) as { id: string }[]).map((row) => row.id).filter((id) => id !== conversation?.id);
-        // Same definition the board list compares against, so a new customer message marks this job stale.
-        const { data: lastAt } = await service.rpc("processor_customer_last_message", { p_lead_id: job.id, p_customer_phone: job.customer_phone });
-        customerLastMessageAt = typeof lastAt === "string" ? lastAt : null;
-        const start = paymentWindowStart(job, facts.completed_at);
-        const rows = ids.length ? await readProcessorRows<JobMessage>((from, to) => service.from("quo_messages")
-          .select("id,conversation_id,sender,text,message_time,status").in("conversation_id", ids)
-          .gte("message_time", start).lte("message_time", until)
-          .in("sender", ["customer", "agent"]).order("message_time").order("id").range(from, to)) : [];
-        const paymentWindow = selectPaymentWindow(rows, start, ids.length);
-        paymentHash = await hash({ job: job.job_id, messages: paymentWindow.messages, policy: PROCESSOR_POLICY });
-        if (saved?.payment && saved.payment_hash === paymentHash) payment = saved.payment as PaymentFacts;
-        else {
-          paymentReused = false;
-          payment = paymentWindow.messages.length && deps.env("OPENAI_API_KEY")
-            ? verifyPaymentFacts(await askAi(deps, PAYMENT_SYSTEM_PROMPT, { today: until.slice(0, 10), job: { job_id: job.job_id, customer_name: job.customer_name, service: job.service_type }, untrustedMessages: paymentWindow.messages }, 700), paymentWindow)
-            : verifyPaymentFacts({}, paymentWindow);
-        }
-      } catch (error) {
-        // The technician result is still saved; the daily check retries the payment read.
-        payment = null; paymentHash = null; customerLastMessageAt = null;
-        paymentError = error instanceof ProcessorReviewError ? error.message : "The customer's chat could not be checked. The daily check will retry.";
-      }
-    }
-    const reused = techReused && paymentReused;
     const result = {
       policy: PROCESSOR_POLICY, tech_phone: phone, ...facts,
       window: { start: window.start, anchor: window.anchor, anchor_message_id: window.anchor_message_id, messages: window.messages.length, omitted: window.omitted },
       call_transcripts: callCoverage, source, history_complete: Boolean(directKey),
-      ...(payment ? { payment, payment_hash: paymentHash, customer_last_message_at: customerLastMessageAt } : {}),
-      ...(paymentError ? { payment_error: paymentError } : {}),
-      ai_used: !reused && (window.messages.length > 0 || Boolean(payment?.window.messages)), ai_reused: reused,
+      timeline: reused && saved.timeline ? saved.timeline : timeline,
+      ai_used: !reused && !skipAi && window.messages.length > 0, ai_reused: reused, rules_only: skipAi,
       checked_by: actor ? "user" : "daily_check",
       chat_fingerprint: chat.setup.fingerprint, timezone, checked_at: until, lead_updated_at: job.updated_at,
       mirror_conversation_id: conversation?.id ?? null, mirror_last_message_at: conversation?.last_message_time ?? null,
