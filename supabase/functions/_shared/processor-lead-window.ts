@@ -162,7 +162,10 @@ export function verifyProcessorFacts(raw: unknown, window: LeadWindow): Processo
   const waitingId = typeof value.waiting_on_technician_message_id === "string" ? value.waiting_on_technician_message_id : null;
   const waiting = waitingId ? byId.get(waitingId) : undefined;
   // Shown in Review only (also after completion); it no longer sets the status.
-  const pending = tookJob && waiting?.from === "our_team" ? waiting : undefined;
+  // Checked against the messages, not the model: any technician text or call after
+  // our question means he answered.
+  const answered = waiting && (window.all.length ? window.all : window.messages).some((message) => message.from === "technician" && message.at > waiting.at);
+  const pending = tookJob && waiting?.from === "our_team" && !answered ? waiting : undefined;
   // A share state counts only with a quote for it (or a later step).
   const shareRank = SHARE_STATES.indexOf(SHARE_STATES.includes(value.share_state as ShareState) ? value.share_state as ShareState : "none");
   const verifiedShare = SHARE_STATES.slice(1).reduce((best, state, index) => has(`share_${state}` as ProcessorSignal) && index + 1 <= shareRank ? index + 1 : best, 0);
