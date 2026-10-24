@@ -53,7 +53,7 @@ export const DOC_SECTIONS: DocSection[] = [
     id: "nav-permissions",
     title: "3. Tab Permissions (Navigation Access)",
     blocks: [
-      { type: "p", text: "Sidebar tab visibility is a two-layer system: a hard-coded role default, plus per-user overrides stored in the navigation_permissions table. Admin bypasses every check and always sees every tab. The check runs through canAccessNavItem(role, navItem, permissions) in src/lib/access.ts." },
+      { type: "p", text: "Sidebar tab visibility is a two-layer system: a hard-coded role default, plus per-user overrides stored in the navigation_permissions table. Admin bypasses every check and always sees every tab. The check runs through canAccessNavItem(role, navItem, permissions) in src/lib/access.ts. A signed-in user's own overrides are re-read when they return to the CRM tab (at most every 30 seconds), so a grant or removal shows without signing out; a page reload also applies it." },
       {
         type: "table",
         headers: ["Nav key", "Page", "Default access"],

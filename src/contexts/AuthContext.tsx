@@ -6,6 +6,8 @@ import { canAccessNavItem, canAccessCxUpdates, canAccessProcessorBoard } from "@
 
 const VERIFIED_USER_KEY = "auth_verified_user_id";
 const PENDING_AUTH_KEY = "auth_pending_state";
+// Shortest gap between re-reads of the signed-in user's own tab grants.
+export const PERMISSION_REFRESH_MS = 30_000;
 
 type PendingStep = "none" | "access_code" | "mfa";
 
@@ -253,6 +255,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Admin can grant or remove a tab in Settings while this user is signed in.
+  // Their own grants are re-read when they come back to the CRM tab (at most once
+  // per PERMISSION_REFRESH_MS), so a change shows without signing out. A failed
+  // read keeps the current grants; a reply for a previous user is ignored.
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    let active = true;
+    let lastRead = Date.now();
+    const refresh = async () => {
+      if (document.visibilityState === "hidden" || Date.now() - lastRead < PERMISSION_REFRESH_MS) return;
+      lastRead = Date.now();
+      try {
+        const { data, error } = await supabase.from("navigation_permissions").select("*").eq("user_id", userId);
+        if (active && !error && data) setPermissions(data as NavigationPermission[]);
+      } catch {
+        // Network failure: keep the grants already loaded.
+      }
+    };
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [userId]);
 
   const persistPendingAuth = (state: PendingAuthState | null) => {
     if (!state || state.step === "none" || !state.userId) {
