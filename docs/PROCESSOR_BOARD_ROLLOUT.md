@@ -1,5 +1,28 @@
 # Processor Board
 
+## v3 rules after user testing (2026-10-24; migration 20261124000000 + both Edge functions awaiting approval)
+
+Supersedes the status, payment-overdue, auto-check and pagination parts of the v2
+section below.
+
+| Area | v3 rule |
+| --- | --- |
+| Send Dose | The technician took or completed the job (or the lead is saved Payment Pending / Job Done), it is still not paid, and more than 3 days have passed since the scheduled date and time. Never while the chat (or the saved lead) says the job is still in progress. The 60-minute "unanswered" rule and **Payment Overdue** are removed. |
+| Payment Pending | Completed and unpaid, under 3 days since the schedule; Paid Approval Pending always. |
+| Wrong Tech Number | The tech number is missing or not a valid 10-digit number (11 digits only with a leading 1). Shown first; such jobs are never sent to AI. |
+| Other statuses | Job In Progress, Take Job Update, Not enough details in the chat, Upcoming — unchanged. |
+| When checks run | **Server only.** Every 5 minutes the dispatcher looks for due jobs and calls `processor-board-daily` only if there are some: (1) lead edited or a new tech message, or a new customer message for a completed job; (2) never checked; (3) completed and unpaid, not checked in 20 hours. Failures back off 15 min → 24 h. Opening the board never runs AI; "Check again" in Review checks one job on request. |
+| Board list | Every job, no pagination, newest lead first, with a compact AI summary per row. Full evidence loads only when a Review opens (`detail` action). List refresh every 60 s. |
+
+Apply `supabase/migrations/20261124000000_processor_board_send_dose_worker.sql`,
+then redeploy **both** `processor-board` (list summary + detail action) and
+`processor-board-daily` (due-job queue + retry recording), then publish the CRM.
+Vault/Edge secrets from the daily-check setup are reused; the cron entry keeps its
+name and now runs every 5 minutes. SQL harness `159` (28 checks) covers every rule
+above, the queue order, backoff, dispatcher and browser denial: **197/197 PASS** on
+isolated PGlite with all board migrations applied twice. Rollback: see the
+migration footer.
+
 ## v2: lead chat window, six statuses and change-driven checks (2026-10-23; awaiting migration + Edge deployment)
 
 Supersedes the board scope, ordering, statuses and AI input described in the

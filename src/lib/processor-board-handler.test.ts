@@ -33,7 +33,8 @@ function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; 
     if (name === "claim_processor_job_refresh") return { data: !options.busy, error: null };
     if (name === "processor_board_status") return { data: mockStatus(args.p_result as Model), error: null };
     if (name === "processor_customer_last_message") return { data: CUSTOMER_CONVERSATION.last_message_time, error: null };
-    if (name === "processor_board_daily_candidates") return { data: options.candidates ?? [], error: null };
+    if (name === "processor_board_due_jobs") return { data: options.candidates ?? [], error: null };
+    if (name === "record_processor_check_attempt") return { data: null, error: null };
     if (name === "save_processor_job_assessment") {
       if (!options.failSave) tables.processor_job_assessments = [{ input_hash: args.p_hash, result: args.p_result }];
       return { data: !options.failSave, error: null };
@@ -208,6 +209,20 @@ describe("Processor Board server boundary", () => {
     expect(s.reads).toEqual(["user_roles", "technicians", "quo_conversations"]);
     expect(s.fetcher).not.toHaveBeenCalled();
   });
+  it("returns one job's saved review on request, read with the caller's own access", async () => {
+    const s = setup(); s.tables.processor_job_assessments = [{ result: { policy: 10, summary: "Saved" }, checked_at: "2026-10-15T17:00:00Z" }];
+    const response = await s.request({ action: "detail", leadId: ID });
+    expect(await response.json()).toEqual({ result: { policy: 10, summary: "Saved" }, checked_at: "2026-10-15T17:00:00Z" });
+    expect(s.fetcher).not.toHaveBeenCalled();
+    expect(s.rpc).not.toHaveBeenCalled();
+    expect((await s.request({ action: "detail", leadId: "nope" })).status).toBe(400);
+  });
+  it.each(["payment_overdue", "needs_review"])("rejects the unknown AI status filter %s", async (aiStatus) => {
+    const s = setup(); expect((await s.request({ action: "list", aiStatus })).status).toBe(400); expect(s.rpc).not.toHaveBeenCalled();
+  });
+  it("accepts the Wrong Tech Number filter", async () => {
+    const s = setup(); expect((await s.request({ action: "list", aiStatus: "wrong_tech_number" })).status).toBe(200);
+  });
   it("rejects an unknown AI status filter", async () => {
     const s = setup(); expect((await s.request({ action: "list", aiStatus: "needs_review" })).status).toBe(400); expect(s.rpc).not.toHaveBeenCalled();
   });
@@ -297,7 +312,8 @@ describe("Processor Board server boundary", () => {
       const payload = await response.json();
       expect(payload).toEqual({ checked: 1, failed: 0, results: [{ lead_id: ID, ok: true, status: "payment_pending" }] });
       expect(JSON.stringify(payload)).not.toContain("Shanice");
-      expect(s.rpc).toHaveBeenCalledWith("processor_board_daily_candidates", { p_limit: 5 });
+      expect(s.rpc).toHaveBeenCalledWith("processor_board_due_jobs", { p_limit: 5 });
+      expect(s.rpc.mock.calls.map(([name]) => name)).not.toContain("record_processor_check_attempt");
       expect(s.rpc.mock.calls.find(([name]) => name === "save_processor_job_assessment")?.[1]).toMatchObject({ p_lead_id: ID, p_actor: null });
       expect((s.tables.processor_job_assessments[0].result as { checked_by: string }).checked_by).toBe("daily_check");
       expect(s.reads).not.toContain("user_roles");
@@ -306,7 +322,9 @@ describe("Processor Board server boundary", () => {
       const s = setup({ candidates: ["00000000-0000-4000-8000-0000000000aa", ID] });
       const payload = await (await s.dailyRequest()).json();
       expect(payload.checked).toBe(1);
-      expect(payload.results[0]).toMatchObject({ ok: false });
+      expect(payload.results[0]).toMatchObject({ ok: false, code: "missing" });
+      // Only the failure is recorded, so the database backs that job off.
+      expect(s.rpc.mock.calls.filter(([name]) => name === "record_processor_check_attempt").map(([, args]) => args)).toEqual([{ p_lead_id: "00000000-0000-4000-8000-0000000000aa", p_ok: false, p_code: "missing" }]);
     });
   });
 });

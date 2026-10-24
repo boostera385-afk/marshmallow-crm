@@ -11,9 +11,9 @@ export type ProcessorStatus = ProcessorBoardStatus;
 export const PROCESSOR_STATUS_UI: Record<ProcessorStatus, { label: string; help: string; color: string }> = {
   take_job_update: { label: "Take Job Update", help: "The appointment time has passed and the technician has not updated this job yet. Ask the technician for an update.", color: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300" },
   job_in_progress: { label: "Job In Progress", help: "The technician updated this job (on the way, arrived, working), or the lead is saved as In Progress.", color: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300" },
-  payment_pending: { label: "Payment Pending", help: "The technician said the job is completed, or the lead is saved as Payment Pending. Stays here until it is marked Partial Paid or Paid.", color: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
-  payment_overdue: { label: "Payment Overdue", help: "Completed more than 24 hours ago and still not marked Partial Paid or Paid (or the date the customer promised has passed). Follow up on the payment.", color: "border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-300" },
-  send_dose: { label: "Send Dose", help: "The technician took the job details, then has not answered our message about it for 60+ minutes. Follow up manually; nothing is sent automatically.", color: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300" },
+  payment_pending: { label: "Payment Pending", help: "The technician said the job is completed, or the lead is saved as Payment Pending. Becomes Send Dose 3 days after the scheduled date if it is still not paid.", color: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
+  send_dose: { label: "Send Dose", help: "The technician took or completed the job, it is still not paid, and more than 3 days have passed since the scheduled date. Not shown while the chat says the job is still in progress. Nothing is sent automatically.", color: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300" },
+  wrong_tech_number: { label: "Wrong Tech Number", help: "The technician number on this lead is missing or is not a valid 10-digit number, so the technician chat cannot be checked. Fix the number on the lead.", color: "border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-300" },
   not_enough_details: { label: "Not enough details in the chat", help: "AI could not find enough about this job in the technician chat to decide. Open the chat and check it yourself.", color: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300" },
   upcoming: { label: "Upcoming", help: "The appointment has not started yet and no follow-up is due.", color: "border-border bg-muted/40 text-muted-foreground" },
 };
@@ -59,7 +59,14 @@ export const processorJobSchema = z.object({
   tech_name: nullableText, tech_number: nullableText, scheduled_date: nullableText, scheduled_time_start: nullableText, scheduled_time_end: nullableText,
   customer_schedule_requirements: nullableText, terms: nullableText, status: z.string(), updated_at: z.string(), created_at: z.string(),
   board_status: z.enum(PROCESSOR_BOARD_STATUSES), ai_stale: z.boolean(),
-  assessment: z.record(z.unknown()).nullable(), checked_at: nullableText,
+  // Compact list summary; full evidence is loaded only when Review opens.
+  ai_summary: z.object({
+    policy: z.number().optional(), tech_phone: z.string().optional(), job_update: z.string().optional(), tech_took_job: z.boolean().optional(),
+    enough_context: z.boolean().optional(), completed_at: z.string().optional(), payment_state: z.enum(PAYMENT_STATES).optional(),
+    payment_waiting_since: z.string().optional(), payment_promised_date: z.string().optional(), payment_error: z.boolean().optional(),
+    checked_by: z.string().optional(),
+  }).nullable(),
+  checked_at: nullableText,
   chat_setup: processorChatSetupSchema.nullable().optional(),
 });
 export type ProcessorJob = z.infer<typeof processorJobSchema>;
@@ -69,8 +76,7 @@ export const processorQueueSchema = z.object({
   monitoring: z.object({ ai_configured: z.boolean(), current_history_configured: z.boolean(), evidence_policy: z.number().int().nonnegative().optional() }).optional(),
 });
 export type ProcessorQueue = z.infer<typeof processorQueueSchema>;
-export type ProcessorFilters = { offset: number; search: string; timezone: string; aiStatus: ProcessorStatus | null };
-export const PROCESSOR_PAGE_SIZE = 25;
+export type ProcessorFilters = { search: string; timezone: string; aiStatus: ProcessorStatus | null };
 
 export class ProcessorReviewFailure extends Error {
   constructor(message: string, public retryable = true, public code = "review_unavailable") { super(message); }
@@ -112,22 +118,23 @@ export async function assessProcessorJob(leadId: string, timezone: string) {
   }
 }
 
-/** Saved facts for the technician now assigned, or null (never checked, older backend, reassigned). */
-export function processorFacts(job: ProcessorJob): ProcessorFacts | null {
-  const parsed = processorFactsSchema.safeParse(job.assessment);
+/** One job's full saved review, read when its Review opens. */
+export async function fetchProcessorDetail(leadId: string, signal?: AbortSignal): Promise<unknown> {
+  const data = await call({ action: "detail", leadId }, signal);
+  return data && typeof data === "object" && "result" in data ? (data as { result: unknown }).result : null;
+}
+/** Full saved facts for the technician now assigned, or null (never checked, older backend, reassigned). */
+export function processorFacts(job: ProcessorJob, result: unknown): ProcessorFacts | null {
+  const parsed = processorFactsSchema.safeParse(result);
   return parsed.success && parsed.data.tech_phone === phoneKey(job.tech_number) ? parsed.data : null;
+}
+/** The list summary, only when saved by this version for the technician now assigned. */
+export function processorSummary(job: ProcessorJob) {
+  const summary = job.ai_summary;
+  return summary && summary.policy === PROCESSOR_POLICY && summary.tech_phone === phoneKey(job.tech_number) ? summary : null;
 }
 export function processorSetupIssue(job: ProcessorJob): string | null {
   return processorReadiness(job) || (job.chat_setup && job.chat_setup.state !== "ready" ? job.chat_setup.message : null);
-}
-/**
- * AI runs only when its inputs changed: never checked, saved by an older
- * backend, or the lead / technician chat changed since (ai_stale). Time passing
- * alone never needs AI; the server turns saved facts into the current status.
- */
-export function processorNeedsCheck(job: ProcessorJob): boolean {
-  if (processorSetupIssue(job) || job.chat_setup?.state !== "ready") return false;
-  return !processorFacts(job) || job.ai_stale;
 }
 /** Changes whenever a check could give a different answer. */
 export const processorCheckSignature = (job: ProcessorJob) => `${job.updated_at}:${job.tech_number ?? ""}:${job.chat_setup?.fingerprint ?? ""}:${job.chat_setup?.last_message_at ?? ""}`;
@@ -135,12 +142,12 @@ export const processorSchedulePassed = (job: ProcessorJob, timezone: string, now
 export const PROCESSOR_TIMEZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"];
 /** One short line on who the open payment is waiting on, for completed jobs only. */
 export function processorPaymentNote(job: ProcessorJob, timezone: string): { text: string; attention: boolean } | null {
-  const facts = processorFacts(job);
-  if (!facts || !["payment_pending", "payment_overdue"].includes(job.board_status)) return null;
-  if (!facts.payment) return facts.payment_error ? { text: "Customer chat not checked yet", attention: false } : null;
-  const ui = PAYMENT_STATE_UI[facts.payment.state];
+  const summary = processorSummary(job);
+  if (!summary || !["payment_pending", "send_dose"].includes(job.board_status) || (summary.job_update !== "completed" && !["payment_pending", "job_done"].includes(job.status))) return null;
+  if (!summary.payment_state) return summary.payment_error ? { text: "Customer chat not checked yet", attention: false } : null;
+  const ui = PAYMENT_STATE_UI[summary.payment_state];
   const day = (value: string) => new Date(value).toLocaleDateString([], { month: "short", day: "numeric", timeZone: timezone });
-  const detail = facts.payment.waiting_since ? ` since ${day(facts.payment.waiting_since)}`
-    : facts.payment.promised_date ? ` · ${new Date(`${facts.payment.promised_date}T12:00:00Z`).toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" })}` : "";
+  const detail = summary.payment_waiting_since ? ` since ${day(summary.payment_waiting_since)}`
+    : summary.payment_promised_date ? ` · ${new Date(`${summary.payment_promised_date}T12:00:00Z`).toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" })}` : "";
   return { text: `${ui.label}${detail}`, attention: ui.attention };
 }

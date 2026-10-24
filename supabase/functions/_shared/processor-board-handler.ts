@@ -218,6 +218,13 @@ export function createProcessorBoardHandler(deps: Deps) {
         return json({ ...data, monitoring, rows: rows.map((row) => ({ ...row, chat_setup: setup })) });
       }
     }
+    if (body.action === "detail") {
+      if (typeof body.leadId !== "string" || !UUID.test(body.leadId)) return json({ error: "A saved job ID is required." }, 400);
+      // Caller-scoped read: the assessment policy already limits rows to Admin/Processor and visible leads.
+      const { data, error } = await caller.from("processor_job_assessments").select("result,checked_at").eq("lead_id", body.leadId).maybeSingle();
+      if (error) return json({ error: "Saved review is unavailable. Retry." }, 503);
+      return json({ result: data?.result ?? null, checked_at: data?.checked_at ?? null });
+    }
     if (body.action !== "assess" || typeof body.leadId !== "string" || !UUID.test(body.leadId)) return json({ error: "A saved job ID is required." }, 400);
     // Saved lead is read with caller JWT, never a browser snapshot or unrestricted service lookup.
     const { data: job, error: jobError } = await caller.from("leads").select(LEAD_COLUMNS).eq("id", body.leadId).maybeSingle<Lead>();
@@ -243,10 +250,12 @@ function sameSecret(provided: string, expected: string): boolean {
 }
 
 /**
- * Daily safety check, called by pg_cron with a dedicated secret (no user JWT).
- * The database picks completed, unpaid jobs not checked in the last 20 hours; a
- * changed chat costs AI, an unchanged one reuses the saved answer. The response
- * carries counts and codes only, never customer data.
+ * Server-side checks, called by pg_cron with a dedicated secret (no user JWT).
+ * The database picks the due jobs: a changed lead or new chat message first,
+ * then jobs never checked, then completed unpaid jobs not checked in 20 hours.
+ * A changed chat costs AI; an unchanged one reuses the saved answer. Failures
+ * are recorded so the database backs them off. The response carries counts and
+ * codes only, never customer data.
  */
 export function createProcessorDailyHandler(deps: Deps) {
   return async (req: Request): Promise<Response> => {
@@ -258,19 +267,21 @@ export function createProcessorDailyHandler(deps: Deps) {
     if (!service) return json({ error: "Processor Board server setup is unavailable." }, 503);
     const body = await req.json().catch(() => ({}));
     const limit = Number.isInteger(body?.limit) ? Math.min(Math.max(body.limit, 1), 5) : 3;
-    const { data: ids, error } = await service.rpc("processor_board_daily_candidates", { p_limit: limit });
-    if (error || !Array.isArray(ids)) return json({ error: "Daily check migration is not installed." }, 503);
+    const { data: ids, error } = await service.rpc("processor_board_due_jobs", { p_limit: limit });
+    if (error || !Array.isArray(ids)) return json({ error: "Processor Board worker migration is not installed." }, 503);
     const started = Date.now();
     const results: { lead_id: string; ok: boolean; code?: string; status?: string | null }[] = [];
     for (const raw of ids) {
-      const id = typeof raw === "string" ? raw : (raw as Record<string, unknown>)?.processor_board_daily_candidates;
+      const id = typeof raw === "string" ? raw : (raw as Record<string, unknown>)?.processor_board_due_jobs;
       if (typeof id !== "string" || !UUID.test(id)) continue;
       if (Date.now() - started > DAILY_BUDGET_MS) break;
       const { data: job } = await service.from("leads").select(LEAD_COLUMNS).eq("id", id).maybeSingle<Lead>();
-      if (!job) { results.push({ lead_id: id, ok: false, code: "missing" }); continue; }
-      const outcome = await assessLead(deps, service, service, job, null, "America/New_York");
+      const outcome: Outcome = job ? await assessLead(deps, service, service, job, null, "America/New_York") : { status: 404, body: { code: "missing" } };
       const result = outcome.body.result as { status?: string | null } | undefined;
-      results.push(outcome.status === 200 ? { lead_id: id, ok: true, status: result?.status ?? null } : { lead_id: id, ok: false, code: String(outcome.body.code ?? outcome.status) });
+      const code = String(outcome.body.code ?? outcome.status);
+      // A successful save clears retry state itself; failures back off in the database.
+      if (outcome.status !== 200) await service.rpc("record_processor_check_attempt", { p_lead_id: id, p_ok: false, p_code: code });
+      results.push(outcome.status === 200 ? { lead_id: id, ok: true, status: result?.status ?? null } : { lead_id: id, ok: false, code });
     }
     return json({ checked: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results });
   };
