@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProcessorReviewPanel } from "@/components/processor-board/ProcessorReviewPanel";
+import StatusBadge from "@/components/leads/StatusBadge";
+import { LEAD_STATUS_CONFIG, type LeadStatus } from "@/types";
 import QuoPhoneTrigger from "@/components/leads/QuoPhoneTrigger";
 import "./ProcessorBoardPage.css";
 
@@ -37,6 +39,12 @@ function Schedule({ job, overdue }: { job: ProcessorJob; overdue: boolean }) {
 }
 function StatusPill({ status }: { status: ProcessorStatus }) {
   return <span data-processor-status={status} className={cn("inline-flex max-w-full items-center truncate rounded-full border px-1.5 py-0.5 text-[11px] font-medium", PROCESSOR_STATUS_UI[status].color)} title={PROCESSOR_STATUS_UI[status].help}>{PROCESSOR_STATUS_UI[status].label}</span>;
+}
+
+/** The lead's saved CRM status, as on the leads pages; unknown values are shown as saved. */
+function LeadStatusCell({ status }: { status: string }) {
+  if (status in LEAD_STATUS_CONFIG) return <StatusBadge status={status as LeadStatus} size="sm" />;
+  return <span className="capitalize text-muted-foreground">{status.replace(/_/g, " ") || "—"}</span>;
 }
 
 export default function ProcessorBoardPage() {
@@ -164,14 +172,15 @@ function ProcessorBoard() {
           <table className="w-full table-fixed border-collapse text-left text-xs">
             <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
               <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                <th className="w-[15%] px-2 py-1.5 font-semibold">Lead</th>
-                <th className="w-[13%] px-2 py-1.5 font-semibold">Technician</th>
-                <th className="w-[13%] px-2 py-1.5 font-semibold">Service</th>
-                <th className="w-[8%] px-2 py-1.5 font-semibold">Terms</th>
-                <th className="w-[11%] px-2 py-1.5 font-semibold">Schedule</th>
-                <th className="w-[16%] px-2 py-1.5 font-semibold">AI Status</th>
-                <th className="w-[16%] px-2 py-1.5 text-right font-semibold">Actions</th>
-                <th className="w-[8%] px-2 py-1.5 text-right font-semibold">Date</th>
+                <th className="w-[13%] px-2 py-1.5 font-semibold">Lead</th>
+                <th className="w-[12%] px-2 py-1.5 font-semibold">Technician</th>
+                <th className="w-[10%] px-2 py-1.5 font-semibold">Service</th>
+                <th className="w-[7%] px-2 py-1.5 font-semibold">Terms</th>
+                <th className="w-[10%] px-2 py-1.5 font-semibold">Schedule</th>
+                <th className="w-[12%] px-2 py-1.5 font-semibold">Lead Status</th>
+                <th className="w-[15%] px-2 py-1.5 font-semibold">AI Status</th>
+                <th className="w-[14%] px-2 py-1.5 text-right font-semibold">Actions</th>
+                <th className="w-[7%] px-2 py-1.5 text-right font-semibold">Date</th>
               </tr>
             </thead>
             <tbody>{rows.map((job) => {
@@ -183,11 +192,12 @@ function ProcessorBoard() {
                   <td className="px-2 py-2"><p className="truncate text-muted-foreground" title={job.service_type ?? ""}>{job.service_type || "—"}</p></td>
                   <td className="px-2 py-2 capitalize text-foreground">{terms(job.terms)}</td>
                   <td className="px-2 py-2"><Schedule job={job} overdue={processorSchedulePassed(job, filters.timezone, now)} /></td>
+                  <td className="px-2 py-2"><LeadStatusCell status={job.status} /></td>
                   <td className="px-2 py-2"><StatusPill status={job.board_status} />{shareLine(job)}<p className="mt-0.5 truncate text-[10px] text-muted-foreground">{rowNote(job)}</p></td>
                   <td className="px-2 py-1.5">{actions(job, expanded)}</td>
                   <td className="whitespace-nowrap px-2 py-2 text-right text-muted-foreground">{new Date(job.created_at).toLocaleDateString()}</td>
                 </tr>
-                {expanded && <tr id={`review-${job.id}`}><td colSpan={8} className="px-2 pb-3">{panel(job)}</td></tr>}
+                {expanded && <tr id={`review-${job.id}`}><td colSpan={9} className="px-2 pb-3">{panel(job)}</td></tr>}
               </Fragment>;
             })}</tbody>
           </table>
@@ -199,6 +209,7 @@ function ProcessorBoard() {
               <div><p>{job.tech_name || "Name missing"}</p><p className="text-[10px] text-muted-foreground">{job.tech_number || "Number missing"}</p></div>
               <Schedule job={job} overdue={processorSchedulePassed(job, filters.timezone, now)} />
               <p className="text-muted-foreground">{job.service_type || "—"}</p><p className="capitalize">{terms(job.terms)}</p>
+              <div className="col-span-2 flex items-center gap-1.5"><span className="text-[10px] text-muted-foreground">Lead status</span><LeadStatusCell status={job.status} /></div>
             </div>
             {shareLine(job)}<p className="text-[10px] text-muted-foreground">{rowNote(job)}</p>
             {actions(job, expanded)}

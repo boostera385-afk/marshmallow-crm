@@ -51,6 +51,16 @@ describe("Processor Board", () => {
     expect(within(row).getByRole("link", { name: "Open lead LD-1001" })).toHaveAttribute("href", `/leads/${job.id}`);
     expect(screen.getByLabelText("Jobs on the board")).toHaveTextContent("40");
   });
+  it("shows each lead's current saved status in its own column", () => {
+    state.hook.mockReturnValue(queue([{ ...future, status: "payment_requested" }, job, { ...job, id: "00000000-0000-4000-8000-000000000003", job_id: "LD-1003", status: "legacy_custom" }]));
+    mount();
+    expect(screen.getByRole("columnheader", { name: "Lead Status" })).toBeInTheDocument();
+    const statusCell = (jobId: string) => within(rowFor(jobId)).getAllByRole("cell")[5];
+    expect(statusCell("LD-1001")).toHaveTextContent("Scheduled");
+    expect(statusCell("LD-1002")).toHaveTextContent("Paid Approval Pending");
+    // A status the CRM has no label for is shown as saved, not hidden.
+    expect(statusCell("LD-1003")).toHaveTextContent("legacy custom");
+  });
   it("never runs AI just because the board was opened, even for unchecked or changed jobs", async () => {
     state.hook.mockReturnValue(queue([future, { ...job, ai_stale: true }]));
     mount();
