@@ -79,7 +79,7 @@ older sections below. Those sections remain as history.
 | Filter / counts | Server-side (`p_ai_status`), so counts and filters cover every board job, not one page. |
 | AI input | Tech chat from the first customer mention on/after the day before lead creation, else from that day; texts + speaker-verified call segments + answered calls. Other recent jobs for the tech are named so AI ignores them. Over 60k chars: dispatch + newest messages kept, omitted count shown. |
 | Trust | AI returns facts only. Completion/acceptance need verbatim technician quotes; negated or future wording is rejected; "waiting" must point at our own message. Statuses are computed once, in SQL. AI never writes leads or sends messages. |
-| UI | Compact table like Urgent leads: lead name + ID, tech name + number, service, terms, schedule (red when passed), AI status, Chat / Review (inline, no sidebar) / Open lead, created date. Status chips filter the board. |
+| UI | Compact table like Urgent leads: lead name + ID, tech name + number, service, terms, schedule (red when passed), current lead status (the saved CRM status badge), AI status, Chat / Review (inline, no sidebar) / Open lead, created date. Status chips filter the board. |
 
 ### How checks are triggered (no repeated rechecking)
 
