@@ -1,5 +1,13 @@
 # Processor Board
 
+## Last 30 days only (2026-10-24; migration 20261126000000 awaiting manual application)
+
+The board and the server worker now include only leads created in the last 30 days
+(rolling, `created_at >= now() - 30 days`), so no AI is spent on older leads. Older
+leads are unchanged and stay in the CRM. Apply
+`supabase/migrations/20261126000000_processor_board_last_30_days.sql`; no Edge
+redeploy is needed. SQL harness `161`: **214/214 PASS** on isolated PGlite.
+
 ## v4 job timeline rules from real chats (2026-10-24; migration 20261125000000 + both Edge functions awaiting approval)
 
 Built from an analysis of 1,079 exported technician chats (614 technicians, ~99,000

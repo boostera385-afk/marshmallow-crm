@@ -74,7 +74,7 @@ describe("Processor Board", () => {
     mount();
     expect(screen.getAllByRole("row")).toHaveLength(41);
     expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
-    expect(screen.getByText("40 jobs · newest leads first")).toBeInTheDocument();
+    expect(screen.getByText("40 jobs · leads from the last 30 days · newest first")).toBeInTheDocument();
     expect(state.filters.at(-1)).not.toHaveProperty("offset");
   });
   it("shows a passed appointment in red and an upcoming one normally", () => {
