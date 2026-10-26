@@ -14,7 +14,7 @@ const CHAT = [
   text("ok", "customer", "Ok got it, I'll take it", "2026-10-08T14:05:00Z"),
   text("done", "customer", "Shanice job is all done", "2026-10-15T16:00:00Z"),
 ];
-type Model = { enough_context?: boolean; tech_took_job?: boolean; job_update?: string; waiting_on_technician_message_id?: string | null; summary?: string; evidence?: unknown[] };
+type Model = { enough_context?: boolean; tech_took_job?: boolean; job_update?: string; waiting_on_technician_message_id?: string | null; summary?: string; evidence?: unknown[]; customer_view?: unknown };
 const COMPLETED: Model = { enough_context: true, tech_took_job: true, job_update: "completed", summary: "Technician finished the job.", evidence: [{ signal: "took_job", message_id: "ok", quote: "Ok got it" }, { signal: "completed", message_id: "done", quote: "all done" }] };
 // Small stand-in for the SQL rule (tested in supabase/tests/156); only shapes the audit line here.
 const mockStatus = (result: { job_update?: string; enough_context?: boolean }) => result.job_update === "completed" ? "payment_pending" : result.job_update === "in_progress" ? "job_in_progress" : result.enough_context ? "take_job_update" : "not_enough_details";
@@ -82,6 +82,15 @@ function setup(options: { role?: string; signedIn?: boolean; visible?: boolean; 
   return { request, dailyRequest, rpc, reads, fetcher, tables, aiCalls, prompt };
 }
 
+// The team's real templates, with synthetic customer details matching the lead.
+const DETAILS = "*Customer # 2*\nCustomer Name: Shanice Walker\nCustomer Number: (404) 555-0101\nCustomer Address: 12 Peach St, Atlanta, GA 30301\nService Details: furniture assembly";
+const flow = [
+  text("d1", "agent", DETAILS, "2026-10-08T14:00:00Z"),
+  text("d2", "agent", "kindly check & confirm if you received complete customer details ?", "2026-10-08T14:01:00Z"),
+  text("d3", "customer", "Yes", "2026-10-08T14:05:00Z"),
+  text("d4", "customer", "Done ✅", "2026-10-15T15:00:00Z"),
+  text("d5", "agent", "Thanks for the update this is the Zelle Email:\n\nActive Zelle:\nsynthetic@example.invalid\n\nHere you can send our shares on Zelle", "2026-10-15T15:10:00Z"),
+];
 describe("Processor Board server boundary", () => {
   it.each([false, true])("reviews this lead's chat from the first customer mention (mirror-only=%s)", async (noDirect) => {
     const s = setup({ noDirect });
@@ -233,15 +242,6 @@ describe("Processor Board server boundary", () => {
   });
 
   describe("exact chat rules", () => {
-    // The team's real templates, with synthetic customer details matching the lead.
-    const DETAILS = "*Customer # 2*\nCustomer Name: Shanice Walker\nCustomer Number: (404) 555-0101\nCustomer Address: 12 Peach St, Atlanta, GA 30301\nService Details: furniture assembly";
-    const flow = [
-      text("d1", "agent", DETAILS, "2026-10-08T14:00:00Z"),
-      text("d2", "agent", "kindly check & confirm if you received complete customer details ?", "2026-10-08T14:01:00Z"),
-      text("d3", "customer", "Yes", "2026-10-08T14:05:00Z"),
-      text("d4", "customer", "Done ✅", "2026-10-15T15:00:00Z"),
-      text("d5", "agent", "Thanks for the update this is the Zelle Email:\n\nActive Zelle:\nsynthetic@example.invalid\n\nHere you can send our shares on Zelle", "2026-10-15T15:10:00Z"),
-    ];
     it("settles a text-only job from the rules without calling AI", async () => {
       const s = setup(); s.tables.quo_messages = [...flow];
       s.tables.quo_conversations[0].last_message_time = "2026-10-15T15:10:00Z";
@@ -269,11 +269,54 @@ describe("Processor Board server boundary", () => {
       s.tables.quo_conversations[0].last_message_time = "2026-10-15T17:00:00Z";
       expect((await (await s.request()).json()).result).toMatchObject({ job_update: "in_progress", completed_at: null });
     });
-    it("never reads the customer's chat any more", async () => {
-      const s = setup(); s.tables.quo_messages = [...flow, text("c1", "agent", "Please pay $180", "2026-10-15T17:00:00Z", "cust")];
+  });
+
+  describe("customer's side", () => {
+    const customerChat = [
+      text("c0", "customer", "Old question from last month", "2026-09-01T10:00:00Z", "cust"),
+      text("c1", "agent", "Hi Shanice, your technician is confirmed for Oct 15.", "2026-10-09T10:00:00Z", "cust"),
+      text("c2", "customer", "The technician finished, everything looks great!", "2026-10-15T17:00:00Z", "cust"),
+    ];
+    const tookOnly: Model = { enough_context: true, tech_took_job: true, job_update: "none", evidence: [{ signal: "took_job", message_id: "ok", quote: "Ok got it" }] };
+    it("gives AI only the customer's own texts since the day before the lead, and a quoted 'work is done' completes the job", async () => {
+      const s = setup({ model: { ...tookOnly, customer_view: { update: "completed", note: "Customer says the work is done.", message_id: "c2", quote: "The technician finished, everything looks great!" } } });
+      s.tables.quo_messages = [...CHAT.slice(0, 3), ...customerChat];
+      const { result } = await (await s.request()).json();
+      expect(s.prompt().customerMessages).toEqual([
+        { id: "c1", at: "2026-10-09T10:00:00Z", from: "our_team", text: "Hi Shanice, your technician is confirmed for Oct 15." },
+        { id: "c2", at: "2026-10-15T17:00:00Z", from: "customer", text: "The technician finished, everything looks great!" }]);
+      // The technician's own chat never appears as the customer's.
+      expect(s.prompt().untrustedMessages.map((m: { id: string }) => m.id)).toEqual(["dispatch", "ok"]);
+      expect(result).toMatchObject({ job_update: "completed", completed_at: "2026-10-15T17:00:00Z", share_state: "none",
+        customer_view: { update: "completed", quote: "The technician finished, everything looks great!", message_time: "2026-10-15T17:00:00Z" },
+        customer_chat: { state: "read", messages: 2, omitted: 0, last_message_at: "2026-10-15T17:00:00Z" } });
+    });
+    it.each([
+      ["a quote from our office", { update: "completed", note: "", message_id: "c1", quote: "your technician is confirmed" }],
+      ["an invented quote", { update: "completed", note: "", message_id: "c2", quote: "all paid and done" }],
+    ])("ignores a customer-side completion backed by %s", async (_label, view) => {
+      const s = setup({ model: { ...tookOnly, customer_view: view } });
+      s.tables.quo_messages = [...CHAT.slice(0, 3), ...customerChat];
+      const { result } = await (await s.request()).json();
+      expect(result).toMatchObject({ job_update: "none", customer_view: { update: "none", quote: null } });
+    });
+    it("still saves the check without the customer's side when that chat cannot be read", async () => {
+      const s = setup({ customerFail: true });
+      const response = await s.request();
+      expect(response.status).toBe(200);
+      const { result } = await response.json();
+      expect(s.prompt().customerMessages).toEqual([]);
+      expect(result).toMatchObject({ job_update: "completed", customer_chat: { state: "unavailable", messages: 0, last_message_at: null } });
+    });
+    it("calls AI instead of settling by rules when the customer wrote after the technician's 'Done'", async () => {
+      const s = setup({ model: { enough_context: true, tech_took_job: true, job_update: "completed", evidence: [{ signal: "completed", message_id: "d4", quote: "Done" }],
+        customer_view: { update: "in_progress", note: "Customer says it is not finished.", message_id: "c9", quote: "He left before finishing, coming back Monday" } } });
+      s.tables.quo_messages = [...flow, text("c9", "customer", "He left before finishing, coming back Monday", "2026-10-15T16:00:00Z", "cust")];
       s.tables.quo_conversations[0].last_message_time = "2026-10-15T15:10:00Z";
-      await s.request();
-      expect(s.rpc.mock.calls.map(([name]) => name)).not.toContain("processor_customer_last_message");
+      const { result } = await (await s.request()).json();
+      expect(s.aiCalls()).toHaveLength(1);
+      // The customer's later "not finished" reopens the job; our share stays requested.
+      expect(result).toMatchObject({ rules_only: false, job_update: "in_progress", completed_at: null, share_state: "requested", customer_view: { update: "in_progress" } });
     });
   });
 

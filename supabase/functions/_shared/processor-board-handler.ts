@@ -4,8 +4,8 @@ import { processorReadiness, ProcessorReviewError, PROCESSOR_TERMINAL } from "./
 import { readProcessorChats, readProcessorRows, type ProcessorChatSetup } from "./processor-chat.ts";
 import { readProcessorHistory } from "./processor-history.ts";
 import { processorCallTranscripts, type StoredProcessorCall, type ProcessorCallCoverage } from "./processor-call-transcripts.ts";
-import { leadWindowStart, NO_CHAT_FACTS, PROCESSOR_BOARD_STATUSES, PROCESSOR_POLICY, PROCESSOR_SYSTEM_PROMPT, selectLeadWindow, verifyProcessorFacts, type ProcessorFacts } from "./processor-lead-window.ts";
-import { buildJobTimeline, mergeTimeline, timelineFacts, timelineSettlesJob } from "./processor-job-timeline.ts";
+import { applyCustomerView, leadWindowStart, NO_CHAT_FACTS, PROCESSOR_BOARD_STATUSES, PROCESSOR_POLICY, PROCESSOR_SYSTEM_PROMPT, selectCustomerWindow, selectLeadWindow, verifyCustomerView, verifyProcessorFacts, type CustomerWindow, type ProcessorFacts } from "./processor-lead-window.ts";
+import { buildJobTimeline, mergeTimeline, timelineFacts, timelineSettlesJob, TIMELINE_RULES_VERSION } from "./processor-job-timeline.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS", "Cache-Control": "no-store" };
 const LEAD_COLUMNS = "id,job_id,customer_name,customer_phone,address,service_type,tech_number,scheduled_date,scheduled_time_start,scheduled_time_end,status,updated_at,created_at";
@@ -41,6 +41,34 @@ async function askAi(deps: Deps, system: string, user: unknown, maxTokens: numbe
   if (payload.choices?.[0]?.finish_reason === "length") throw new ProcessorReviewError("AI review was cut off; nothing was saved. Check again.", "ai_invalid", true);
   try { return JSON.parse(payload.choices?.[0]?.message?.content ?? "{}"); }
   catch { throw new ProcessorReviewError("AI returned an unreadable review; nothing was saved. Check again.", "ai_invalid", true); }
+}
+
+/**
+ * The customer's own chat for this one lead (linked conversation or the customer's
+ * number), read server-side. `last_message_at` uses the same definition as the SQL
+ * queue, so a new customer message re-checks the job. Null when it cannot be read:
+ * the check then goes on without the customer's side.
+ */
+async function readCustomerChat(service: SupabaseClient, job: Lead, techConversationId: string | null, since: string, until: string): Promise<{ history: JobMessage[]; last_message_at: string | null } | null> {
+  try {
+    const customer = phoneKey(job.customer_phone);
+    const { data: conversations, error } = await service.from("quo_conversations").select("id")
+      .or([`linked_lead_id.eq.${job.id}`, ...(customer ? [`customer_number.eq.+1${customer}`] : [])].join(",")).limit(10);
+    if (error) return null;
+    // Never the technician's own conversation, even if a number was saved wrong.
+    const ids = ((conversations ?? []) as { id: string }[]).map((row) => row.id).filter((id) => id !== techConversationId);
+    const [last, history] = await Promise.all([
+      service.rpc("processor_customer_last_message", { p_lead_id: job.id, p_customer_phone: job.customer_phone }),
+      ids.length ? readProcessorRows<JobMessage>((from, to) => service.from("quo_messages")
+        .select("id,conversation_id,sender,text,message_time,status").in("conversation_id", ids)
+        .gte("message_time", since).lte("message_time", until)
+        .in("sender", ["customer", "agent"]).order("message_time").order("id").range(from, to)) : Promise.resolve([] as JobMessage[]),
+    ]);
+    if (last.error) return null;
+    return { history, last_message_at: typeof last.data === "string" ? last.data : null };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -85,7 +113,7 @@ async function assessLead(deps: Deps, reader: SupabaseClient, service: SupabaseC
     const peers = reader.from("leads").select("id,job_id,customer_name").ilike("tech_number", `%${phone.slice(-4)}%`)
       .gte("created_at", new Date(Date.parse(since) - PEER_LOOKBACK_MS).toISOString()).neq("id", job.id).order("created_at", { ascending: false }).limit(50)
       .then(({ data }) => (data ?? []) as { job_id: string; customer_name: string | null }[], () => []);
-    const [textHistory, callRows, otherJobs] = await Promise.all([history, calls, peers]);
+    const [textHistory, callRows, otherJobs, customerChat] = await Promise.all([history, calls, peers, readCustomerChat(service, job, conversation?.id ?? null, since, until)]);
     // Do not claim mirror freshness when its latest metadata is ahead of the messages read.
     if (!directKey && conversation?.last_message_time && Date.parse(conversation.last_message_time) > Date.parse(textHistory.at(-1)?.message_time ?? "")
       && Date.parse(conversation.last_message_time) >= Date.parse(since)) return { status: 422, body: { error: "The technician chat mirror is behind its latest activity. Sync Quo, then check again.", code: "mirror_behind", retryable: true } };
@@ -93,20 +121,23 @@ async function assessLead(deps: Deps, reader: SupabaseClient, service: SupabaseC
     const callCoverage: ProcessorCallCoverage = callHistory?.coverage ?? { state: "unavailable", checked: 0, missing: 0, skipped_segments: 0 };
     const callIds = new Set(callRows?.map((row) => row.id) ?? []);
     const window = selectLeadWindow([...textHistory.filter((row) => !callIds.has(row.id)), ...(callHistory?.messages ?? [])], job);
+    const customerWindow: CustomerWindow = customerChat ? selectCustomerWindow(customerChat.history, job) : { messages: [], omitted: 0 };
     const target = { job_id: job.job_id, customer_name: job.customer_name, customer_phone: job.customer_phone, address: job.address, service: job.service_type, scheduled_date: job.scheduled_date, scheduled_time_start: job.scheduled_time_start, lead_created_at: job.created_at };
     const others = otherJobs.filter((peer) => peer.job_id !== job.job_id).map((peer) => ({ job_id: peer.job_id, customer_name: peer.customer_name }));
     // Time is not an input: the saved facts stay valid until the chat or the job changes.
-    const inputHash = await hash({ target, phone, others, messages: window.messages, policy: PROCESSOR_POLICY });
+    const inputHash = await hash({ target, phone, others, messages: window.messages, customerMessages: customerWindow.messages, policy: PROCESSOR_POLICY, rules: TIMELINE_RULES_VERSION });
     const { data: cache, error: cacheError } = await service.from("processor_job_assessments").select("input_hash,result").eq("lead_id", job.id).maybeSingle();
     if (cacheError) throw new Error("Saved assessment could not be read.");
     const saved = cache?.result?.policy === PROCESSOR_POLICY ? cache.result : null;
     const reused = Boolean(saved) && cache?.input_hash === inputHash;
     // Exact rules over every in-window message (not just what fits the AI request).
     const timeline = buildJobTimeline(window.all, job);
-    const skipAi = !reused && window.messages.length > 0 && timelineSettlesJob(timeline, window.all);
+    // A customer text after the rule completion ("he didn't finish") needs AI too.
+    const skipAi = !reused && window.messages.length > 0 && timelineSettlesJob(timeline, window.all)
+      && !customerWindow.messages.some((message) => message.from === "customer" && message.at >= timeline.completed!.at);
     let facts: ProcessorFacts;
     if (reused) {
-      facts = { enough_context: saved.enough_context, tech_took_job: saved.tech_took_job, job_update: saved.job_update, completed_at: saved.completed_at ?? null, waiting_since: saved.waiting_since, waiting_message_id: saved.waiting_message_id, summary: saved.summary, evidence: saved.evidence, share_state: saved.share_state ?? "none" };
+      facts = { enough_context: saved.enough_context, tech_took_job: saved.tech_took_job, job_update: saved.job_update, completed_at: saved.completed_at ?? null, waiting_since: saved.waiting_since, waiting_message_id: saved.waiting_message_id, summary: saved.summary, evidence: saved.evidence, share_state: saved.share_state ?? "none", customer_view: saved.customer_view ?? null };
     } else if (!window.messages.length) {
       facts = NO_CHAT_FACTS;
     } else if (skipAi) {
@@ -115,12 +146,14 @@ async function assessLead(deps: Deps, reader: SupabaseClient, service: SupabaseC
       if (!deps.env("OPENAI_API_KEY")) return { status: 503, body: { error: "AI is not configured. Ask Admin to check OPENAI_API_KEY in Edge Function secrets.", code: "ai_setup", retryable: false } };
       const knownFacts = { job_tag: timeline.job_tag ? `*Customer # ${timeline.job_tag}*` : null, details_sent_at: timeline.details?.at ?? null, took_job: timeline.took_job, visit_confirmed: timeline.visit_confirmed,
         update_requested: timeline.update_requested, completed: timeline.completed, share_state: timeline.share_state };
-      facts = mergeTimeline(verifyProcessorFacts(await askAi(deps, PROCESSOR_SYSTEM_PROMPT, { target, otherJobs: others, knownFacts, windowStartsAt: window.anchor === "customer_mention" ? "first mention of the target customer" : "day before the lead was created (no customer mention found)", untrustedMessages: window.messages }, 1200), window), timeline);
+      const answer = await askAi(deps, PROCESSOR_SYSTEM_PROMPT, { target, otherJobs: others, knownFacts, windowStartsAt: window.anchor === "customer_mention" ? "first mention of the target customer" : "day before the lead was created (no customer mention found)", untrustedMessages: window.messages, customerMessages: customerWindow.messages }, 1400);
+      facts = applyCustomerView(mergeTimeline(verifyProcessorFacts(answer, window), timeline), verifyCustomerView(answer, customerWindow));
     }
     const result = {
       policy: PROCESSOR_POLICY, tech_phone: phone, ...facts,
       window: { start: window.start, anchor: window.anchor, anchor_message_id: window.anchor_message_id, messages: window.messages.length, omitted: window.omitted },
       call_transcripts: callCoverage, source, history_complete: Boolean(directKey),
+      customer_chat: { state: customerChat ? (customerWindow.messages.length ? "read" : "none") : "unavailable", messages: customerWindow.messages.length, omitted: customerWindow.omitted, last_message_at: customerChat?.last_message_at ?? null },
       timeline: reused && saved.timeline ? saved.timeline : timeline,
       ai_used: !reused && !skipAi && window.messages.length > 0, ai_reused: reused, rules_only: skipAi,
       checked_by: actor ? "user" : "daily_check",

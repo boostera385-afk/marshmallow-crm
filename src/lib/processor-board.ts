@@ -48,10 +48,13 @@ export const processorFactsSchema = z.object({
   timeline: z.object({
     job_tag: z.string().nullable(), details: timelineEvent, took_job: timelineEvent, visit_confirmed: timelineEvent, update_requested: timelineEvent,
     completed: z.object({ at: z.string(), message_id: z.string(), quote: z.string(), by: z.enum(["technician", "share_request"]) }).nullable().optional(),
-    share_requested: timelineEvent, share_promised: timelineEvent, share_sent: timelineEvent, share_received: timelineEvent,
+    share_requested: timelineEvent, share_promised: timelineEvent, share_sent: timelineEvent, share_checking: timelineEvent, share_received: timelineEvent,
     share_state: z.enum(SHARE_STATES), other_jobs_in_window: z.boolean(),
   }).optional(),
   checked_by: z.enum(["user", "daily_check"]).optional(),
+  // The customer's own chat: their point of view on the job (never our share).
+  customer_view: z.object({ update: z.enum(["none", "in_progress", "completed", "problem"]), note: z.string(), quote: nullableText, message_id: nullableText, message_time: nullableText }).nullable().optional(),
+  customer_chat: z.object({ state: z.enum(["read", "none", "unavailable"]), messages: z.number().int().nonnegative(), omitted: z.number().int().nonnegative(), last_message_at: nullableText }).optional(),
   status: z.enum(PROCESSOR_BOARD_STATUSES).nullable(),
 });
 export type ProcessorFacts = z.infer<typeof processorFactsSchema>;

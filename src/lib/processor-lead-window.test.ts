@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customerMentioned, selectLeadWindow, verifyProcessorFacts, type LeadWindow } from "../../supabase/functions/_shared/processor-lead-window";
+import { applyCustomerView, customerMentioned, selectCustomerWindow, selectLeadWindow, verifyCustomerView, verifyProcessorFacts, type CustomerWindow, type LeadWindow, type ProcessorFacts } from "../../supabase/functions/_shared/processor-lead-window";
 import type { JobMessage } from "../../supabase/functions/_shared/processor-job-status";
 
 const job = { id: "lead", job_id: "LD-ABC123", customer_name: "Shanice Walker", customer_phone: "4045550101", address: "12 Peach St, Atlanta, GA", service_type: "Furniture Assembly", tech_number: "4155550199", scheduled_date: "2026-10-25", scheduled_time_start: "10:00:00", created_at: "2026-10-08T15:00:00Z" };
@@ -101,5 +101,41 @@ describe("AI fact verification", () => {
   it("reports not enough context for an empty window or malformed output", () => {
     expect(verifyProcessorFacts("nonsense", window).enough_context).toBe(false);
     expect(verifyProcessorFacts({ enough_context: true }, { ...window, messages: [] }).enough_context).toBe(false);
+  });
+});
+
+describe("Customer's side", () => {
+  it("keeps the customer's and our office's texts since the day before the lead, without calls, system lines or reactions", () => {
+    const window = selectCustomerWindow([
+      msg("2026-10-01T10:00:00Z", "Old chat", "customer"),
+      msg("2026-10-08T16:00:00Z", "Hi, your technician is booked", "agent"),
+      msg("2026-10-09T10:00:00Z", "Call summary: customer asked about time", "customer"),
+      msg("2026-10-09T11:00:00Z", "Liked “Hi, your technician is booked”", "customer"),
+      msg("2026-10-25T18:00:00Z", "He is done, thank you!", "customer"),
+    ], job);
+    expect(window).toEqual({ omitted: 0, messages: [
+      expect.objectContaining({ from: "our_team", text: "Hi, your technician is booked" }), expect.objectContaining({ from: "customer", text: "He is done, thank you!" })] });
+  });
+  const customer: CustomerWindow = { omitted: 0, messages: [
+    { id: "o1", at: "2026-10-20T10:00:00Z", from: "our_team", text: "Is the job done?" },
+    { id: "c1", at: "2026-10-25T18:00:00Z", from: "customer", text: "Yes he finished the job today" },
+    { id: "c2", at: "2026-10-26T09:00:00Z", from: "customer", text: "He will finish tomorrow hopefully" },
+  ] };
+  it("keeps a customer-side update only with an exact quote from the customer", () => {
+    expect(verifyCustomerView({ customer_view: { update: "completed", note: "Customer confirms.", message_id: "c1", quote: "he finished the job" } }, customer))
+      .toEqual({ update: "completed", note: "Customer confirms.", quote: "he finished the job", message_id: "c1", message_time: "2026-10-25T18:00:00Z" });
+    expect(verifyCustomerView({ customer_view: { update: "completed", note: "", message_id: "o1", quote: "Is the job done?" } }, customer)).toMatchObject({ update: "none" });
+    expect(verifyCustomerView({ customer_view: { update: "completed", note: "", message_id: "c2", quote: "finish tomorrow" } }, customer)).toMatchObject({ update: "none" });
+    expect(verifyCustomerView({ customer_view: { update: "problem", note: "x".repeat(400), message_id: "c1", quote: "Yes he finished" } }, customer)?.note).toHaveLength(200);
+    expect(verifyCustomerView("nonsense", { messages: [], omitted: 0 })).toBeNull();
+  });
+  const base: ProcessorFacts = { enough_context: true, tech_took_job: true, job_update: "none", completed_at: null, waiting_since: null, waiting_message_id: null, summary: "", evidence: [], share_state: "requested" };
+  const view = (update: "completed" | "in_progress" | "problem", at: string) => ({ update, note: "n", quote: "q", message_id: "c", message_time: at });
+  it("completes a job the technician did not report, reopens one on a later 'not finished', and never sets a status from a problem", () => {
+    expect(applyCustomerView(base, view("completed", "2026-10-25T18:00:00Z"))).toMatchObject({ job_update: "completed", completed_at: "2026-10-25T18:00:00Z", share_state: "requested" });
+    const done = { ...base, job_update: "completed" as const, completed_at: "2026-10-25T18:00:00Z" };
+    expect(applyCustomerView(done, view("in_progress", "2026-10-26T09:00:00Z"))).toMatchObject({ job_update: "in_progress", completed_at: null });
+    expect(applyCustomerView(done, view("in_progress", "2026-10-24T09:00:00Z"))).toMatchObject({ job_update: "completed" });
+    expect(applyCustomerView(base, view("problem", "2026-10-25T18:00:00Z"))).toMatchObject({ job_update: "none", customer_view: { update: "problem" } });
   });
 });
