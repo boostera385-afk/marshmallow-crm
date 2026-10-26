@@ -181,6 +181,21 @@ describe("Processor Board", () => {
     expect(steps).toHaveTextContent("“Thanks, let me check & confirm with my accounts department.”");
     expect(steps).toHaveTextContent("– Share received");
   });
+  it("shows the customer's side with their quote, and says when that chat could not be read", () => {
+    state.detail.mockReturnValue({ data: facts({ job_update: "completed", customer_chat: { state: "read", messages: 3, omitted: 0, last_message_at: "2026-10-15T17:00:00Z" },
+      customer_view: { update: "completed", note: "Customer says the work is done.", quote: "He finished, looks great", message_id: "c2", message_time: "2026-10-15T17:00:00Z" } }), isLoading: false, isError: false });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Review LD-1001" }));
+    const side = screen.getByRole("region", { name: "Customer's side" });
+    expect(side).toHaveTextContent("Says the work is done");
+    expect(side).toHaveTextContent("“He finished, looks great”");
+    expect(side).toHaveTextContent("Read 3 customer chat messages");
+    cleanup();
+    state.detail.mockReturnValue({ data: facts({ customer_chat: { state: "unavailable", messages: 0, omitted: 0, last_message_at: null } }), isLoading: false, isError: false });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Review LD-1001" }));
+    expect(screen.getByRole("region", { name: "Customer's side" })).toHaveTextContent("could not be read");
+  });
   it("says when this lead's details message was not found in the chat", () => {
     state.hook.mockReturnValue(queue([job]));
     state.detail.mockReturnValue({ data: facts({ timeline: { job_tag: null, details: null, took_job: null, visit_confirmed: null, update_requested: null, completed: null, share_requested: null, share_promised: null, share_sent: null, share_received: null, share_state: "none", other_jobs_in_window: false } }), isLoading: false, isError: false });

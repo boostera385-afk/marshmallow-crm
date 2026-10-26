@@ -53,6 +53,12 @@ try {
   await db.exec(recent);
   await db.exec(recent);
   results.push(...await db.exec(await sql("supabase/tests/161_processor_board_last_30_days.sql")));
+  const customer = await sql("supabase/migrations/20261127000000_processor_board_customer_messages.sql");
+  await db.exec(customer);
+  await db.exec(customer);
+  results.push(...await db.exec(await sql("supabase/tests/162_processor_board_customer_messages.sql")));
+  // Earlier behavior still holds after the replacement.
+  results.push(...await db.exec(await sql("supabase/tests/161_processor_board_last_30_days.sql")));
   const checks = results.flatMap((r) => r.rows).filter((r) => r.name && r.result);
   console.table(checks);
   if (!checks.length || checks.some((c) => c.result !== "PASS")) throw new Error("Processor Board SQL behavioral harness failed");

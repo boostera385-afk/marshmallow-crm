@@ -9,6 +9,7 @@ import { processorFacts, SHARE_STATE_UI, processorSetupIssue, processorWorkflowM
 import { processorLocation } from "@/lib/processor-location";
 
 const UPDATE_LABEL = { none: "No update yet", in_progress: "Working on it", completed: "Completed" } as const;
+const CUSTOMER_LABEL = { none: "Nothing about the job's progress", in_progress: "Says the work is in progress", completed: "Says the work is done", problem: "Reports a problem" } as const;
 const SIGNAL_LABEL = { took_job: "Took the job", in_progress: "Work update", completed: "Completed", waiting: "Our unanswered message",
   share_requested: "Share requested", share_promised: "Share promised", share_sent: "Share sent", share_received: "Share received" } as const;
 // The team's standard steps, in order, as read by the exact rules.
@@ -68,6 +69,19 @@ export function ProcessorReviewPanel({ job, timezone, checking, busy, error, can
           })}</ol>}
         {facts.timeline.other_jobs_in_window && <p className="text-[11px] text-muted-foreground">This technician has other jobs in the same chat; replies after another job's details are counted only when they name this job.</p>}
         <p className="text-[11px] text-muted-foreground">{facts.rules_only ? "Read from the team's standard messages only — no AI was needed." : "Standard messages read by exact rules; calls and other replies by AI."}</p>
+      </section>}
+      {facts.customer_chat && <section aria-label="Customer's side" className="space-y-1.5 rounded-xl border border-border/50 bg-background/40 p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Customer's side</p>
+        {facts.customer_chat.state === "unavailable" ? <p className="text-muted-foreground">The customer's chat could not be read in this check; the status uses the technician chat only.</p>
+          : facts.customer_chat.state === "none" ? <p className="text-muted-foreground">No customer texts since the day before the lead.</p> : <>
+          <p className="text-sm font-medium">{CUSTOMER_LABEL[facts.customer_view?.update ?? "none"]}</p>
+          {facts.customer_view?.note && <p className="text-muted-foreground">{facts.customer_view.note}</p>}
+          {facts.customer_view?.quote && facts.customer_view.message_time && <blockquote className="rounded-lg border-l-2 border-primary bg-background/60 px-3 py-2">
+            <p className="whitespace-pre-wrap break-words text-sm">“{facts.customer_view.quote}”</p>
+            <footer className="mt-1 text-[10px] text-muted-foreground">Customer · Text · {when(facts.customer_view.message_time)}</footer>
+          </blockquote>}
+          <p className="text-[11px] text-muted-foreground">Read {facts.customer_chat.messages} customer chat message{facts.customer_chat.messages === 1 ? "" : "s"}{facts.customer_chat.omitted ? ` (${facts.customer_chat.omitted} middle messages left out)` : ""}. Used for the job's progress only, never for our share.</p>
+        </>}
       </section>}
       {["payment_pending", "send_dose"].includes(job.board_status) && <section aria-label="Our share" className="space-y-1 rounded-xl border border-border/50 bg-background/40 p-3">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Our share</p>
