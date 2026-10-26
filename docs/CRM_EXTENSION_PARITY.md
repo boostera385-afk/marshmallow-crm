@@ -43,6 +43,11 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## Processor Board payment screenshots (2026-10-26; Edge awaiting redeploy)
+
+CRM-only; Donut has no Processor Board (no extension change). A technician picture
+after our share request now counts as the payment screenshot (share sent).
+
 ## Processor Board customer's side (2026-10-26; migration 20261127000000 + Edge awaiting approval)
 
 CRM-only; Donut has no Processor Board (no extension change). Checks also read the

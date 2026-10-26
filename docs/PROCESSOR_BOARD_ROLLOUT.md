@@ -1,5 +1,25 @@
 # Processor Board
 
+## Payment screenshots (2026-10-26; both Edge functions awaiting redeploy)
+
+Technicians mostly send our share as a **screenshot with no words**. The CRM stores
+pictures on each Quo message (`quo_messages.media`), but checks read only the text,
+so a picture-only message was dropped before the rules and AI saw it. Now:
+
+- Pictures are carried through (mirror `media`; for current Quo history, the
+  mirror's pictures are matched by Quo message id). A picture-only text reads as
+  `[picture]` with `images: N`.
+- Rule: a technician picture after our share request (or after the technician
+  promised it) is the payment screenshot → share **sent** (Payment Pending), shown
+  in Review as **Tech sent a picture (payment screenshot)**. Not counted: pictures
+  before we asked (job photos), pictures captioned as job photos (before/after,
+  parts, damage, install…), or pictures after only the daily update template.
+  "We haven't received it" afterwards → back to requested.
+- AI is told what `[picture]` means and may cite it as share_sent.
+- The picture itself is **not** opened or read (no amount/recipient check); the
+  team still verifies in Payment Pending. Rules version 3, so every job is re-read
+  on its next check. No migration.
+
 ## Customer's side (2026-10-26; migration 20261127000000 + both Edge functions awaiting approval)
 
 Each check also reads the **customer's own texts with our office** (their linked

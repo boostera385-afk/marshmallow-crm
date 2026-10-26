@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { phoneKey, type JobMessage } from "./processor-job-status.ts";
+import { imageCount, phoneKey, type JobMessage } from "./processor-job-status.ts";
 import { processorReadiness, ProcessorReviewError, PROCESSOR_TERMINAL } from "./processor-review.ts";
 import { readProcessorChats, readProcessorRows, type ProcessorChatSetup } from "./processor-chat.ts";
 import { readProcessorHistory } from "./processor-history.ts";
@@ -99,10 +99,16 @@ async function assessLead(deps: Deps, reader: SupabaseClient, service: SupabaseC
     const conversation = chat.mirror;
     const source = directKey ? "Quo current history" : "Quo CRM mirror";
     const history = directKey ? readProcessorHistory({ chatLink: chat.link.chatLink, phone: job.tech_number!, since, until, apiKey: directKey, apiBase: deps.env("QUO_API_BASE_URL"), fetcher: deps.fetcher })
-      : readProcessorRows<JobMessage>((from, to) => reader.from("quo_messages")
-        .select("id,conversation_id,sender,text,message_time,status").eq("conversation_id", conversation!.id)
+      : readProcessorRows<JobMessage & { media?: unknown }>((from, to) => reader.from("quo_messages")
+        .select("id,conversation_id,sender,text,message_time,status,media").eq("conversation_id", conversation!.id)
         .gte("message_time", since).lte("message_time", until)
-        .in("sender", ["customer", "agent"]).order("message_time").order("id").range(from, to));
+        .in("sender", ["customer", "agent"]).order("message_time").order("id").range(from, to))
+        .then((rows) => rows.map(({ media, ...row }) => ({ ...row, images: imageCount(media) })));
+    // Quo's history list may leave pictures out; the CRM mirror has them by Quo message id.
+    const mirrorPictures = directKey && conversation ? readProcessorRows<{ quo_message_id: string; media: unknown }>((from, to) => reader.from("quo_messages")
+      .select("quo_message_id,media").eq("conversation_id", conversation.id).neq("media", "[]")
+      .gte("message_time", since).lte("message_time", until).order("message_time").order("id").range(from, to))
+      .then((rows) => new Map(rows.map((row) => [row.quo_message_id, imageCount(row.media)])), () => new Map<string, number>()) : Promise.resolve(new Map<string, number>());
     // Transcripts already saved in Tech Quick Chat: one scoped, paginated read,
     // not one provider download per call. Failure is independent of text history.
     const calls = conversation ? readProcessorRows<StoredProcessorCall>((from, to) => reader.from("quo_messages")
@@ -113,7 +119,8 @@ async function assessLead(deps: Deps, reader: SupabaseClient, service: SupabaseC
     const peers = reader.from("leads").select("id,job_id,customer_name").ilike("tech_number", `%${phone.slice(-4)}%`)
       .gte("created_at", new Date(Date.parse(since) - PEER_LOOKBACK_MS).toISOString()).neq("id", job.id).order("created_at", { ascending: false }).limit(50)
       .then(({ data }) => (data ?? []) as { job_id: string; customer_name: string | null }[], () => []);
-    const [textHistory, callRows, otherJobs, customerChat] = await Promise.all([history, calls, peers, readCustomerChat(service, job, conversation?.id ?? null, since, until)]);
+    const [rawHistory, callRows, otherJobs, customerChat, pictures] = await Promise.all([history, calls, peers, readCustomerChat(service, job, conversation?.id ?? null, since, until), mirrorPictures]);
+    const textHistory = rawHistory.map((row) => row.images || !pictures.has(row.id) ? row : { ...row, images: pictures.get(row.id) });
     // Do not claim mirror freshness when its latest metadata is ahead of the messages read.
     if (!directKey && conversation?.last_message_time && Date.parse(conversation.last_message_time) > Date.parse(textHistory.at(-1)?.message_time ?? "")
       && Date.parse(conversation.last_message_time) >= Date.parse(since)) return { status: 422, body: { error: "The technician chat mirror is behind its latest activity. Sync Quo, then check again.", code: "mirror_behind", retryable: true } };

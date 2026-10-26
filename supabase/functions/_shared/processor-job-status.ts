@@ -1,5 +1,7 @@
 /** Shared chat/time helpers for the Processor Board. Never changes leads. */
-export type JobMessage = { id: string; conversation_id: string; sender: string; text: string | null; message_time: string | null; status?: string | null; source?: "call_transcript"; source_message_id?: string; call_id?: string };
+export type JobMessage = { id: string; conversation_id: string; sender: string; text: string | null; message_time: string | null; status?: string | null; source?: "call_transcript"; source_message_id?: string; call_id?: string;
+  /** Pictures attached to a text (a payment screenshot usually has no words). */
+  images?: number };
 const CALL_EVENT_TEXT = /^(?:call (?:recording )?completed\.?|call summary(?: completed\.?|:)|call transcript(?: completed\.?|:))/i;
 // Quo stores reactions as texts that quote another message: "Liked “…”", "👍 to “…”".
 const REACTION_TEXT = /^\s*(?:reacted|liked|loved|laughed at|emphasi[sz]ed|questioned|disliked|le gustó|\S{1,4}\s+to\s+[“"])/i;
@@ -7,7 +9,17 @@ const REACTION_TEXT = /^\s*(?:reacted|liked|loved|laughed at|emphasi[sz]ed|quest
 export function isCallOrSystemEvent(message: JobMessage): boolean {
   if (typeof message.status === "string" && (message.status.startsWith("call.") || message.status === "no-answer")) return true;
   const text = message.text?.trim() ?? "";
-  return !text || CALL_EVENT_TEXT.test(text) || REACTION_TEXT.test(text);
+  return (!text && !message.images) || CALL_EVENT_TEXT.test(text) || REACTION_TEXT.test(text);
+}
+/** Pictures in a Quo message's media list (videos and audio recordings are not pictures). */
+export function imageCount(media: unknown): number {
+  if (!Array.isArray(media)) return 0;
+  return media.filter((item) => {
+    const value = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const type = String(value.type ?? value.contentType ?? value.mime_type ?? value.mimeType ?? "").toLowerCase();
+    const url = String(value.url ?? value.src ?? "").toLowerCase();
+    return !(type.includes("video") || type.includes("audio") || /\.(?:mp4|mov|webm|mp3|wav|m4a)(?:\?|$)/.test(url));
+  }).length;
 }
 export function phoneKey(value: string | null): string | null {
   const digits = (value ?? "").replace(/\D/g, "");
