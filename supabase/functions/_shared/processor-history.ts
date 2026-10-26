@@ -1,5 +1,5 @@
 import { parseTechnicianQuoLink } from "./technician-quo-link.ts";
-import { phoneKey, type JobMessage } from "./processor-job-status.ts";
+import { imageCount, phoneKey, type JobMessage } from "./processor-job-status.ts";
 import { ProcessorReviewError } from "./processor-review.ts";
 
 /** Current Quo text history, all pages for this saved chat. Never silently truncate. */
@@ -29,7 +29,7 @@ export async function readProcessorHistory(options: { chatLink: string; phone: s
       if (options.until && Date.parse(item.createdAt) > Date.parse(options.until)) continue;
       // Non-text events cannot establish completion; inbound events still prevent false non-response.
       if (typeof item.id !== "string") throw new Error("Quo history contains an unknown message identity.");
-      messages.set(item.id, { id: item.id, conversation_id: link.conversationId, sender: item.direction === "incoming" ? "customer" : "agent", text: typeof item.text === "string" ? item.text : null, message_time: item.createdAt, status: typeof item.status === "string" ? item.status : null });
+      messages.set(item.id, { id: item.id, conversation_id: link.conversationId, sender: item.direction === "incoming" ? "customer" : "agent", text: typeof item.text === "string" ? item.text : null, message_time: item.createdAt, status: typeof item.status === "string" ? item.status : null, images: imageCount(item.media) });
     }
     token = typeof payload.nextPageToken === "string" && payload.nextPageToken ? payload.nextPageToken : null;
     if (!token) return [...messages.values()].sort((a, b) => Date.parse(a.message_time!) - Date.parse(b.message_time!) || a.id.localeCompare(b.id));

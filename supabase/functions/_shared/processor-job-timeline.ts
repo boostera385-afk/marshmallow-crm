@@ -13,7 +13,7 @@ import { SHARE_STATES, type LeadWindowJob, type ProcessorEvidence, type Processo
  * the window. Calls and free-form replies are left to AI.
  */
 /** Bumped when the rules change, so the next check of an unchanged chat re-reads it. */
-export const TIMELINE_RULES_VERSION = 2;
+export const TIMELINE_RULES_VERSION = 3;
 export type TimelineEvent = { at: string; message_id: string; quote: string };
 export type JobTimeline = {
   job_tag: string | null;
@@ -27,6 +27,8 @@ export type JobTimeline = {
   share_sent: TimelineEvent | null;
   /** Our "thanks, let me check with my accounts department" after the tech's payment screenshot (images are not text). */
   share_checking: TimelineEvent | null;
+  /** A technician picture after our share request: the payment screenshot (no words). */
+  share_screenshot: TimelineEvent | null;
   share_received: TimelineEvent | null;
   share_state: ShareState;
   /** Another job's details appeared in this window: later generic replies are not attributed. */
@@ -52,6 +54,9 @@ const SHARE_NOT_RECEIVED = /\b(?:haven'?t|have not|didn'?t|did not|not) (?:yet )
 const ASKED_IF_SENT = /\b(?:did|have) you (?:already )?sen[dt] (?:(?:the|our|my) )?(?:payment|shares?|money|amount|cut|it)\b|\bif (?:you )?(?:already )?sen[dt] (?:it|the payment|our shares?)/i;
 const YES_SENT = /^\s*(?:yes|yea|yeah|yep|yup|ya|already|i did|i have(?! to)|done|sent)\b[^?]*$/i;
 const NOT_YET = /\b(?:not|tomorrow|later|tonight|will|soon|when|once)\b/i;
+const PICTURE_ONLY = /^\[(?:\d+ )?pictures?\]$/;
+// Words with a picture that mean job photos, not a payment screenshot.
+const JOB_PHOTO = /\b(?:before|after|damage\w*|broken|model|serial|parts?|leak\w*|estimate|quote|progress|look at|install\w*)\b/i;
 const MONEY_TALK = /zelle|cash ?app|venmo|payment|paid|screenshot|shares?\b|\$\s?\d/i;
 const SHARE_RECEIVED = /\b(?:we|i)(?:'ve| have)? received (?:the |your )?(?:payment|shares?|amount)/i;
 const ACCEPT = /^\s*(?:(?:hi|hello|hey|thanks?|thank you)[\s,.!]+)?(?:yes|yeah|yep|yup|ok(?:ay)?|kk?|si|(?:i )?got it|got (?:the )?details|(?:i )?rec(?:ei|ie)ved|con?firm(?:ed)?|comfirm(?:ed)?|sounds good|agree[d]?|sure|👍)(?:[\s,.!]|\p{Emoji_Modifier}|👍|$)/iu;
@@ -115,7 +120,7 @@ export function namesThisJob(text: string, job: Pick<LeadWindowJob, "customer_na
 export function buildJobTimeline(messages: PromptMessage[], job: Pick<LeadWindowJob, "customer_name" | "customer_phone" | "address">): JobTimeline {
   const texts = messages.filter((message) => message.via === "text").sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
   const timeline: JobTimeline = { job_tag: null, details: null, took_job: null, visit_confirmed: null, update_requested: null, completed: null,
-    share_requested: null, share_promised: null, share_sent: null, share_checking: null, share_received: null, share_state: "none", other_jobs_in_window: false };
+    share_requested: null, share_promised: null, share_sent: null, share_checking: null, share_screenshot: null, share_received: null, share_state: "none", other_jobs_in_window: false };
   // This job's details message fixes its tag; every other details message is another job.
   for (const message of texts) {
     if (message.from !== "our_team" || !DETAILS.test(message.text)) continue;
@@ -154,13 +159,19 @@ export function buildJobTimeline(messages: PromptMessage[], job: Pick<LeadWindow
       if (shareAsk === "request") timeline.share_requested = event(message);
       if (shareAsk === "conditional") conditionalAsk = true;
       if (SHARE_RECEIVED.test(message.text) && !/\?/.test(message.text)) timeline.share_received = event(message);
-      else if ((timeline.share_sent || timeline.share_checking) && SHARE_NOT_RECEIVED.test(message.text)) timeline.share_requested = event(message);
+      else if ((timeline.share_sent || timeline.share_checking || timeline.share_screenshot) && SHARE_NOT_RECEIVED.test(message.text)) timeline.share_requested = event(message);
       else if ((moneyTalk || timeline.share_requested || conditionalAsk) && SHARE_CHECKING.test(message.text) && !NOT_CHECKING.test(message.text)) timeline.share_checking = event(message);
       if (shareAsk || MONEY_TALK.test(message.text)) moneyTalk = true;
       lastTeam = message;
       continue;
     }
     if (MONEY_TALK.test(message.text)) moneyTalk = true;
+    // Techs mostly send our share as a screenshot: a picture once we asked for it.
+    if (message.images && (timeline.share_requested || timeline.share_promised) && !JOB_PHOTO.test(PICTURE_ONLY.test(message.text) ? "" : message.text)) {
+      timeline.share_screenshot = event(message);
+      moneyTalk = true;
+      if (PICTURE_ONLY.test(message.text)) continue;
+    }
     const recent = lastTeam && Date.parse(message.at) - Date.parse(lastTeam.at) <= ACK_WINDOW_MS ? lastTeam : null;
     const recentAsk = recent ? shareRequestKind(recent.text) : null;
     const afterShareAsk = recentAsk === "request";
@@ -182,7 +193,7 @@ export function buildJobTimeline(messages: PromptMessage[], job: Pick<LeadWindow
   if (!timeline.took_job && timeline.visit_confirmed) timeline.took_job = timeline.visit_confirmed;
   // The team asks for its share only after the work is done.
   if (!timeline.completed && timeline.share_requested) timeline.completed = { ...timeline.share_requested, by: "share_request" };
-  const sent = [timeline.share_sent, timeline.share_checking].filter((item): item is TimelineEvent => Boolean(item)).sort((a, b) => b.at.localeCompare(a.at))[0];
+  const sent = [timeline.share_sent, timeline.share_checking, timeline.share_screenshot].filter((item): item is TimelineEvent => Boolean(item)).sort((a, b) => b.at.localeCompare(a.at))[0];
   timeline.share_state = timeline.share_received ? "received"
     : sent && (!timeline.share_requested || sent.at >= timeline.share_requested.at) ? "sent"
     : timeline.share_promised && (!timeline.share_requested || timeline.share_promised.at >= timeline.share_requested.at) ? "promised"
@@ -200,6 +211,7 @@ function timelineEvidence(timeline: JobTimeline): ProcessorEvidence[] {
     ...asEvidence("share_requested", timeline.share_requested, "our_team"),
     ...asEvidence("share_promised", timeline.share_promised, "technician"),
     ...asEvidence("share_sent", timeline.share_sent, "technician"),
+    ...asEvidence("share_sent", timeline.share_screenshot, "technician"),
     ...asEvidence("share_sent", timeline.share_checking, "our_team"),
     ...asEvidence("share_received", timeline.share_received, "our_team"),
   ];
@@ -214,9 +226,9 @@ export function timelineSettlesJob(timeline: JobTimeline, messages: PromptMessag
   if (!timeline.details || !timeline.completed || messages.some((message) => message.via === "call")) return false;
   // Anything else the technician wrote after the completion (a return visit, a
   // problem) is not settled by rules; AI must read it.
-  const explained = new Set([timeline.completed.message_id, timeline.share_promised?.message_id, timeline.share_sent?.message_id]);
+  const explained = new Set([timeline.completed.message_id, timeline.share_promised?.message_id, timeline.share_sent?.message_id, timeline.share_screenshot?.message_id]);
   return !messages.some((message) => message.from === "technician" && message.at >= timeline.completed!.at && !explained.has(message.id)
-    && !SHORT_ACK.test(message.text) && !REACTION.test(message.text));
+    && !SHORT_ACK.test(message.text) && !REACTION.test(message.text) && !PICTURE_ONLY.test(message.text));
 }
 
 /** Facts from the rules alone, used when AI is skipped. */

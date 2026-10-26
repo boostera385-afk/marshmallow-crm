@@ -48,7 +48,7 @@ export const processorFactsSchema = z.object({
   timeline: z.object({
     job_tag: z.string().nullable(), details: timelineEvent, took_job: timelineEvent, visit_confirmed: timelineEvent, update_requested: timelineEvent,
     completed: z.object({ at: z.string(), message_id: z.string(), quote: z.string(), by: z.enum(["technician", "share_request"]) }).nullable().optional(),
-    share_requested: timelineEvent, share_promised: timelineEvent, share_sent: timelineEvent, share_checking: timelineEvent, share_received: timelineEvent,
+    share_requested: timelineEvent, share_promised: timelineEvent, share_sent: timelineEvent, share_checking: timelineEvent, share_screenshot: timelineEvent, share_received: timelineEvent,
     share_state: z.enum(SHARE_STATES), other_jobs_in_window: z.boolean(),
   }).optional(),
   checked_by: z.enum(["user", "daily_check"]).optional(),

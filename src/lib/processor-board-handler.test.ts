@@ -271,6 +271,26 @@ describe("Processor Board server boundary", () => {
     });
   });
 
+  describe("payment screenshots", () => {
+    const shot = { id: "shot", quo_message_id: "shot", conversation_id: "mirror", sender: "customer", text: null, status: "received", message_time: "2026-10-15T16:00:00Z", media: [{ type: "image/jpeg", url: "https://example.invalid/s.jpg" }] };
+    it.each([true, false])("reads the technician's picture after our share request as the screenshot (mirror-only=%s)", async (noDirect) => {
+      const s = setup({ noDirect, model: { enough_context: true, tech_took_job: true, job_update: "completed", evidence: [] } });
+      s.tables.quo_messages = [...flow, shot];
+      s.tables.quo_conversations[0].last_message_time = "2026-10-15T16:00:00Z";
+      const { result } = await (await s.request()).json();
+      // Text-only job settled by the rules: no AI needed to see the screenshot.
+      expect(s.aiCalls()).toHaveLength(0);
+      expect(result).toMatchObject({ rules_only: true, share_state: "sent", timeline: { share_screenshot: { quote: "[picture]", at: "2026-10-15T16:00:00Z" } } });
+    });
+    it("shows AI the picture as [picture] when calls need reading", async () => {
+      const s = setup({ model: { enough_context: true, tech_took_job: true, job_update: "completed", evidence: [] } });
+      s.tables.quo_messages = [...flow, shot, text("d9", "customer", "Also called you about the receipt", "2026-10-15T16:10:00Z")];
+      s.tables.quo_conversations[0].last_message_time = "2026-10-15T16:10:00Z";
+      await s.request();
+      expect(s.prompt().untrustedMessages.find((m: { id: string }) => m.id === "shot")).toMatchObject({ text: "[picture]", images: 1 });
+    });
+  });
+
   describe("customer's side", () => {
     const customerChat = [
       text("c0", "customer", "Old question from last month", "2026-09-01T10:00:00Z", "cust"),

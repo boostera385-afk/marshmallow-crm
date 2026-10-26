@@ -44,6 +44,14 @@ describe("Lead chat window", () => {
   it.each([["Shanice Walker called"], ["for shanice tomorrow"], ["Job LD-ABC123"], ["cust (404) 555-0101"], ["at 12 peach street"]])("recognizes the customer in %s", (text) => {
     expect(customerMentioned(text, job)).toBe(true);
   });
+  it("keeps a picture-only text as [picture] and still drops empty non-picture events", () => {
+    const dispatch = msg("2026-10-08T16:00:00Z", "Job LD-ABC123 details sent");
+    const shot = msg("2026-10-26T10:00:00Z", null, "customer", { images: 1 });
+    const two = msg("2026-10-26T10:01:00Z", "Sent", "customer", { images: 2 });
+    const empty = msg("2026-10-26T10:02:00Z", null, "customer");
+    const window = selectLeadWindow([dispatch, shot, two, empty], job);
+    expect(window.messages.map((m) => [m.text, m.images])).toEqual([["Job LD-ABC123 details sent", undefined], ["[picture]", 1], ["Sent", 2]]);
+  });
   it("does not anchor on a different customer", () => {
     expect(customerMentioned("New job for Jeff at 40 Elm", job)).toBe(false);
   });

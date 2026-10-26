@@ -178,6 +178,7 @@ describe("Processor Board", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review LD-1001" }));
     const steps = screen.getByRole("region", { name: "Job timeline" });
     expect(steps).toHaveTextContent("✓ Screenshot received · accounts checking");
+    expect(steps).toHaveTextContent("– Tech sent a picture (payment screenshot)");
     expect(steps).toHaveTextContent("“Thanks, let me check & confirm with my accounts department.”");
     expect(steps).toHaveTextContent("– Share received");
   });

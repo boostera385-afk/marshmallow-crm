@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildJobTimeline, namesThisJob } from "../../supabase/functions/_shared/processor-job-timeline";
+import { buildJobTimeline, namesThisJob, timelineFacts, timelineSettlesJob } from "../../supabase/functions/_shared/processor-job-timeline";
 import type { PromptMessage } from "../../supabase/functions/_shared/processor-lead-window";
 
 // Synthetic chats in the team's real templates; no real customer data.
@@ -143,6 +143,33 @@ describe("job timeline rules", () => {
     const t = buildJobTimeline([team("2026-10-01T22:27:00Z", details(1)), tech("2026-10-01T22:40:00Z", "ok"),
       team("2026-10-04T00:33:00Z", "Active Zelle: synthetic@example.invalid"), tech("2026-10-04T02:00:00Z", text)], job);
     expect(t.share_state).toBe(state);
+  });
+  const picture = (at: string, text = "[picture]"): PromptMessage => ({ ...tech(at, text), images: 1 });
+  it("reads the technician's picture after our share request as the payment screenshot", () => {
+    const t = buildJobTimeline([...asked(), picture("2026-10-04T03:00:00Z")], job);
+    expect(t).toMatchObject({ share_screenshot: { at: "2026-10-04T03:00:00Z", quote: "[picture]" }, share_state: "sent" });
+    expect(timelineFacts(t).evidence).toContainEqual(expect.objectContaining({ signal: "share_sent", from: "technician", quote: "[picture]" }));
+  });
+  it("reads a picture days after the technician promised our share as the screenshot", () => {
+    const t = buildJobTimeline([...asked(), tech("2026-10-04T01:00:00Z", "I will send you the money tonight"), picture("2026-10-07T09:00:00Z")], job);
+    expect(t).toMatchObject({ share_state: "sent", share_screenshot: { at: "2026-10-07T09:00:00Z" } });
+  });
+  it.each([
+    ["job photos before we asked for our share", () => [team("2026-10-01T22:27:00Z", details(1)), tech("2026-10-01T22:40:00Z", "ok"), picture("2026-10-03T20:00:00Z")]],
+    ["a picture captioned as job photos", () => [...asked(), picture("2026-10-04T03:00:00Z", "Before and after of the install")]],
+    ["a picture after only our update template", () => [team("2026-10-01T22:27:00Z", details(1)), tech("2026-10-01T22:40:00Z", "ok"), team("2026-10-03T23:00:00Z", updateTemplate), picture("2026-10-03T23:30:00Z")]],
+  ])("does not read %s as the payment screenshot", (_label, chat) => {
+    const t = buildJobTimeline(chat(), job);
+    expect(t.share_screenshot).toBeNull();
+    expect(t.share_state).not.toBe("sent");
+  });
+  it("goes back to requested when we say we did not receive it after the screenshot", () => {
+    const t = buildJobTimeline([...asked(), picture("2026-10-04T03:00:00Z"), team("2026-10-05T10:00:00Z", "We haven't received the payment yet, kindly check.")], job);
+    expect(t.share_state).toBe("requested");
+  });
+  it("lets a picture-only message after the job settle it by rules", () => {
+    const chat = [team("2026-10-01T22:27:00Z", details(1)), tech("2026-10-01T22:40:00Z", "ok"), tech("2026-10-03T20:00:00Z", "Done"), picture("2026-10-03T20:01:00Z")];
+    expect(timelineSettlesJob(buildJobTimeline(chat, job), chat)).toBe(true);
   });
   it("does not give this job another job's replies once that job's details arrive", () => {
     const t = buildJobTimeline([
