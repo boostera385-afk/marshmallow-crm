@@ -167,6 +167,20 @@ describe("Processor Board", () => {
     expect(screen.getByRole("region", { name: "Our share" })).toHaveTextContent("until the technician sends our share");
     expect(screen.getByRole("region", { name: "Review LD-1001" })).toHaveTextContent("by the daily check");
   });
+  it("shows our screenshot acknowledgement as the share sent, still waiting on accounts", () => {
+    const step = (at: string, quote: string) => ({ at, message_id: `m-${at}`, quote });
+    const timeline = { job_tag: "2", details: step("2026-10-08T14:00:00Z", "*Customer # 2* ..."), took_job: step("2026-10-08T14:05:00Z", "Yes"), visit_confirmed: null, update_requested: null,
+      completed: { ...step("2026-10-15T15:00:00Z", "Hey, I'm done"), by: "technician" }, share_requested: step("2026-10-15T15:10:00Z", "Active Zelle: ..."), share_promised: null, share_sent: null,
+      share_checking: step("2026-10-15T16:00:00Z", "Thanks, let me check & confirm with my accounts department."), share_received: null, share_state: "sent", other_jobs_in_window: false };
+    state.hook.mockReturnValue(queue([{ ...job, board_status: "payment_pending", ai_summary: { ...summary, job_update: "completed", share_state: "sent", share_at: "2026-10-15T16:00:00Z" } }]));
+    state.detail.mockReturnValue({ data: facts({ job_update: "completed", completed_at: "2026-10-15T15:00:00Z", share_state: "sent", timeline }), isLoading: false, isError: false });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Review LD-1001" }));
+    const steps = screen.getByRole("region", { name: "Job timeline" });
+    expect(steps).toHaveTextContent("✓ Screenshot received · accounts checking");
+    expect(steps).toHaveTextContent("“Thanks, let me check & confirm with my accounts department.”");
+    expect(steps).toHaveTextContent("– Share received");
+  });
   it("says when this lead's details message was not found in the chat", () => {
     state.hook.mockReturnValue(queue([job]));
     state.detail.mockReturnValue({ data: facts({ timeline: { job_tag: null, details: null, took_job: null, visit_confirmed: null, update_requested: null, completed: null, share_requested: null, share_promised: null, share_sent: null, share_received: null, share_state: "none", other_jobs_in_window: false } }), isLoading: false, isError: false });

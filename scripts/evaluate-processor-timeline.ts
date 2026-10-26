@@ -3,7 +3,7 @@
 // and prints aggregate counts — never names, numbers or message text.
 // Usage: npx vite-node scripts/evaluate-processor-timeline.ts -- <export.csv>
 import { readFileSync } from "node:fs";
-import { buildJobTimeline, timelineSettlesJob } from "../supabase/functions/_shared/processor-job-timeline";
+import { buildJobTimeline, namesThisJob, timelineSettlesJob } from "../supabase/functions/_shared/processor-job-timeline";
 import type { PromptMessage } from "../supabase/functions/_shared/processor-lead-window";
 
 const file = process.argv.slice(2).find((arg) => arg.endsWith(".csv"));
@@ -50,12 +50,14 @@ for (const row of rows) {
       customer_phone: message.text.match(/customer\s*(?:number|phone)\s*:\s*([^\n|]+)/i)?.[1]?.trim() ?? null,
       address: message.text.match(/customer\s*address\s*:\s*([^\n|]+)/i)?.[1]?.trim() ?? null,
     };
+    // Our follow-ups repeat the details; count each customer once, from its first details message.
+    if (messages.slice(0, index).some((m) => m.from === "our_team" && DETAILS.test(m.text) && namesThisJob(m.text, job))) continue;
     const timeline = buildJobTimeline(messages.slice(index), job);
     bump("jobs");
     if (!timeline.details) { bump("details not matched to its own job"); continue; }
     if (timeline.job_tag) bump("job tag found");
     if (timeline.other_jobs_in_window) bump("other jobs later in the same chat");
-    for (const key of ["took_job", "visit_confirmed", "update_requested", "share_requested", "share_promised", "share_sent", "share_received"] as const) if (timeline[key]) bump(key);
+    for (const key of ["took_job", "visit_confirmed", "update_requested", "share_requested", "share_promised", "share_sent", "share_checking", "share_received"] as const) if (timeline[key]) bump(key);
     if (timeline.completed) bump(`completed (by ${timeline.completed.by})`);
     bump(`share state: ${timeline.share_state}`);
     const rest = messages.slice(index);

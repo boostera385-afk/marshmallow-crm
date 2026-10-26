@@ -43,6 +43,13 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## Processor Board timeline rules v2 (2026-10-26; Edge awaiting redeploy)
+
+CRM-only; Donut has no Processor Board (no extension change). Shared Edge rules now
+read more confirm/acceptance wordings and reactions, ignore the update template's
+Zelle details as a share request, and read our screenshot acknowledgement as the
+share sent. Review shows the new step.
+
 ## Processor Board v4 job timeline (2026-10-24; migration 20261125000000 + Edge awaiting approval)
 
 CRM-only; Donut has no Processor Board (no extension change). Exact rules read the

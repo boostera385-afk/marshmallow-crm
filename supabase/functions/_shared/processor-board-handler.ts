@@ -5,7 +5,7 @@ import { readProcessorChats, readProcessorRows, type ProcessorChatSetup } from "
 import { readProcessorHistory } from "./processor-history.ts";
 import { processorCallTranscripts, type StoredProcessorCall, type ProcessorCallCoverage } from "./processor-call-transcripts.ts";
 import { leadWindowStart, NO_CHAT_FACTS, PROCESSOR_BOARD_STATUSES, PROCESSOR_POLICY, PROCESSOR_SYSTEM_PROMPT, selectLeadWindow, verifyProcessorFacts, type ProcessorFacts } from "./processor-lead-window.ts";
-import { buildJobTimeline, mergeTimeline, timelineFacts, timelineSettlesJob } from "./processor-job-timeline.ts";
+import { buildJobTimeline, mergeTimeline, timelineFacts, timelineSettlesJob, TIMELINE_RULES_VERSION } from "./processor-job-timeline.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS", "Cache-Control": "no-store" };
 const LEAD_COLUMNS = "id,job_id,customer_name,customer_phone,address,service_type,tech_number,scheduled_date,scheduled_time_start,scheduled_time_end,status,updated_at,created_at";
@@ -96,7 +96,7 @@ async function assessLead(deps: Deps, reader: SupabaseClient, service: SupabaseC
     const target = { job_id: job.job_id, customer_name: job.customer_name, customer_phone: job.customer_phone, address: job.address, service: job.service_type, scheduled_date: job.scheduled_date, scheduled_time_start: job.scheduled_time_start, lead_created_at: job.created_at };
     const others = otherJobs.filter((peer) => peer.job_id !== job.job_id).map((peer) => ({ job_id: peer.job_id, customer_name: peer.customer_name }));
     // Time is not an input: the saved facts stay valid until the chat or the job changes.
-    const inputHash = await hash({ target, phone, others, messages: window.messages, policy: PROCESSOR_POLICY });
+    const inputHash = await hash({ target, phone, others, messages: window.messages, policy: PROCESSOR_POLICY, rules: TIMELINE_RULES_VERSION });
     const { data: cache, error: cacheError } = await service.from("processor_job_assessments").select("input_hash,result").eq("lead_id", job.id).maybeSingle();
     if (cacheError) throw new Error("Saved assessment could not be read.");
     const saved = cache?.result?.policy === PROCESSOR_POLICY ? cache.result : null;

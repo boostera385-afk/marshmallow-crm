@@ -1,5 +1,34 @@
 # Processor Board
 
+## Timeline rules v2 from a deeper chat review (2026-10-26; both Edge functions awaiting redeploy)
+
+A second pass over the same export, job by job, comparing the old and new rules on
+every changed field. The first evaluation counted every message that repeats the
+customer details (our follow-ups do) as a new job; it now counts each customer
+once: **470 real jobs**, not 1,085.
+
+| Change | Why (what the chats showed) |
+| --- | --- |
+| Confirm prompt | All its wordings: "confirm if you get the complete customer details", "check if you got the details", "Received??". |
+| Took the job | Replies such as "I received", "Recieved", "Comfirmed", "Kk", "Si", "Hi ok", "Got details…" (refusals/questions excluded); a 👍/Liked reaction on our confirm prompt or this job's details; answering the visit reminder. |
+| Share requests | Our daily update template ("is it in progress or completed?") carries the Zelle details: it is an update request, not a share request or completion. A previous job's share, a waived share, or "once the job is completed" is not this job's request. "Send my shares" / "did you send our cut" are. |
+| Share sent | Our "Thanks, let me check & confirm with my accounts department" after the technician's payment screenshot (images are not text in the export) → **Screenshot received · accounts checking** (share state sent). "We haven't received it" / "still pending" afterwards → back to requested. "Did you send the payment?" → "Yes" counts; "sent the estimate/report/invoice" does not. |
+| Completion | Opening sentences such as "I'm done", "the job is completed. Customer is happy…", "Done with the work", and "she paid $190 by check" / "I collected the 199" — unless the message mentions a part, return visit, diagnostic, deposit, another job or "but". |
+
+Before → after on the 470 jobs: took job 263 → 305; completed from the tech's own
+words 28 → 46 (share-request inference 156 → 134, 5 false completions removed);
+share sent 33 → 93 (about 53 jobs showed "share requested", heading for Send Dose,
+after we had acknowledged the payment screenshot). Every changed field was
+hand-reviewed; regressions found in review (dispatch "our cut" wording, "sent the
+estimate", deposits, "my previous job") were fixed before commit.
+
+A rules version is now part of each check's input hash, so the next check of a job
+re-reads it with the new rules even when the chat is unchanged; no migration and no
+policy change. Jobs whose share is requested/sent are re-checked daily, so most
+board rows refresh within a day of the redeploy; **Check again** refreshes one now.
+Redeploy **both** `processor-board` and `processor-board-daily`, then publish the CRM
+(Review shows the new step).
+
 ## Last 30 days only (2026-10-24; migration 20261126000000 awaiting manual application)
 
 The board and the server worker now include only leads created in the last 30 days

@@ -14,7 +14,7 @@ const SIGNAL_LABEL = { took_job: "Took the job", in_progress: "Work update", com
 // The team's standard steps, in order, as read by the exact rules.
 const TIMELINE_STEPS = [["details", "Customer details sent"], ["took_job", "Technician took the job"], ["visit_confirmed", "Visit confirmed (reminder)"],
   ["update_requested", "We asked for an update"], ["completed", "Job completed"], ["share_requested", "Share requested"], ["share_promised", "Share promised"],
-  ["share_sent", "Tech says share sent"], ["share_received", "Share received"]] as const;
+  ["share_sent", "Tech says share sent"], ["share_checking", "Screenshot received · accounts checking"], ["share_received", "Share received"]] as const;
 
 /** Inline job review: the AI's facts, their quotes and what part of the chat was read. */
 export function ProcessorReviewPanel({ job, timezone, checking, busy, error, canChat, onCheck, onChat }: {
