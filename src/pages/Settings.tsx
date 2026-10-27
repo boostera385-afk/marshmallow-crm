@@ -55,6 +55,7 @@ const NAV_SECTION_LABELS: Record<string, string> = {
   processor_board: "Processor Board",
   calls: "Calls Log",
   analytics: "Analytics",
+  cs_team_performance: "CS Team Performance",
   settings: "Settings",
   activity_logs: "Activity Logs",
   schedule: "Schedule",
@@ -818,7 +819,8 @@ const Settings = () => {
       key: section,
       label: NAV_SECTION_LABELS[section] || section,
       searchTerms: section === "cx_updates" ? ["Get CX Update", "Get Tech Update", "CX Updates", "Tech Updates", "Question More"]
-        : section === "processor_board" ? ["Dispatch Board", "Job Update Board"] : [],
+        : section === "processor_board" ? ["Dispatch Board", "Job Update Board"]
+        : section === "cs_team_performance" ? ["Analytics", "CS Report", "Team Performance"] : [],
       renderControl: (target: SettingsUser) => {
         const fixedReason = section === "optimization" || section === "payment_requests"
           ? "Admin only"

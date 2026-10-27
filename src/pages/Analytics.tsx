@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/supabase-paginate";
 import { useAuth } from "@/contexts/AuthContext";
 import { canViewLeadCoverageAnalytics } from "@/lib/access";
+import { fetchCsTeamPerformance, toCsMemberRow } from "@/lib/cs-team-performance";
 import { LeadCoverageSources } from "@/components/analytics/LeadCoverageSources";
 import { Card, CardContent } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -39,9 +40,15 @@ interface AnalyticsLeadRow {
 }
 
 const Analytics = () => {
-  const { role } = useAuth();
+  const { role, user, canAccess } = useAuth();
   const canCoverageReport = canViewLeadCoverageAnalytics(role);
+  // "analytics" opens the whole page; "cs_team_performance" alone opens only the
+  // CS Team Performance section, with team-wide counts from the database.
+  const fullAnalytics = canAccess("analytics");
+  const teamWideCs = canAccess("cs_team_performance");
+  const csOnly = !fullAnalytics && teamWideCs;
   const [activeTab, setActiveTab] = useState<"overview" | "cs_report" | "coverage_sources">("overview");
+  const tab = csOnly ? "cs_report" : activeTab;
   const [dateFilter, setDateFilter] = useState<"7d" | "30d" | "90d" | "all" | "custom">("30d");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -55,6 +62,7 @@ const Analytics = () => {
   // Fetch full details of all leads (operational fields only)
   const { data: allLeads = [] } = useQuery<AnalyticsLeadRow[]>({
     queryKey: ["analytics-total-operational"],
+    enabled: fullAnalytics,
     queryFn: async () => {
       // Page through so analytics counts reflect every lead, not just the
       // newest 1000 (PostgREST's default single-response cap).
@@ -73,6 +81,7 @@ const Analytics = () => {
   // leaves addresses out, and this set is small.
   const { data: urgentLeads = [] } = useQuery<ProximityLead[]>({
     queryKey: ["analytics-urgent-areas"],
+    enabled: fullAnalytics,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
@@ -109,6 +118,7 @@ const Analytics = () => {
   // Fetch profiles list to map CS Agent UUIDs to names
   const { data: profiles = [] } = useQuery({
     queryKey: ["analytics-profiles"],
+    enabled: fullAnalytics,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles_public" as never)
@@ -121,6 +131,7 @@ const Analytics = () => {
   // Fetch user roles
   const { data: userRoles = [] } = useQuery({
     queryKey: ["analytics-user-roles"],
+    enabled: fullAnalytics,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("user_roles")
@@ -371,17 +382,18 @@ const Analytics = () => {
     }
     
     return Array.from(counts.entries())
-      .map(([name, stats]) => ({
-        name,
-        role: stats.role === "cs_admin" ? "CS Admin" : "CS",
-        totalAdded: stats.total,
-        engaged: stats.engaged,
-        scheduled: stats.scheduled,
-        completed: stats.completed,
-        conversionRate: stats.total > 0 ? ((stats.completed / stats.total) * 100).toFixed(1) : "0.0",
-      }))
+      .map(([name, stats]) => toCsMemberRow({ id: name, name, role: stats.role === "cs_admin" ? "cs_admin" : "customer_service", total: stats.total, engaged: stats.engaged, scheduled: stats.scheduled, completed: stats.completed }))
       .sort((a, b) => b.totalAdded - a.totalAdded);
   }, [leads, profileMap, roleMap]);
+
+  // Team-wide counts for users granted CS Team Performance (and Admin); others with
+  // Analytics keep the report built from the leads they can see.
+  const csTeam = useQuery({
+    queryKey: ["analytics-cs-team-performance", user?.id, filteredRange.startMs, filteredRange.endMs],
+    enabled: teamWideCs && !rangeError && tab === "cs_report",
+    queryFn: () => fetchCsTeamPerformance(filteredRange.startMs, filteredRange.endMs),
+  });
+  const csRows = teamWideCs ? csTeam.data ?? [] : creatorPerformance;
 
   // Calculate stats for all-time totals
   const summary = useMemo(() => {
@@ -551,9 +563,9 @@ const Analytics = () => {
               Advanced Analytics
             </div>
 
-            <h1 className="text-2xl font-bold tracking-[-0.03em] text-foreground sm:text-3xl">{activeTab === "coverage_sources" && canCoverageReport ? "Lead Coverage & Sources" : "Operations Performance"}</h1>
+            <h1 className="text-2xl font-bold tracking-[-0.03em] text-foreground sm:text-3xl">{csOnly ? "CS Team Performance" : tab === "coverage_sources" && canCoverageReport ? "Lead Coverage & Sources" : "Operations Performance"}</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              {activeTab === "coverage_sources" && canCoverageReport ? "Track incoming jobs by technician coverage, geographic area, and intake source." : "Monitor conversions, stage progressions, response rates, and team assignments."}
+              {csOnly ? "Leads added by each Customer Service and CS Admin team member, and how far they progressed." : tab === "coverage_sources" && canCoverageReport ? "Track incoming jobs by technician coverage, geographic area, and intake source." : "Monitor conversions, stage progressions, response rates, and team assignments."}
             </p>
           </motion.div>
 
@@ -607,7 +619,7 @@ const Analytics = () => {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-b border-border pb-px" role="tablist" aria-label="Analytics views">
+      {!csOnly && <div className="flex flex-wrap gap-2 border-b border-border pb-px" role="tablist" aria-label="Analytics views">
         <button
           type="button"
           role="tab"
@@ -637,9 +649,9 @@ const Analytics = () => {
           CS Team Performance
         </button>
         {canCoverageReport && <button type="button" role="tab" aria-selected={activeTab === "coverage_sources"} onClick={() => setActiveTab("coverage_sources")} className={cn("rounded-t-lg px-4 py-2.5 text-[13px] font-semibold transition-colors", activeTab === "coverage_sources" ? "relative z-10 -mb-px border border-b-0 border-border bg-card text-blue-600 dark:text-blue-400" : "text-muted-foreground hover:text-foreground")}>Lead Coverage &amp; Sources</button>}
-      </div>
+      </div>}
 
-      {activeTab === "overview" ? (
+      {tab === "overview" ? (
         <div className="space-y-6">
           {/* KPI Cards */}
       <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 sm:grid sm:grid-cols-2 xl:grid-cols-4 sm:overflow-x-visible sm:pb-0 scrollbar-hide">
@@ -1005,7 +1017,7 @@ const Analytics = () => {
         </div>
       </div>
         </div>
-      ) : activeTab === "coverage_sources" ? (
+      ) : tab === "coverage_sources" ? (
         <LeadCoverageSources startMs={filteredRange.startMs} endMs={filteredRange.endMs} rangeError={rangeError} />
       ) : (
         <div className="space-y-6">
@@ -1016,7 +1028,16 @@ const Analytics = () => {
                 <p className="mt-1 text-[12px] text-muted-foreground">Detailed breakdown of leads added by each Customer Service and Admin team member for the selected date range.</p>
               </div>
 
-              {creatorPerformance.length === 0 ? (
+              {teamWideCs && rangeError ? (
+                <div role="alert" className="py-12 text-center text-sm text-destructive">{rangeError}</div>
+              ) : teamWideCs && csTeam.isPending ? (
+                <div aria-label="Loading CS Team Performance" className="py-12 text-center text-sm text-muted-foreground/70">Loading…</div>
+              ) : teamWideCs && csTeam.isError ? (
+                <div role="alert" className="space-y-3 py-12 text-center text-sm text-destructive">
+                  <p>{csTeam.error.message}</p>
+                  <button type="button" onClick={() => void csTeam.refetch()} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted">Retry</button>
+                </div>
+              ) : csRows.length === 0 ? (
                 <div className="py-12 text-center text-sm text-muted-foreground/70">No leads added by CS/Admin in this date range.</div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1033,8 +1054,8 @@ const Analytics = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {creatorPerformance.map((member) => (
-                        <TableRow key={member.name} className="border-border/60 hover:bg-muted/50">
+                      {csRows.map((member) => (
+                        <TableRow key={member.id} className="border-border/60 hover:bg-muted/50">
                           <TableCell className="font-medium text-foreground flex items-center gap-2">
                             <div className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                               <UserCheck className="w-3.5 h-3.5" />

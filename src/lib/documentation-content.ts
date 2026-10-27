@@ -71,6 +71,7 @@ export const DOC_SECTIONS: DocSection[] = [
           ["quick_chat", "Quick Chat", "Admin by default; Admin can override per user"],
           ["tech_quick_chat", "Tech Quick Chat", "For Technicians, OPR and OPR Admin; enforced by can_use_quick_chat()"],
           ["analytics", "Analytics", "Admin only by default"],
+          ["cs_team_performance", "CS Team Performance", "Admin only by default; opens Analytics with only this section (team-wide counts) even when Analytics is off"],
           ["areas", "Area Insights", "Admin only by default"],
           ["activity_logs", "Activity Logs", "Admin only by default"],
           ["settings", "Settings", "Admin only by default"],
