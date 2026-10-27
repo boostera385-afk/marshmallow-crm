@@ -43,6 +43,14 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## CS Team Performance access (2026-10-27; migration 20261128000000 awaiting manual application)
+
+CRM-only; Donut has no Analytics (no extension change). Feature Access has a new
+**CS Team Performance** toggle. Granted alone, Analytics opens with only that
+section; its team-wide counts come from `cs_team_performance()` (Admin or the
+grant only; aggregates, no lead rows). Analytics users without the grant keep the
+existing report built from the leads they can see.
+
 ## Processor Board payment screenshots (2026-10-26; Edge awaiting redeploy)
 
 CRM-only; Donut has no Processor Board (no extension change). A technician picture

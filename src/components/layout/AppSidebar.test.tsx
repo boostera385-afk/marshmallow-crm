@@ -125,6 +125,16 @@ describe("sidebar request optimization", () => {
     expect(screen.getByRole("link", { name: /Quotes to send/ }).querySelector(".animate-ping")).not.toBeNull();
   });
 
+  it("shows Analytics for a CS Team Performance grant even when Analytics is off", () => {
+    state.role = "customer_service";
+    state.permissions = [];
+    renderSidebar();
+    expect(screen.queryByText("Analytics")).not.toBeInTheDocument();
+    cleanup();
+    state.permissions = [{ id: "p", user_id: "synthetic-user", nav_section: "cs_team_performance", allowed: true }];
+    renderSidebar();
+    expect(screen.getByText("Analytics")).toBeInTheDocument();
+  });
   it("keeps failed count reads from advertising a successful count", async () => {
     state.role = "processor";
     state.fail = true;

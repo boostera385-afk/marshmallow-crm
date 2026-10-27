@@ -98,14 +98,15 @@ function LoginRoute() {
   return <Login />;
 }
 
-function PageRoute({ navItem, children }: { navItem: string; children: ReactNode }) {
+function PageRoute({ navItem, children }: { navItem: string | string[]; children: ReactNode }) {
   const { canAccess, profileLoaded } = useAuth();
 
   if (!profileLoaded) {
     return <PageFallback />;
   }
 
-  if (!canAccess(navItem)) {
+  // Any one of several grants opens a page (Analytics or its CS Team Performance section).
+  if (!(Array.isArray(navItem) ? navItem.some(canAccess) : canAccess(navItem))) {
     return <Navigate to="/leads" replace />;
   }
 
@@ -130,7 +131,7 @@ const App = () => (
               <Route path="leads/:id" element={<PageRoute navItem="leads"><LeadDetailPage /></PageRoute>} />
               <Route path="schedule" element={<PageRoute navItem="schedule"><SchedulePage /></PageRoute>} />
               <Route path="processor-board" element={<PageRoute navItem="processor_board"><Suspense fallback={<PageFallback />}><ProcessorBoardPage /></Suspense></PageRoute>} />
-              <Route path="analytics" element={<PageRoute navItem="analytics"><Analytics /></PageRoute>} />
+              <Route path="analytics" element={<PageRoute navItem={["analytics", "cs_team_performance"]}><Analytics /></PageRoute>} />
               <Route path="areas" element={<PageRoute navItem="areas"><AreasPage /></PageRoute>} />
               <Route path="map-view" element={<PageRoute navItem="map_view"><MapViewPage /></PageRoute>} />
               <Route path="technicians" element={<PageRoute navItem="technicians"><TechniciansPage /></PageRoute>} />

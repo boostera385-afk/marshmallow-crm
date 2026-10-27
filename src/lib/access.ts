@@ -71,6 +71,14 @@ export function canExportData(role: AppRole | null | undefined): boolean {
   return role === "admin";
 }
 
+/**
+ * Analytics opens for the whole page ("analytics") or for the CS Team Performance
+ * section alone ("cs_team_performance"), which can be granted without Analytics.
+ */
+export function canOpenAnalytics(canAccess: (navItem: string) => boolean): boolean {
+  return canAccess("analytics") || canAccess("cs_team_performance");
+}
+
 /** Full lead intake coverage/source reporting is an Admin-only Analytics view. */
 export function canViewLeadCoverageAnalytics(role: AppRole | null | undefined): boolean {
   return role === "admin";

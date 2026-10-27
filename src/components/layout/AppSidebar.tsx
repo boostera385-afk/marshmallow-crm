@@ -78,7 +78,7 @@ const getNavItems = (role: string) => [
 { title: "Technicians", url: "/technicians", icon: Contact, navKey: "technicians", group: "Manage" },
     { title: "Area Insights", url: "/areas", icon: MapPin, navKey: "areas", group: "Manage" },
   { title: "Optimization", url: "/optimization", icon: TrendingUp, navKey: "optimization", group: "Manage" },
-  { title: "Analytics", url: "/analytics", icon: BarChart3, navKey: "analytics", group: "Insights" },
+  { title: "Analytics", url: "/analytics", icon: BarChart3, navKey: "analytics", anyOf: ["analytics", "cs_team_performance"], group: "Insights" },
   { title: "Activity Logs", url: "/activity-logs", icon: ScrollText, navKey: "activity_logs", group: "Insights" },
   ...(role === "cs_admin" ? [{ title: "Users", url: "/settings", icon: Shield, navKey: "settings", group: "Manage" }] : [{ title: "Settings", url: "/settings", icon: Settings, navKey: "settings", group: "Admin" }]),
 ];
@@ -422,7 +422,7 @@ export default function AppSidebar() {
     };
   }, [role, profile?.id, navigate]);
 
-  const visibleItems = getNavItems(role || "").filter((item) => canAccess(item.navKey));
+  const visibleItems = getNavItems(role || "").filter((item) => ("anyOf" in item && item.anyOf ? item.anyOf : [item.navKey]).some(canAccess));
   // "Need Attention" is a virtual Review item (Admin/CS/CS Admin), rendered with
   // its own blinking dot + count under the Review header rather than a real route.
   const needAttentionItem =
