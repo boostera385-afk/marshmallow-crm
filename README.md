@@ -14,19 +14,23 @@
 
 <img src="https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth%20%2B%20RLS-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase"/>
 <img src="https://img.shields.io/badge/TanStack_Query-v5-FF415C?style=for-the-badge&logo=tanstack&logoColor=white" alt="TanStack Query"/>
-<img src="https://img.shields.io/badge/Edge_Functions-11-8B5CF?style=for-the-badge&logo=supabase&logoColor=white" alt="Edge Functions"/>
+<img src="https://img.shields.io/badge/Edge_Functions-21-8B5CF?style=for-the-badge&logo=supabase&logoColor=white" alt="21 Edge Functions"/>
 <img src="https://img.shields.io/badge/Role_Based_Access-6_roles-F59E0B?style=for-the-badge&logo=lucide&logoColor=black" alt="RBAC"/>
 
 <br/>
 
-<img src="https://img.shields.io/badge/migrations-176-2563EB?style=for-the-badge&logo=supabase&logoColor=white" alt="176 migrations"/>
-<img src="https://img.shields.io/badge/unit_tests-27_files%20%C2%B7%20291_passing-16A34A?style=for-the-badge&logo=vitest&logoColor=white" alt="291 tests passing"/>
-<img src="https://img.shields.io/badge/db_harnesses-9_SQL-CFA874?style=for-the-badge&logo=postgresql&logoColor=white" alt="SQL harnesses"/>
+<img src="https://img.shields.io/badge/migrations-223-2563EB?style=for-the-badge&logo=supabase&logoColor=white" alt="223 migrations"/>
+<img src="https://img.shields.io/badge/unit_tests-111_files%20%C2%B7%201088_passing-16A34A?style=for-the-badge&logo=vitest&logoColor=white" alt="1088 tests passing"/>
+<img src="https://img.shields.io/badge/db_harnesses-39_SQL-CFA874?style=for-the-badge&logo=postgresql&logoColor=white" alt="SQL harnesses"/>
 <img src="https://img.shields.io/badge/lead_statuses-25-9333EA?style=for-the-badge&logo=postgresql&logoColor=white" alt="25 lead statuses"/>
 
 </div>
 
 ---
+
+> **Taking over Marshmallow?** Start with the plain-language
+> [handover guide](docs/HANDOVER.md), then the
+> [walkthrough video guide](docs/VIDEO_WALKTHROUGH_GUIDE.md).
 
 ## About
 
@@ -56,6 +60,7 @@ Existing user grants are preserved. See
 
 ## Table of Contents
 
+- [Handover](docs/HANDOVER.md)
 - [What it does](#what-it-does)
 - [Application surface](#application-surface)
 - [Roles and permissions](#roles-and-permissions)
@@ -120,8 +125,14 @@ Navigation is grouped and filtered per role. Items can be granted per user throu
 | `/lead-payment-requests` | Payment approvals | **Admin only** |
 | `/quote-approval` | Quote approval queue | grantable |
 | `/quote-pending` | Quotes to send | admin or `is_quotation_master` |
+| `/tech-approvals` | Technician Good Tech / active-flag change approvals | `technician_change_requests` |
+| `/urgent-review-requests` | Urgent review queue | `urgent_review_requests` (CS Admin, Admin) |
+| `/get-cx-update`, `/get-tech-update` | CX and Tech update request queues | `cx_updates` |
 | `/quo-monitor`, `/quo-dashboard` | Quo inbox | `quo_monitor` |
+| `/ai-assistance` | Missed-Lead Tracker (unanswered calls and texts) | Admin, CS Admin, CS |
+| `/notifications` | Recipient notification history | `notifications` |
 | `/activity-logs` | Activity logs | admin default |
+| `/crm-updates` | CRM update broadcasts (see Technical debt) | `crm_updates` |
 | `/settings` | Settings / Users / Documentation | admin, or CS Admin with `can_manage_users` |
 
 </details>
@@ -205,7 +216,7 @@ can never change status again, and only Admin or `service_role` may move a lead 
 
 ## Database
 
-**156 migrations** in `supabase/migrations/`, timestamp-named, most with header comments
+**223 migrations** in `supabase/migrations/`, timestamp-named, most with header comments
 explaining the defect being fixed. Later migrations are semantically named.
 
 ### Key RPCs
@@ -234,7 +245,7 @@ against live data before and after the change.
 
 ## Edge Functions
 
-11 Deno functions under `supabase/functions/`:
+21 Deno functions under `supabase/functions/` (plus `_shared/`):
 
 | Function | Purpose |
 |---|---|
@@ -250,6 +261,15 @@ against live data before and after the change.
 | `sync-us-places` | Syncs Census places and ACS population into `us_places` |
 | `check-urgent-lead` | Compares a lead against the customer's conversation before it goes urgent (`gpt-4o-mini`) |
 | `technician-chat-assessment` | Admin/Processor-only report over selected technicians' latest Quo messages; returns advisory labels and job counts |
+| `geocode-lead-address` | Authenticated Census-only address lookup for CRM and Donut map coordinates |
+| `cx-update-requests` | Caller-JWT proxy for CX / Tech update requests; authorization lives in the database RPC |
+| `processor-board` | Server-side Processor Board checks over the technician chat (advisory facts) |
+| `processor-board-daily` | Daily Processor Board re-check for completed, unpaid jobs |
+| `refresh-urgent-statuses` | Short AI status label per urgent lead from its Quo customer chat |
+| `suggest-cancellation-reason` | Suggests a cancellation reason from a fixed list; advisory |
+| `workflow-inbox` | Request resolution / notification center API (rollout held; see `docs/WORKFLOW_INBOX_ROLLOUT.md`) |
+| `schedule-confirmation-monitor` | Off-by-default schedule confirmation monitor (rollout held) |
+| `marshmallow-copilot` | Read-only Copilot assistant; **paused** (see `docs/COPILOT_ROLLOUT.md`) |
 
 ### `check-urgent-lead`
 
@@ -419,6 +439,10 @@ npm run sb:link
 | `npm run build` | Production build |
 | `npm run preview` | Preview the build |
 | `npm run lint` | ESLint (flat config) |
+| `npm run typecheck` | TypeScript check for app and node configs |
+| `npm run validate` | Lint, typecheck, tests and build (also run by GitHub Actions) |
+| `npm run extension:release -- <version> "notes"` | Package a new Donut release (manifest, metadata, ZIP) |
+| `npm run extension:check` | Reject unpackaged Donut source changes (runs before every build) |
 | `npm test` | Vitest, single run |
 | `npm run test:watch` | Vitest, watch mode |
 | `npm run sb:link` | Link the Supabase CLI to a project |
@@ -432,11 +456,14 @@ npm run sb:link
 npm test
 ```
 
-**27 test files, 291 tests passing.** Vitest with jsdom, tests co-located beside source
+**111 test files, 1,088 tests passing** (2026-10-30). Vitest with jsdom, tests co-located beside source
 as `*.test.ts`. Supabase is mocked rather than hitting a test database.
 
-Nine hand-run SQL harnesses in `supabase/tests/` cover what unit tests cannot — RLS and
-role gates against real data:
+Mocked Playwright browser specs live in `tests/operator-workflow/`
+(`npx playwright test -c playwright.operator-workflow.config.ts`).
+
+39 hand-run SQL harnesses in `supabase/tests/` cover what unit tests cannot — RLS and
+role gates against real data. The core ones:
 
 | Harness | Covers |
 |---|---|
@@ -544,9 +571,9 @@ src/
 └── index.css          Tailwind layers and theme tokens
 
 supabase/
-├── functions/         11 Deno Edge Functions (plus _shared/)
-├── migrations/        176 SQL migrations
-└── tests/             9 hand-run RLS harnesses
+├── functions/         21 Deno Edge Functions (plus _shared/)
+├── migrations/        223 SQL migrations
+└── tests/             39 hand-run SQL harnesses
 ```
 
 ---
@@ -555,8 +582,10 @@ supabase/
 
 Known gaps, recorded so they are not rediscovered:
 
-- **No CI.** `.github/` does not exist; nothing runs on push or PR.
-- **Playwright is configured but unused** — dependency and config are present, zero specs.
+- **CI covers the frontend only.** `.github/workflows/validate.yml` runs `npm run validate`
+  on pull requests and pushes to `main`; SQL harnesses and Edge Functions are not run.
+- **Playwright specs are not in CI** — `tests/operator-workflow/` has mocked specs that are
+  run by hand.
 - **`/crm-updates` is unreachable.** `crm_updates` is missing from `ALL_NAV_ITEMS`, so the
   guard rejects it before reaching its own branch. The feature works inside
   Settings → CRM Updates.
