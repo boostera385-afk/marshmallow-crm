@@ -3017,6 +3017,18 @@ export type Database = {
       cron_quo_reconcile_sync: { Args: never; Returns: undefined }
       cron_quo_sync_contacts: { Args: never; Returns: undefined }
       cron_refresh_urgent_ai_status: { Args: never; Returns: undefined }
+      cs_team_performance: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          completed: number
+          engaged: number
+          member_id: string
+          member_name: string
+          member_role: string
+          scheduled: number
+          total_added: number
+        }[]
+      }
       current_user_opr_code: { Args: never; Returns: string }
       cx_update_requests: {
         Args: {
@@ -3328,6 +3340,10 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: string[]
       }
+      processor_board_due_jobs: {
+        Args: { p_limit?: number }
+        Returns: string[]
+      }
       processor_board_status: {
         Args: {
           p_lead_status: string
@@ -3348,6 +3364,7 @@ export type Database = {
         Args: { p_customer_phone: string; p_lead_id: string }
         Returns: string
       }
+      processor_tech_phone_key: { Args: { p_number: string }; Returns: string }
       prune_sheets_sync_errors: { Args: { p_keep?: number }; Returns: number }
       quo_conversation_counts_by_number: {
         Args: never
@@ -3371,6 +3388,10 @@ export type Database = {
         }[]
       }
       recalculate_lead_coverage: { Args: { _lead_id: string }; Returns: string }
+      record_processor_check_attempt: {
+        Args: { p_code: string; p_lead_id: string; p_ok: boolean }
+        Returns: undefined
+      }
       record_quo_webhook_event: {
         Args: {
           _event_type: string
