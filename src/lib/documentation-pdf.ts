@@ -8,6 +8,7 @@ const CONTENT_W = PAGE_W - MARGIN * 2;
 const BLUE: [number, number, number] = [31, 78, 121];
 const GREY: [number, number, number] = [200, 200, 200];
 const HEADER_FILL: [number, number, number] = [217, 226, 243];
+const TABLE_GAP_AFTER = 18;
 
 export function generateDocumentationPdf(): jsPDF {
   const doc = new jsPDF({ unit: "pt", format: "letter" });
@@ -162,7 +163,9 @@ function renderBlock(
     };
     drawRow(block.headers, true);
     block.rows.forEach((r) => drawRow(r, false));
-    setY(getY() + 6);
+    // Text is drawn on its baseline, so leave room for the next line's ascent
+    // below the table's bottom border.
+    setY(getY() + TABLE_GAP_AFTER);
     return;
   }
 }
