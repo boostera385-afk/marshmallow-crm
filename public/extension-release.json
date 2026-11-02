@@ -1,8 +1,8 @@
 {
   "name": "Donut",
-  "version": "1.7.0",
-  "releasedAt": "2026-10-10T07:16:33.639Z",
-  "summary": "Census-only free-map coordinates, strict provider validation, and protected nearby-area coordinate updates.",
-  "sourceSha256": "3967f942d22a3f29a9407618ea1ce68a93f8dc3d79615dadbc702d70f0da143f",
-  "packageSha256": "ac60ea6d7284d59c9697d84745fdd6b06f221a9b0b71bdf2caf2eaf13f506e22"
+  "version": "1.7.1",
+  "releasedAt": "2026-11-02T08:45:00.613Z",
+  "summary": "Documentation only: the bundled README now describes how Donut actually works (CRM sign-in, Census address lookup, approvals, urgent check, Technician Intelligence, photo handoff, updates). No behavior changes.",
+  "sourceSha256": "981081197adae6bf2ba54221c736ce379cc679519fa3ed5fac8ae0b13638556d",
+  "packageSha256": "6c28ce3fc75aeb2e9561deb3871bac87c52ea2d7c6acc5a0f4dd90e1e82d22a7"
 }

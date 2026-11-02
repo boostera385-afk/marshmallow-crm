@@ -1,210 +1,142 @@
-# Quo CRM Lead Capture Extension
+# Donut
 
-This repository contains a Chrome Extension Manifest V3 implementation for capturing explicitly selected text from `quo.com` chats and creating CRM leads without leaving the current page.
+Donut is Marshmallow CRM's Chrome extension (Manifest V3) for the Quo website.
+Staff create and update CRM leads from a Quo chat without leaving the page.
 
-## What the extension does
+Donut signs in as the user and talks to the same Supabase backend, RPCs and
+Edge Functions as the CRM, so the CRM's permissions (RLS), approval gates and
+AI checks apply unchanged. It contains no service-role, AI, Quo or webhook
+secrets. A feature that exists in both clients must be fixed in both; see
+`docs/CRM_EXTENSION_PARITY.md` in the CRM repository.
 
-- Runs only on `quo.com` pages through a content script.
-- Detects highlighted text with `window.getSelection()`.
-- Shows a floating action menu near the selection.
-- Lets you assign selected text to lead fields one field at a time.
-- Opens a Chrome side panel with an editable lead form.
-- Stores draft form data locally so panel state survives closing and reopening.
-- Sends the final lead to your CRM only when you click `Create Lead`.
-- Checks active CRM leads by customer phone and can replace the selected lead’s schedule requirement without creating a duplicate.
+## Install (Load unpacked)
 
-## Files
+Donut is not in the Chrome Web Store.
 
-- `manifest.json`
-- `background.js`
-- `content.js`
-- `crm-bridge.js` (relays `window.postMessage` from the CRM to the background worker)
-- `sidepanel.html`
-- `sidepanel.js`
-- `sidepanel.css`
-- `options.html`
-- `options.js`
-- `options.css`
+1. In the CRM, click the **Donut** button in the header and download `Donut.zip`.
+2. Extract it to a folder you will keep (it contains `quo-crm-extension`).
+3. Open `chrome://extensions` and turn on **Developer mode**.
+4. Click **Load unpacked** and select the extracted `quo-crm-extension` folder.
+5. Pin Donut from the extensions menu.
 
-## Install in Chrome developer mode
+## Set up and sign in
 
-1. Open Chrome and go to `chrome://extensions`.
-2. Enable `Developer mode`.
-3. Click `Load unpacked`.
-4. Select this repository folder: `C:\Users\Dell\Documents\auto lead adder crm`.
-5. Confirm the extension appears in the extensions list.
+1. Open Donut's **Options** page and set **CRM Website URL** (the CRM's address,
+   used for links back to leads, the technician workflow and release checks).
+   Click **Save Settings**. No API token is used.
+2. Open Donut on a Quo tab; the side panel opens.
+3. Sign in with your normal CRM email and password. Two-factor (TOTP) and access
+   codes are asked for exactly as in the CRM.
 
-## Configure CRM API URL and token
+## Create a lead from a Quo chat
 
-1. Open the extension details page in `chrome://extensions`.
-2. Open the extension `Options` page.
-3. Set:
-   - `CRM API Base URL`, for example `https://your-crm-domain.com`
-   - `API Token`, your bearer token for the CRM backend
-4. Click `Save Settings`.
+1. Highlight text in the chat. A floating menu offers **Customer Name**,
+   **Customer Number**, **Address**, **Number Name**, **Service Name / Keyword**
+   and **Schedule Req.**; the selected text fills that field in the side panel.
+2. Helpers in the panel:
+   - **Direction → Auto** detects who started the conversation (Incoming / Outgoing).
+   - **Customer Phone → Auto** reads the number from the chat header; the area
+     button shows the number's assigned rate center from the bundled NANPA
+     NPA-NXX data (exact 6-digit prefix only; not the caller's location).
+   - **Address → Find** standardizes the address through the CRM's
+     `geocode-lead-address` function (US Census only); Apt/Suite/Unit/# is kept.
+   - **Number Label → Auto** and **Service Keyword → Auto** fill from the page or
+     the selected text.
+   - **Chat Pictures → Pick** collects the chat's images, with a preview viewer.
+3. Add Service Details, Reference and Schedule Note, then choose:
+   - **Lead Status:** Default, Urgent, Quote Pending to Send or Quote Sent.
+   - **Estimate / Quote:** Free Estimate, or Quoted with a Quote Amount.
+4. Click **Create Lead**.
 
-The extension posts leads to:
+Rules that match the CRM:
 
-`POST {CRM_API_BASE_URL}/api/extension/leads`
+- A customer name or number is required.
+- Only highlighted and assigned text is captured; the whole chat is never sent.
+- The draft is saved locally and survives closing the panel; **Clear Draft**
+  empties it.
+- An in-flight guard and a reserved job ID stop retries from creating duplicate
+  leads. A photo upload failure after a successful save is reported separately.
+- **Quote Pending to Send** from a CS user files a quote approval request
+  (`request_quote_approval`); the lead is created as Waiting Complete Details.
+  Admin and CS Admin set the status directly.
+- **Urgent** from CS, CS Admin or Admin creates the lead in its ordinary status
+  first, then runs `check-urgent-lead`. Clean: the verification is recorded and the
+  lead becomes urgent. Issues (corrections, missing details): shown in the panel and
+  reviewed on the saved lead in the CRM. Unavailable: nothing was compared; it is
+  never treated as a pass. Processors set Urgent directly. Urgent never changes the
+  customer's agreed schedule.
 
-## Required CRM endpoint
+Processor and Operator roles cannot create leads; the database enforces this.
 
-Your CRM must expose this authenticated endpoint:
+## Check an existing lead and update its schedule
 
-`POST /api/extension/leads`
+Click **Check Lead** to list active CRM leads with the same customer phone. Select
+one, enter the new **Schedule Note** and click **Update**. This replaces that lead's
+schedule requirement instead of creating a duplicate, then clears the draft.
 
-Required headers:
+## Activity & Reports
 
-```http
-Content-Type: application/json
-Authorization: Bearer YOUR_API_TOKEN
-```
+Lists the leads you created with Donut for Today, Yesterday, Last 7 Days, Last 30
+Days or a custom range, with totals. **Export** downloads the visible leads as CSV.
 
-Expected request body:
+## Technician Intelligence (Admin and Processor)
 
-```json
-{
-  "customerName": "Jane Doe",
-  "customerNumber": "+1 555 0100",
-  "customerAddress": "123 Main St",
-  "numberName": "Home",
-  "service": "AC repair",
-  "referenceName": "Google Ads - Summer Campaign",
-  "direction": "incoming",
-  "scheduleRequirement": "Tomorrow morning",
-  "source": "quo.com",
-  "sourceUrl": "https://quo.com/messages/123",
-  "capturedAt": "2026-06-24T14:30:00.000Z",
-  "createdByExtension": true
-}
-```
+**Find captured technician** matches the technician by the chat's phone number.
+**Review technician** calls the same `technician-chat-assessment` Edge Function as
+the CRM and shows suggested labels with verified chat evidence and job counts.
+**Save reviewed labels** keeps the labels you confirm. AI advice never changes a
+technician's Good Tech or active flag; that goes through the CRM's Tech Approvals.
+**Open full Processing Workflow** opens the CRM for map selection, batches of up to
+8 and flag requests. Admins also get a link to Lead Coverage analytics. Other roles
+do not see this panel and cannot call the API.
 
-Expected success response:
+## Send photos to tech (started in the CRM)
 
-```json
-{
-  "success": true,
-  "leadId": "lead_123",
-  "leadUrl": "https://your-crm-domain.com/leads/lead_123"
-}
-```
+On a saved lead, the CRM's **Send photos to tech** uses Donut to attach the
+original photos to the assigned technician's Quo conversation on the technician
+line. It requires Tech Quick Chat permission and technician-detail access. Review
+the attachments in Quo and click **Send** yourself; the handoff is not delivery.
+Existing text drafts are kept. Batches over 30 MB, or a Quo page where the file
+input cannot be identified, fail visibly; use the CRM's **Copy all N photos**
+(one numbered combined image) and paste instead.
 
-Expected error response example:
+## Updates
 
-```json
-{
-  "success": false,
-  "error": "Invalid token."
-}
-```
+The side panel and Options show the installed version and release date/time, and
+show a notice when the CRM's `/extension-release.json` has a newer version. The
+CRM header's Donut button shows the latest and installed versions (older builds
+without the version handshake show **Not detected**).
 
-## How to use on quo.com
+To update, extract the new ZIP over the existing `quo-crm-extension` folder
+(same path), click **Reload** on Donut in `chrome://extensions`, and refresh CRM
+and Quo tabs. If you use a new folder, **Load unpacked** it and remove the old copy.
+Updates are never installed automatically.
 
-1. Open a `quo.com` chat page.
-2. Highlight only the text you want to capture.
-3. Click a floating action button such as `Customer Name` or `Service`.
-4. Review and edit the draft in the side panel.
-5. Set `direction` to `incoming` or `outgoing`.
-6. Click `Create Lead`.
+## Developer notes
 
-To update an existing lead’s schedule requirement, click `Check Lead`, select the correct matching lead, enter the new Schedule Requirement, and click `Update Schedule Requirement`. The update replaces the previous schedule value and clears the full form after success.
+| File | Purpose |
+|---|---|
+| `manifest.json` | MV3 manifest: Quo content script, CRM bridge, side panel, options |
+| `background.js` | Service worker: Supabase session, lead save, checks, photo upload |
+| `content.js` / `content.css` | Selection menu and photo handoff on Quo pages |
+| `crm-bridge.js` | Relays CRM page messages (version handshake, photo handoff) |
+| `sidepanel.*` | Lead capture form, reports, sign-in |
+| `technician-workflow.js` | Technician Intelligence panel |
+| `options.*` | CRM Website URL and theme |
+| `release-status.*` | Installed version and update notice |
+| `supabase.js` | Bundled Supabase client |
+| `data/npa-nxx.json` | NANPA rate-center lookup (see `data/README.txt`) |
+| `release.json` | Generated release metadata; do not edit |
 
-Validation rule:
-
-- At least `customerName` or `customerNumber` must be present before submission.
-
-Important behavior:
-
-- The extension never sends the full chat automatically.
-- Only text you explicitly select and assign is added to the draft.
-
-## Bulk photo copy (CRM clipboard)
-
-Lead cards provide one **Copy all N photos** action. It copies the selected lead's
-photos as one numbered combined image in one click so the user can paste them into
-the intended Quo conversation. Chrome cannot write multiple image clipboard items.
-
-With Donut **1.4.0 and later**, **Send photos to tech** hands all original photos to the
-assigned technician's exact conversation on the technician communications line.
-It requires the existing Tech Quick Chat permission and technician-detail access.
-Review the attachments in Quo, then click **Send** to deliver them. A handoff is
-not a delivery confirmation. Existing text drafts are preserved. If Quo's file
-input cannot be identified, the batch fails visibly; use combined-image copy.
-Reload the extension and refresh both CRM and Quo tabs after upgrading.
-
-Sending a text message remains a separate, user-composed action.
-
-## Technician Intelligence and shared lead review
-
-Admin and Processor users have a native **Technician Intelligence** panel: find
-the technician matching the captured phone, confirm the exact record, review chat
-evidence and job history, and save reviewed labels. It calls the same authenticated
-`technician-chat-assessment` Edge Function as the CRM. **Open full Processing
-Workflow** provides map selection, batches up to 8, flag approval and next actions.
-CS/OPR roles cannot call this API. AI advice never automatically changes flags.
-
-Find Address, coverage preview and intake coordinates now use the CRM's
-`geocode-lead-address` endpoint, using Census-only map coordinates and unit
-preservation. Google/unknown-provider points are rejected and cannot be used for
-intake coordinates or coverage previews. No Google key is needed for the free map.
-Urgent intake displays corrections and missing-detail flags as well
-as contradictions. The saved-lead review remains the authority for applying fixes
-and approval. If a lead saved but draft cleanup failed, the panel says so explicitly.
-Unknown save outcomes retain the job ID until the draft is cleared.
-
-See `docs/CRM_EXTENSION_PARITY.md` in the CRM repository for API-key setup and the
-mandatory parity verification/release checklist.
-
-## Manual ZIP release and update notices
-
-Donut is installed with Chrome's **Load unpacked**, not through the Chrome Web Store.
-The side panel and Settings show the actual installed manifest version and the release
-date/time in the user's local timezone. Both check the configured CRM's
-`/extension-release.json` while open and show a ZIP update notice for newer versions.
-The CRM header's **Donut** button shows the latest release, installed version (when
-detectable), release date/time, download, and manual-update instructions. CRM users
-receive an automatic in-app notice once per release per user/browser. Older releases
-that lack the version handshake are shown as **Not detected**, never as up to date.
-
-To update, extract the new ZIP and replace the contents of the existing unpacked
-`quo-crm-extension` folder, keeping the same path. Open `chrome://extensions`, enable
-Developer mode, click **Reload** on Donut, and refresh CRM and Quo tabs. If you use a
-new folder instead, use **Load unpacked** and remove the old duplicate extension.
-
-For every extension change, from the repository root run:
+For every change in this folder, from the CRM repository root:
 
 ```sh
-npm run extension:release -- 1.6.0 "Describe this release"
+npm run extension:release -- <higher-version> "Release notes"
+npm run extension:check
 ```
 
-Use a version higher than the last release. This automatically updates the manifest,
-UTC release timestamp, bundled metadata, public release metadata and `public/Donut.zip`.
-Commit those generated files with the extension changes. Publishing the CRM makes
-the release discoverable and automatically triggers notices; generating a ZIP locally
-does not notify production users. `npm run extension:check` (also run before builds)
-rejects stale source/metadata/ZIP combinations. It does not auto-install ZIP updates.
-
-## Example API test with cURL
-
-```bash
-curl -X POST "https://your-crm-domain.com/api/extension/leads" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -d '{
-    "customerName": "Jane Doe",
-    "customerNumber": "+1 555 0100",
-    "customerAddress": "123 Main St",
-    "numberName": "Home",
-    "service": "AC repair",
-    "direction": "incoming",
-    "scheduleRequirement": "Tomorrow morning",
-    "source": "quo.com",
-    "sourceUrl": "https://quo.com/messages/123",
-    "capturedAt": "2026-06-24T14:30:00.000Z",
-    "createdByExtension": true
-  }'
-```
-
-## Backend note
-
-This repository currently does not expose an existing backend application structure or committed server code to inspect. Because of that, no CRM API route was added here. The extension is implemented and ready to call an existing backend once that route is available in your CRM stack.
+This updates `manifest.json`, `release.json`, `public/extension-release.json` and
+`public/Donut.zip` together; commit them with the source. Never package the ZIP by
+hand or reuse a version. `npm run build` runs the check and rejects unpackaged
+changes. Users receive a release only after the CRM is published and they reload
+Donut.
