@@ -16,6 +16,8 @@ Format per entry:
 
 ## Unreleased
 <!-- Staged on main / preview but not yet Published to users. Move to a dated entry on Publish. -->
+- Donut 1.7.1 (documentation only): the extension's README now matches how Donut works;
+  no behavior change. Users only need to reload it when convenient.
 - AI urgent features: form-only urgent auto-correction (per-fix Apply/Dismiss, entry gated
   until all fixes resolved), AI status labels + refresh on the Urgent Leads screen (Address
   column removed), and AI cancellation-reason suggestions with a visible approval trail.

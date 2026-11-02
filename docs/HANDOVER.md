@@ -198,7 +198,9 @@ update), a theme switch, a notepad, and a command menu (`Ctrl+K` / `⌘K`).
 
 **Donut** is a Chrome extension used on the Quo website. Its code is in
 `tmp_extension/quo-crm-extension/` (the folder name is historical; it is the
-real source). Current version: **1.7.0**.
+real source). Current version: **1.7.1** (a documentation-only release: its
+bundled `README.md` now describes how Donut really works). The README is the
+developer guide for Donut.
 
 What staff use it for:
 
