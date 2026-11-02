@@ -48,9 +48,10 @@ outgoing owner has; it must be completed before the handover is finished.
 | 6 | [`docs/CRM_EXTENSION_PARITY.md`](CRM_EXTENSION_PARITY.md) | Which features exist in both the CRM and Donut |
 | 7 | Feature rollout notes in `docs/*_ROLLOUT.md` | History and pending steps for the bigger features |
 
-Admins can also read the in-app documentation in **Settings → Documentation**.
-It is older than this page in places (see the README's *Technical debt*
-section); where they disagree, the code wins.
+Admins can also read the in-app technical reference in **Settings →
+Documentation** (Version 2.0, November 2026), and export it as a PDF. Its role,
+status and permission lists are generated from the code. Where anything
+disagrees, the code wins.
 
 ---
 
@@ -186,7 +187,7 @@ or grants allow.
 | **Security** | Your own password and 2FA. |
 | **CRM Updates** | Send a one-time announcement to chosen roles. |
 | **Google Sheets** | The Google Sheets sync and its health. |
-| **Documentation** | The in-app technical documentation. |
+| **Documentation** | The in-app technical reference (roles, permissions, statuses, workflows, AI features), with PDF export and the yearly *Sync Population Data* button. |
 
 The header also has a **Donut** button (latest extension version and how to
 update), a theme switch, a notepad, and a command menu (`Ctrl+K` / `⌘K`).

@@ -589,8 +589,6 @@ Known gaps, recorded so they are not rediscovered:
 - **`/crm-updates` is unreachable.** `crm_updates` is missing from `ALL_NAV_ITEMS`, so the
   guard rejects it before reaching its own branch. The feature works inside
   Settings → CRM Updates.
-- **In-app docs disagree with code** on OPR status-change access — `documentation-content.ts`
-  says `partial_paid`, `STATUS_CHANGE_ACCESS` has `opr: []` and `opr_admin: []`.
 - **`types.ts` is behind the schema.** Newer tables and RPCs are still called through
   `as never` casts. Regenerate with the Supabase CLI; never hand-edit.
 - **Supabase URL and key are hardcoded** in `src/integrations/supabase/client.ts` instead
