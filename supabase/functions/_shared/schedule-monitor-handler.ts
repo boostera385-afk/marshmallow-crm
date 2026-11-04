@@ -28,7 +28,7 @@ export function createScheduleMonitorHandler(deps: {
         catch { result = { decision: "unavailable", reason: "Assessment failed. No tag change." }; }
         if (result.provider_status === 429) limited = true;
         const finish = await db.rpc("finish_schedule_check", { p_input: {
-          lead_id: job.lead_id, lease: job.lease, generation: job.generation, mode: batch.mode, timezone: batch.timezone,
+          lead_id: job.lead_id, lease: job.lease, generation: job.generation, mode: batch.mode,
           config_changed_at: batch.config_changed_at, result, provider_status: result.provider_status,
         } });
         if (finish.error) failed++;

@@ -15,7 +15,8 @@ try {
   for (const file of ["supabase/tests/fixtures/update_requests.sql", "supabase/tests/fixtures/workflow_inbox.sql",
     "supabase/migrations/20261013082939_get_cx_update_requests.sql", "supabase/migrations/20261120001000_tech_update_requests_and_followups.sql",
     "supabase/migrations/20261121001000_fix_update_request_notification_uuid.sql"]) await db.exec(await sql(file));
-  for (const file of ["supabase/migrations/20261020065810_workflow_resolution_notifications.sql", "supabase/migrations/20261020070343_schedule_confirmation_monitor.sql"]) {
+  for (const file of ["supabase/migrations/20261020065810_workflow_resolution_notifications.sql", "supabase/migrations/20261020070343_schedule_confirmation_monitor.sql",
+    "supabase/migrations/20261130000000_ai_schedule_confirmation.sql"]) {
     await db.exec(await sql(file));
     await db.exec(await sql(file));
   }

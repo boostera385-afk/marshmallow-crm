@@ -63,3 +63,12 @@ export function canAssignLeadTag(
 export function isScheduleTag(tag: string | null | undefined): boolean {
   return Boolean(tag) && SCHEDULE_TAGS.includes(tag as CsTag);
 }
+
+/**
+ * Whether the lead's current tag was set by the schedule confirmation AI. Only
+ * Ready to schedule is ever set by AI, and any later tag change by a person
+ * clears the marker in the database.
+ */
+export function isAiSetTag(lead: { cs_tag?: string | null; cs_tag_source?: string | null }): boolean {
+  return lead.cs_tag === "ready_to_schedule" && lead.cs_tag_source === "ai";
+}

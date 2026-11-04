@@ -13,6 +13,13 @@ WITH checks(name,ok) AS (
     ('Server event writes denied',NOT coalesce(has_table_privilege('authenticated',to_regclass('public.workflow_notification_events'),'INSERT'),true)),
     ('Trusted-message trigger installed',EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='quo_messages_schedule_evidence' AND NOT tgisinternal)),
     ('Pause invalidation trigger installed',EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='settings_invalidate_schedule_evidence' AND NOT tgisinternal)),
-    ('Requester revision column installed',EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='lead_cx_update_requests' AND column_name='revision'))
+    ('Requester revision column installed',EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='lead_cx_update_requests' AND column_name='revision')),
+    -- 20261130000000_ai_schedule_confirmation
+    ('AI tag marker column installed',EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='leads' AND column_name='cs_tag_source')),
+    ('AI tag marker trigger installed',EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='leads_stamp_cs_tag_source' AND NOT tgisinternal)),
+    ('New waiting leads are queued',EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='leads_schedule_monitor_queue_insert' AND NOT tgisinternal)),
+    ('Exact job/date/time rule retired',to_regprocedure('marshmallow_private.schedule_exact_confirmation(public.leads,jsonb)') IS NULL),
+    ('Every waiting lead is queued',NOT EXISTS(SELECT 1 FROM public.leads l WHERE l.cs_tag='waiting_schedule_confirmation'
+      AND NOT EXISTS(SELECT 1 FROM marshmallow_private.schedule_monitor_queue q WHERE q.lead_id=l.id)))
 )
 SELECT name,CASE WHEN ok THEN 'PASS' ELSE 'FAIL' END AS result FROM checks ORDER BY name;
