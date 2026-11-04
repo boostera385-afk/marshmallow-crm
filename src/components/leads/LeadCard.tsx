@@ -84,6 +84,7 @@ import { getAssignableLeadTags, isQuotationMaster } from "@/lib/lead-tags";
 import { countTechs } from "@/lib/lead-techs";
 import { dispatchLeadStatusNotification } from "@/lib/lead-notifications";
 import { saveLeadTag } from "@/lib/lead-tag-actions";
+import AiTagBadge from "@/components/leads/AiTagBadge";
 import { canSeeTechDetails, isOperatorRole } from "@/lib/access";
 import BookingDateTimeDialog, { formatBookingCompact, isBookingExpired } from "./BookingDateTimeDialog";
 import AssignLeadToOperatorDialog from "./AssignLeadToOperatorDialog";
@@ -1802,6 +1803,7 @@ function LeadCard({
                   >
                     📌 {CS_TAG_LABELS[currentTag] ?? currentTag}
                   </p>
+                  <AiTagBadge lead={lead} />
                 </>
               )}
             </div>

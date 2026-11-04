@@ -132,6 +132,8 @@ export interface Lead {
   terms: 'free_estimate' | 'quoted' | null;
   direction: 'incoming' | 'outgoing' | null;
   cs_tag?: CsTag | null;
+  /** 'ai' when the current tag was set by the schedule confirmation AI. */
+  cs_tag_source?: 'ai' | null;
   booked_at?: string | null;
   half_address?: string | null;
   labor_amount: number | null;

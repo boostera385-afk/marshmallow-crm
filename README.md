@@ -268,7 +268,7 @@ against live data before and after the change.
 | `refresh-urgent-statuses` | Short AI status label per urgent lead from its Quo customer chat |
 | `suggest-cancellation-reason` | Suggests a cancellation reason from a fixed list; advisory |
 | `workflow-inbox` | Request resolution / notification center API (rollout held; see `docs/WORKFLOW_INBOX_ROLLOUT.md`) |
-| `schedule-confirmation-monitor` | Off-by-default schedule confirmation monitor (rollout held) |
+| `schedule-confirmation-monitor` | AI schedule confirmation: after a customer text on a Waiting-for-confirmation lead, decides whether the customer confirmed; the database moves the tag to Ready to schedule (marked AI) and notifies. Off until an Admin enables it |
 | `marshmallow-copilot` | Read-only Copilot assistant; **paused** (see `docs/COPILOT_ROLLOUT.md`) |
 
 ### `check-urgent-lead`

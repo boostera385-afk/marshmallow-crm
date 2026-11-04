@@ -16,6 +16,10 @@ Format per entry:
 
 ## Unreleased
 <!-- Staged on main / preview but not yet Published to users. Move to a dated entry on Publish. -->
+- AI schedule confirmation: a customer text confirming the schedule moves a Waiting for CX for
+  schedule confirmation lead to Ready to schedule (marked AI) and notifies CS, CS Admin, Admin
+  and Processor with the job details. Needs migration `20261130000000`, worker deployment and an
+  Admin turning it on.
 - Donut 1.7.1 (documentation only): the extension's README now matches how Donut works;
   no behavior change. Users only need to reload it when convenient.
 - AI urgent features: form-only urgent auto-correction (per-fix Apply/Dismiss, entry gated

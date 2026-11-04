@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { selectWithAiTagColumn } from "@/lib/lead-optional-columns";
 import * as XLSX from "xlsx";
 import { useDeferredValue } from "react";
 import { useCallback } from "react";
@@ -360,11 +361,11 @@ export default function LeadsPage() {
 
     const leadIds = (shares as LeadShareRow[]).map((share) => share.lead_id);
 
-    const { data: leadsData, error: leadsError } = await supabase
+    const { data: leadsData, error: leadsError } = await selectWithAiTagColumn(LEAD_LIST_COLUMNS, (columns) => supabase
       .from("leads")
-      .select(LEAD_LIST_COLUMNS)
+      .select(columns)
       .in("id", leadIds)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }));
 
     if (leadsError) {
       toast.error(leadsError.message);
@@ -640,10 +641,10 @@ export default function LeadsPage() {
   const loadPagedLeadRows = useCallback(async (ids: string[]) => {
     setPageRowsLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await selectWithAiTagColumn(LEAD_LIST_COLUMNS, (columns) => supabase
         .from("leads")
-        .select(LEAD_LIST_COLUMNS)
-        .in("id", ids);
+        .select(columns)
+        .in("id", ids));
       if (error) throw error;
       const map: Record<string, Lead> = {};
       for (const row of (data ?? []) as unknown as Lead[]) {
@@ -1009,10 +1010,10 @@ export default function LeadsPage() {
         const CHUNK = 500;
         for (let i = 0; i < baseLeads.length; i += CHUNK) {
           const chunkIds = baseLeads.slice(i, i + CHUNK).map((l) => l.id);
-          const { data, error } = await supabase
+          const { data, error } = await selectWithAiTagColumn(LEAD_LIST_COLUMNS, (columns) => supabase
             .from("leads")
-            .select(LEAD_LIST_COLUMNS)
-            .in("id", chunkIds);
+            .select(columns)
+            .in("id", chunkIds));
           if (error) throw error;
           for (const row of (data ?? []) as unknown as Lead[]) {
             if (row?.id) full.set(row.id, row);

@@ -1,5 +1,77 @@
 # Request resolution, notifications and schedule monitoring
 
+## AI schedule confirmation (2026-11-04) — supersedes the narrow schedule monitor
+
+**What it does.** For leads tagged **Waiting for CX for schedule confirmation**:
+when the customer texts back in Quo, AI reads the recent chat. If the customer
+confirmed the schedule, the tag changes to **Ready to schedule** and is marked
+**AI** (`leads.cs_tag_source = 'ai'`, shown as an AI badge on the lead card and
+lead page). The lead's CS (creator, assigned or shared), every CS Admin, Admin and
+Processor who can see the job get a `schedule_ready` notification. Its pop-up stays
+until dismissed and lists the job ID, customer, service, location, schedule and the
+customer's words. Status, the agreed schedule, technician, quote, payment and
+approvals never change.
+
+**When AI runs.** Only after a trusted (webhook / service-role) customer *text*
+that arrives after the lead entered the waiting tag. Agent messages, calls, call
+summaries and browser-inserted messages never trigger it. A 20-second pause
+collects a burst of texts; a newer text restarts the check.
+
+**Chat matching** is automatic: the conversation's `linked_lead_id`, else the same
+10-digit phone when the conversation is not linked to a different lead. If more
+than one waiting lead matches the customer, nothing changes (needs a person).
+
+**What the database still enforces, whatever the AI says** (`finish_schedule_check`):
+the job is still open (not scheduled or later, not closed) with no pending
+cancellation, payment or quote approval; the reply is under 24 hours old; the
+chat still matches; only one waiting lead matches; and the AI's quoted words are an
+exact part of a customer text received after the tag was set. Only the
+`waiting_schedule_confirmation` → `ready_to_schedule` transition is possible.
+Any later tag change by a person clears the AI marker (trigger-owned column).
+
+**Removed from the 2026-10-20 design:** the exact job ID + ISO date + 24-hour time
+rule, per-job Admin conversation binding, the timezone setting and the five-review
+activation quota. Admin controls are now Off / Shadow / On with an audited reason
+(Notifications → *AI schedule confirmation · Admin controls*), plus a per-job
+*Check again*. Daily cap 200 AI checks; 429 cooldown and pause handling unchanged.
+
+**Install (each step needs its own approval; production is `kxiqholnmhkwhdkhtopp`):**
+
+1. If not already installed, apply `20261020065810_workflow_resolution_notifications.sql`
+   and `20261020070343_schedule_confirmation_monitor.sql` first (the generated
+   types on `main` suggest they are; confirm in the database).
+2. Apply `supabase/migrations/20261130000000_ai_schedule_confirmation.sql` in the
+   SQL editor. It adds `leads.cs_tag_source`, replaces the monitor functions and
+   queues every lead already waiting; only customer replies after this point count.
+3. Run `supabase/tests/151_workflow_inbox_readonly.sql` (read-only) and check every
+   row is `PASS`. Do not run the write-based `160` harness on production.
+4. Deploy `schedule-confirmation-monitor` (with `_shared/`). It needs the Edge secrets
+   `OPENAI_API_KEY` and `SCHEDULE_MONITOR_CRON_SECRET`.
+5. If not already done: Vault entries `schedule_monitor_project_url` and
+   `schedule_monitor_cron_secret` (same value as the Edge secret), then
+   `supabase/manual/schedule_monitor_cron.sql` (one-minute dispatcher; it calls the
+   worker only when a customer reply is waiting).
+6. Regenerate `src/integrations/supabase/types.ts` (new `leads.cs_tag_source`). The
+   CRM reads it safely before regeneration; the lead list also works if the CRM is
+   published before step 2.
+7. Publish the CRM, then an Admin sets the mode: Shadow to watch the AI's answers
+   first, or On. `workflow-inbox` needs no redeploy (its allowed actions already
+   include status / configure / retry).
+
+**Rollback:** set Off; re-apply `20261020070343` to restore the strict functions;
+drop the two new triggers and helper functions (see the migration footer). Do not
+bulk-revert tags; review AI-set tags individually.
+
+**Verification (local, isolated):** `node scripts/test-workflow-inbox-db.mjs
+<PGlite dir>` — `150` 32 PASS, `160` 51 PASS, `151` 17 PASS with all three
+migrations applied twice; deliberately breaking the quote check or the marker
+trigger makes `160` fail. Vitest covers the worker (prechecks, transcript, quote
+verification, provider failures, 429 stop), the AI badge, the pop-up and the Admin
+panel. Deno type check passes for `schedule-confirmation-monitor` and `workflow-inbox`.
+Not verified: the real AI on real chats, deployed functions, and production data.
+
+The sections below describe the original October 20 design and are kept for history.
+
 ## Release state — prepared for remote review, production cutover held
 
 The October 20 implementation is on branch
