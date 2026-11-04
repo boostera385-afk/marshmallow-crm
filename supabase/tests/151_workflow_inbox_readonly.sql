@@ -19,6 +19,9 @@ WITH checks(name,ok) AS (
     ('AI tag marker trigger installed',EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='leads_stamp_cs_tag_source' AND NOT tgisinternal)),
     ('New waiting leads are queued',EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='leads_schedule_monitor_queue_insert' AND NOT tgisinternal)),
     ('Exact job/date/time rule retired',to_regprocedure('marshmallow_private.schedule_exact_confirmation(public.leads,jsonb)') IS NULL),
+    -- 20261201000000_ai_schedule_confirmation_calls
+    ('Customer words checked in texts and calls',to_regprocedure('marshmallow_private.schedule_quote_is_customer(public.quo_conversations,public.leads,timestamp with time zone,text)') IS NOT NULL),
+    ('Call transcript speakers are read',to_regprocedure('marshmallow_private.schedule_dialogue(jsonb,text[])') IS NOT NULL),
     ('Every waiting lead is queued',NOT EXISTS(SELECT 1 FROM public.leads l WHERE l.cs_tag='waiting_schedule_confirmation'
       AND NOT EXISTS(SELECT 1 FROM marshmallow_private.schedule_monitor_queue q WHERE q.lead_id=l.id)))
 )

@@ -1,6 +1,7 @@
 -- WRITE-BASED, ISOLATED ONLY. Real triggers/service RPCs, synthetic fixtures,
 -- rollback. Never run this harness against the shared production project.
--- Covers 20261020070343 as superseded by 20261130000000_ai_schedule_confirmation.
+-- Covers 20261020070343 as superseded by 20261130000000_ai_schedule_confirmation
+-- and 20261201000000_ai_schedule_confirmation_calls.
 BEGIN;
 CREATE TEMP TABLE checks(name text,result text);
 GRANT ALL ON checks TO authenticated,service_role;
@@ -61,17 +62,25 @@ RESET ROLE;
 SELECT pg_temp.check_result('Browser chat insertion cannot forge provenance',(SELECT evidence IS NULL FROM marshmallow_private.schedule_monitor_queue WHERE lead_id='16000000-0000-4000-8000-000000000010'));
 SELECT pg_temp.check_result('Configuration change is audited',EXISTS(SELECT 1 FROM public.activity_logs WHERE action='schedule_monitor_configure' AND details LIKE 'Mode shadow:%'));
 
--- Trusted ingestion: only the customer's texts, after the tag, on a matching chat.
+-- Trusted ingestion: any event on the matching chat after the tag starts a check.
 SELECT set_config('request.jwt.claim.sub','',true);
 SELECT set_config('request.jwt.claim.role','service_role',true);
 SET LOCAL ROLE service_role;
 INSERT INTO public.quo_messages(id,conversation_id,quo_message_id,sender,direction,text,message_time) VALUES
  ('16000000-0000-4000-8000-000000000050','16000000-0000-4000-8000-000000000030','trusted-before','customer','inbound','Yes that works',now()-interval '1 hour'),
- ('16000000-0000-4000-8000-000000000051','16000000-0000-4000-8000-000000000030','trusted-agent','agent','outbound','Can we come tomorrow at 10 AM?',now()+interval '1 second'),
- ('16000000-0000-4000-8000-000000000052','16000000-0000-4000-8000-000000000030','call-1:call.completed','customer','inbound','Call summary: customer agreed',now()+interval '1 second'),
  ('16000000-0000-4000-8000-000000000053','16000000-0000-4000-8000-000000000032','other-customer','customer','inbound','Yes please',now()+interval '1 second');
 RESET ROLE;
-SELECT pg_temp.check_result('Agent texts, calls, other customers and pre-tag replies are ignored',(SELECT evidence IS NULL FROM marshmallow_private.schedule_monitor_queue WHERE lead_id='16000000-0000-4000-8000-000000000010'));
+SELECT pg_temp.check_result('Other customers and pre-tag messages are ignored',(SELECT evidence IS NULL FROM marshmallow_private.schedule_monitor_queue WHERE lead_id='16000000-0000-4000-8000-000000000010'));
+SET LOCAL ROLE service_role;
+INSERT INTO public.quo_messages(id,conversation_id,quo_message_id,sender,direction,text,message_time)
+ VALUES('16000000-0000-4000-8000-000000000051','16000000-0000-4000-8000-000000000030','trusted-agent','agent','outbound','Can we come tomorrow at 10 AM?',now()+interval '1 second');
+RESET ROLE;
+SELECT pg_temp.check_result('Our own text starts a check',(SELECT evidence->>'quo_message_id'='trusted-agent' AND evidence->>'kind'='text' FROM marshmallow_private.schedule_monitor_queue WHERE lead_id='16000000-0000-4000-8000-000000000010'));
+SET LOCAL ROLE service_role;
+INSERT INTO public.quo_messages(id,conversation_id,quo_message_id,sender,direction,text,message_time)
+ VALUES('16000000-0000-4000-8000-000000000052','16000000-0000-4000-8000-000000000030','call-1:call.completed','customer','inbound','Call completed. Duration: 60',now()+interval '1 second');
+RESET ROLE;
+SELECT pg_temp.check_result('A call starts a check and waits for its transcript',(SELECT evidence->>'kind'='call' AND available_at>=now()+interval '45 seconds' FROM marshmallow_private.schedule_monitor_queue WHERE lead_id='16000000-0000-4000-8000-000000000010'));
 SET LOCAL ROLE service_role;
 INSERT INTO public.quo_messages(id,conversation_id,quo_message_id,sender,direction,text,message_time)
  VALUES('16000000-0000-4000-8000-000000000041','16000000-0000-4000-8000-000000000030','trusted-text','customer','inbound','Yes 10 AM tomorrow works for me',now()+interval '2 seconds');
@@ -89,9 +98,9 @@ SET LOCAL ROLE service_role;
 INSERT INTO batch SELECT public.claim_schedule_checks();
 SELECT pg_temp.check_result('Worker claims the job with its details',(SELECT jsonb_array_length(value->'rows')=1 AND value->'rows'->0->>'service_type'='AC Repair'
   AND value->'rows'->0->>'schedule_requirements'='Tomorrow 10 AM' AND (value->'rows'->0->>'ambiguous')::boolean=false FROM batch));
-SELECT pg_temp.check_result('Claim carries the chat texts, newest first, without calls',(SELECT value->'rows'->0->'messages'->0->>'text'='Yes 10 AM tomorrow works for me'
-  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(value->'rows'->0->'messages') m WHERE m->>'quo_message_id' LIKE '%:%')
-  AND EXISTS(SELECT 1 FROM jsonb_array_elements(value->'rows'->0->'messages') m WHERE m->>'sender'='agent') FROM batch));
+SELECT pg_temp.check_result('Claim carries texts and calls, newest first',(SELECT value->'rows'->0->'messages'->0->>'text'='Yes 10 AM tomorrow works for me'
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements(value->'rows'->0->'messages') m WHERE m->>'kind'='call')
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements(value->'rows'->0->'messages') m WHERE m->>'sender'='agent' AND m->>'kind'='text') FROM batch));
 SELECT pg_temp.check_result('Concurrent claim cannot duplicate lease',jsonb_array_length(public.claim_schedule_checks()->'rows')=0);
 SELECT pg_temp.check_result('Shadow saves assessment',public.finish_schedule_check(pg_temp.finish_input('confirmed','10 AM tomorrow works')));
 RESET ROLE;
@@ -156,6 +165,56 @@ UPDATE public.leads SET cs_tag_source=NULL WHERE job_id='SCHED-TEST';
 SELECT pg_temp.check_result('Marker cannot be edited without a tag change',(SELECT cs_tag_source='ai' FROM public.leads WHERE job_id='SCHED-TEST'));
 UPDATE public.leads SET cs_tag='booked',cs_tag_source='ai' WHERE job_id='SCHED-TEST';
 SELECT pg_temp.check_result('A person changing the tag clears the AI marker',(SELECT cs_tag='booked' AND cs_tag_source IS NULL FROM public.leads WHERE job_id='SCHED-TEST'));
+
+-- Confirmation on a phone call: only the customer's lines of the transcript count.
+UPDATE public.leads SET cs_tag='waiting_schedule_confirmation' WHERE job_id='SCHED-TEST';
+SELECT set_config('request.jwt.claim.role','service_role',true);
+SET LOCAL ROLE service_role;
+INSERT INTO public.quo_messages(id,conversation_id,quo_message_id,sender,direction,text,message_time,raw_payload) VALUES
+ ('16000000-0000-4000-8000-000000000060','16000000-0000-4000-8000-000000000030','call-9:call.transcript.completed','customer','inbound',
+  'Call transcript: Agent: Can we do tomorrow at 10? Customer: Yes tomorrow at 10 is perfect',now()+interval '5 seconds',
+  '{"type":"call.transcript.completed","data":{"object":{"callId":"call-9","status":"completed","dialogue":[
+    {"userId":"US123","identifier":"+15550001111","content":"Can we do tomorrow at 10?"},
+    {"userId":null,"identifier":"+15550100000","content":"Yes tomorrow at 10 is perfect"},
+    {"userId":null,"identifier":"+15559998888","content":"Sounds good to me as well"}]}}}'),
+ ('16000000-0000-4000-8000-000000000061','16000000-0000-4000-8000-000000000030','call-9:call.summary.completed','customer','inbound',
+  'Call summary: The customer confirmed the 10 AM appointment',now()+interval '5 seconds',NULL);
+RESET ROLE;
+SELECT pg_temp.check_result('Call transcript and summary start a check',(SELECT evidence->>'kind' IN ('call_transcript','call_summary') FROM marshmallow_private.schedule_monitor_queue WHERE lead_id='16000000-0000-4000-8000-000000000010'));
+UPDATE marshmallow_private.schedule_monitor_queue SET available_at=now()-interval '1 second' WHERE lead_id='16000000-0000-4000-8000-000000000010';
+TRUNCATE batch;
+SET LOCAL ROLE service_role;
+INSERT INTO batch SELECT public.claim_schedule_checks();
+SELECT pg_temp.check_result('Claim carries transcript lines with speakers',(SELECT EXISTS(SELECT 1 FROM jsonb_array_elements(value->'rows'->0->'messages') m, jsonb_array_elements(CASE WHEN jsonb_typeof(m->'dialogue')='array' THEN m->'dialogue' ELSE '[]'::jsonb END) d
+    WHERE m->>'kind'='call_transcript' AND d->>'speaker'='customer' AND d->>'content'='Yes tomorrow at 10 is perfect')
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements(value->'rows'->0->'messages') m, jsonb_array_elements(CASE WHEN jsonb_typeof(m->'dialogue')='array' THEN m->'dialogue' ELSE '[]'::jsonb END) d
+    WHERE m->>'kind'='call_transcript' AND d->>'speaker'='our_team')
+  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(value->'rows'->0->'messages') m, jsonb_array_elements(CASE WHEN jsonb_typeof(m->'dialogue')='array' THEN m->'dialogue' ELSE '[]'::jsonb END) d
+    WHERE d->>'content'='Sounds good to me as well') FROM batch));
+SELECT public.finish_schedule_check(pg_temp.finish_input('confirmed','Can we do tomorrow at 10'));
+RESET ROLE;
+SELECT pg_temp.check_result('Our team''s words on the call are not proof',(SELECT cs_tag='waiting_schedule_confirmation' FROM public.leads WHERE job_id='SCHED-TEST'));
+UPDATE marshmallow_private.schedule_monitor_queue SET state='pending',available_at=now()-interval '1 second' WHERE lead_id='16000000-0000-4000-8000-000000000010';
+TRUNCATE batch;
+SET LOCAL ROLE service_role;
+INSERT INTO batch SELECT public.claim_schedule_checks();
+SELECT public.finish_schedule_check(pg_temp.finish_input('confirmed','The customer confirmed the 10 AM appointment'));
+RESET ROLE;
+SELECT pg_temp.check_result('A call summary is not proof',(SELECT cs_tag='waiting_schedule_confirmation' FROM public.leads WHERE job_id='SCHED-TEST'));
+UPDATE marshmallow_private.schedule_monitor_queue SET state='pending',available_at=now()-interval '1 second' WHERE lead_id='16000000-0000-4000-8000-000000000010';
+TRUNCATE batch;
+SET LOCAL ROLE service_role;
+INSERT INTO batch SELECT public.claim_schedule_checks();
+SELECT public.finish_schedule_check(pg_temp.finish_input('confirmed','Sounds good to me as well'));
+RESET ROLE;
+SELECT pg_temp.check_result('An unknown caller on the line is not the customer',(SELECT cs_tag='waiting_schedule_confirmation' FROM public.leads WHERE job_id='SCHED-TEST'));
+UPDATE marshmallow_private.schedule_monitor_queue SET state='pending',available_at=now()-interval '1 second' WHERE lead_id='16000000-0000-4000-8000-000000000010';
+TRUNCATE batch;
+SET LOCAL ROLE service_role;
+INSERT INTO batch SELECT public.claim_schedule_checks();
+SELECT pg_temp.check_result('Customer confirmation on a call commits',public.finish_schedule_check(pg_temp.finish_input('confirmed','Yes tomorrow at 10 is perfect')));
+RESET ROLE;
+SELECT pg_temp.check_result('Call confirmation moves the tag and marks it AI',(SELECT cs_tag='ready_to_schedule' AND cs_tag_source='ai' FROM public.leads WHERE job_id='SCHED-TEST'));
 
 -- Two waiting jobs for the same customer: the AI cannot know which one.
 UPDATE public.leads SET cs_tag='waiting_schedule_confirmation' WHERE job_id='SCHED-TEST';

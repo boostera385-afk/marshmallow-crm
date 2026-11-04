@@ -16,7 +16,7 @@ const MODE_LABELS: Record<ScheduleMonitorMode, string> = {
 
 function resultSummary(job: ScheduleMonitorRow): string {
   const result = job.result;
-  if (!result) return job.evidence ? "Customer replied. AI check is queued." : "Waiting for the customer's next text.";
+  if (!result) return job.evidence ? "New message or call. AI check is queued." : "Waiting for a new message or call.";
   if (result.decision === "confirmed") return result.applied ? "AI: customer confirmed. Tag changed to Ready to schedule." : "AI: customer confirmed (Shadow, tag not changed).";
   if (result.decision === "unavailable") return "AI check unavailable. It will retry.";
   return "AI: not confirmed yet.";
@@ -47,8 +47,8 @@ function MonitorJob({ job, refresh }: { job: ScheduleMonitorRow; refresh: () => 
     <details><summary className="cursor-pointer text-sm font-medium text-primary">Details</summary>
       <div className="mt-2 space-y-2">
         <p className="whitespace-pre-wrap text-sm text-muted-foreground">Schedule: {job.schedule_requirements || "not saved"}</p>
-        {job.waiting_since && <p className="text-xs text-muted-foreground">Waiting since {new Date(job.waiting_since).toLocaleString()}. Only customer texts after this are read.</p>}
-        {job.evidence && <div className="rounded-lg border bg-muted/30 p-3"><p className="text-xs font-medium">Latest customer text · {job.evidence.message_time ? new Date(job.evidence.message_time).toLocaleString() : "time unavailable"}</p><blockquote className="mt-1 whitespace-pre-wrap break-words text-sm">{job.evidence.text || "No usable text"}</blockquote></div>}
+        {job.waiting_since && <p className="text-xs text-muted-foreground">Waiting since {new Date(job.waiting_since).toLocaleString()}. Only messages and calls after this count.</p>}
+        {job.evidence && <div className="rounded-lg border bg-muted/30 p-3"><p className="text-xs font-medium">Latest message or call · {job.evidence.message_time ? new Date(job.evidence.message_time).toLocaleString() : "time unavailable"}</p><blockquote className="mt-1 whitespace-pre-wrap break-words text-sm">{job.evidence.text || "No text (call event)"}</blockquote></div>}
         {job.checked_at && <p className="text-xs text-muted-foreground">Last AI check: {new Date(job.checked_at).toLocaleString()}</p>}
         {job.evidence && <>
           <Label htmlFor={`reason-${job.lead_id}`}>Reason to check again</Label>
@@ -84,7 +84,7 @@ export default function ScheduleMonitorPanel() {
   };
   return <details className="rounded-xl border bg-card p-4" onToggle={(event) => setOpen(event.currentTarget.open)}><summary className="cursor-pointer font-semibold">AI schedule confirmation · Admin controls</summary>
     <div className="mt-4 space-y-4">
-      <p className="text-sm text-muted-foreground">For leads tagged <strong>Waiting for CX for schedule confirmation</strong>. When the customer texts back in Quo, AI reads the chat. If the customer confirmed, the tag changes to <strong>Ready to schedule</strong> with an AI marker, and the lead's CS, CS Admins, Admins and Processors are notified. Status and the agreed schedule never change.</p>
+      <p className="text-sm text-muted-foreground">For leads tagged <strong>Waiting for CX for schedule confirmation</strong>. When a new text (ours or the customer's), call, call transcript or summary arrives in Quo, AI reads the chat and calls. If the customer confirmed (in a text or on a call), the tag changes to <strong>Ready to schedule</strong> with an AI marker, and the lead's CS, CS Admins, Admins and Processors are notified. Status and the agreed schedule never change.</p>
       {query.isError ? <p role="alert" className="text-sm text-destructive">AI schedule confirmation backend unavailable. {query.error.message} <Button variant="outline" onClick={refresh}>Retry</Button></p>
         : !query.data ? <p role="status">Loading…</p> : <>
           <p className="text-sm">Saved setting: <strong>{MODE_LABELS[query.data.mode]}</strong> · {query.data.daily_checks}/{query.data.daily_limit} AI checks today</p>

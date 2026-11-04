@@ -284,7 +284,7 @@ whether a manual step was done later.
 | Sheets watchdog | Migration `20261129000000_sheets_watchdog_cron_caller.sql`; harness `71_sheets_watchdog_cron_caller.sql` | Latest commits |
 | Copilot | Paused in the database. The function's release gate is still awaiting deployment. Do not re-enable without testing. | [`COPILOT_ROLLOUT.md`](COPILOT_ROLLOUT.md) |
 | Request resolution, notification center, schedule monitor | Held on purpose: the migrations must ship together with a CRM Publish | [`WORKFLOW_INBOX_ROLLOUT.md`](WORKFLOW_INBOX_ROLLOUT.md) |
-| AI schedule confirmation | Migration `20261130000000_ai_schedule_confirmation.sql` applied 2026-11-04 (151: 17/17 PASS); still to do: deploy `schedule-confirmation-monitor`; worker secret and one-minute schedule; then an Admin turns it on under Notifications | [`WORKFLOW_INBOX_ROLLOUT.md`](WORKFLOW_INBOX_ROLLOUT.md) |
+| AI schedule confirmation | Migration `20261130000000_ai_schedule_confirmation.sql` applied 2026-11-04 (151: 17/17 PASS); still to do: apply `20261201000000_ai_schedule_confirmation_calls.sql` (texts from us, calls, transcripts), deploy `schedule-confirmation-monitor`; worker secret and one-minute schedule; then an Admin turns it on under Notifications | [`WORKFLOW_INBOX_ROLLOUT.md`](WORKFLOW_INBOX_ROLLOUT.md) |
 | `CHANGELOG.md` *Unreleased* section | Lists work that was staged but not published | [`CHANGELOG.md`](../CHANGELOG.md) |
 
 How to check: run `npm run sb:migrations` (read-only list), or look in the
