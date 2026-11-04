@@ -1,5 +1,39 @@
 # Request resolution, notifications and schedule monitoring
 
+## AI schedule confirmation: our texts, calls and call transcripts (2026-11-04 follow-up)
+
+Migration `supabase/migrations/20261201000000_ai_schedule_confirmation_calls.sql`
+(**awaiting manual application**, after `20261130000000`) widens what starts a check
+and what the AI reads:
+
+- **Starts a check:** any trusted event in the matched chat after the tag was set —
+  customer texts, **our team's texts**, **calls**, **call transcripts** and **call
+  summaries**. Texts wait 20 seconds, call events 45 seconds, so a call's transcript
+  and summary are read together.
+- **What the AI reads:** the last 40 events. Call transcripts are read from Quo's
+  stored dialogue (`raw_payload`), one line per speaker: a Quo user id is our team;
+  a phone matching the lead or the chat is the customer; any other phone is unknown
+  and dropped. Summaries and call logs are background only.
+- **Proof (enforced in SQL by `schedule_quote_is_customer`):** the quote must be the
+  customer's own words since the tag — a customer text, or a customer line of a call
+  transcript. Our team's words (on calls or in texts) and Quo's summaries never count,
+  even when they say the customer agreed.
+- If no customer words arrived since the tag (for example only our text or a call
+  without a transcript), the worker records "nothing from the customer" without an
+  AI call.
+
+Install: apply the migration in the SQL editor, re-run
+`supabase/tests/151_workflow_inbox_readonly.sql` (19 read-only checks, all `PASS`),
+and deploy `schedule-confirmation-monitor` (the worker code changed). No CRM type
+change. Rollback: Off, then re-apply `20261130000000` and drop the four helper
+functions listed in the migration footer.
+
+Verification (isolated PGlite): `160` 60 PASS (new: our text and calls start a check,
+transcript speakers, our call words / summaries / unknown callers refused, customer
+call words commit), `151` 19 PASS, `150` 32 PASS; making every transcript line count
+as the customer makes five `160` checks fail. Vitest covers call lines, summaries,
+unattributed transcripts and quote checks.
+
 ## AI schedule confirmation (2026-11-04) — supersedes the narrow schedule monitor
 
 **What it does.** For leads tagged **Waiting for CX for schedule confirmation**:
@@ -34,6 +68,8 @@ rule, per-job Admin conversation binding, the timezone setting and the five-revi
 activation quota. Admin controls are now Off / Shadow / On with an audited reason
 (Notifications → *AI schedule confirmation · Admin controls*), plus a per-job
 *Check again*. Daily cap 200 AI checks; 429 cooldown and pause handling unchanged.
+
+**Status 2026-11-04:** the migration was applied to production by the user and `151` returned 17/17 PASS. Worker deployment, secrets/schedule, type regeneration, CRM Publish and the Admin mode switch are still pending.
 
 **Install (each step needs its own approval; production is `kxiqholnmhkwhdkhtopp`):**
 

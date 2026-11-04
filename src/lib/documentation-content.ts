@@ -183,7 +183,7 @@ export const DOC_SECTIONS: DocSection[] = [
       { type: "p", text: "Tags are a second label on top of status that show scheduling state without changing the status. Assignment is enforced by the enforce_lead_tag_role_access() trigger; operators cannot assign tags." },
       { type: "table", headers: ["Tag key", "Label", "Assignable by"], rows: TAG_ROWS },
       { type: "p", text: "Scheduling tags only affect ordering on pre-scheduling statuses. Incomplete details applies on any status and alerts the CS who created the lead and every CS Admin with a pop-up until it is fixed." },
-      { type: "p", text: "AI schedule confirmation: when a lead tagged Waiting for CX for schedule confirmation gets a customer text in Quo and the AI finds the customer confirmed, the tag becomes Ready to schedule with an AI marker (leads.cs_tag_source = ai). Any later tag change by a person removes the marker. See section 12." },
+      { type: "p", text: "AI schedule confirmation: when a lead tagged Waiting for CX for schedule confirmation gets a new text or call in Quo and the AI finds the customer confirmed (in a text or on a call), the tag becomes Ready to schedule with an AI marker (leads.cs_tag_source = ai). Any later tag change by a person removes the marker. See section 12." },
     ],
   },
   {
@@ -260,7 +260,7 @@ export const DOC_SECTIONS: DocSection[] = [
           ["Cancellation reason (suggest-cancellation-reason)", "Cancellation form", "Reads the last 30 messages and suggests one reason: Customer Declined Quote, Customer Unreachable, Found Another Provider, Out of Service Area, Duplicate Lead, Job Not Needed, Scheduling Conflict or Other. Gives up after 3 seconds."],
           ["Processing Workflow (technician-chat-assessment)", "Technicians, Map View, Donut Technician Intelligence (Admin, Processor)", "Reads up to 8 technicians' recent Quo messages and suggests labels (good tech, doesn't respond, never responded, late payment, high rates, doesn't cooperate, rude, paid us before, scammer) with verified quotes. Flags change only through Tech Approvals."],
           ["Processor Board (processor-board)", "Processor Board", "Reads the technician chat for each assigned job and saves facts; the database turns them into the board status (section 13)."],
-          ["Schedule confirmation (schedule-confirmation-monitor)", "Leads tagged Waiting for CX for schedule confirmation", "Runs only after the customer texts in Quo. Reads the recent chat; if the customer confirmed, the tag changes to Ready to schedule (marked AI) and the lead's CS, CS Admins, Admins and Processors get a pop-up with job ID, customer, service, location, schedule and the customer's words. The database checks the quote is the customer's own text, the job is still open with no pending approval, and only one waiting job matches the customer. Admin turns it Off / Shadow / On under Notifications."],
+          ["Schedule confirmation (schedule-confirmation-monitor)", "Leads tagged Waiting for CX for schedule confirmation", "Runs after any new text (ours or the customer's), call, call transcript or call summary in the matched Quo chat. Reads texts and the speaker-labelled call lines; if the customer confirmed (in a text or on a call), the tag changes to Ready to schedule (marked AI) and the lead's CS, CS Admins, Admins and Processors get a pop-up with job ID, customer, service, location, schedule and the customer's words. The database checks the quote is the customer's own words (a text or their side of a call; never our team or a call summary), the job is still open with no pending approval, and only one waiting job matches the customer. Admin turns it Off / Shadow / On under Notifications."],
         ],
       },
       { type: "p", text: "AI Assistance and Need Attention do not use AI; they are rule-based lists. Marshmallow Copilot is paused pending testing (section 21)." },
@@ -364,7 +364,7 @@ export const DOC_SECTIONS: DocSection[] = [
     title: "21. Paused or Not Yet Live",
     blocks: [
       { type: "bullet", text: "Marshmallow Copilot (read-only assistant): paused in the database pending testing; do not re-enable without testing. See docs/COPILOT_ROLLOUT.md." },
-      { type: "bullet", text: "AI schedule confirmation: needs migration 20261130000000, the schedule-confirmation-monitor deployment and its one-minute schedule, then an Admin switches it on. See docs/WORKFLOW_INBOX_ROLLOUT.md." },
+      { type: "bullet", text: "AI schedule confirmation: migration 20261130000000 is applied; the calls follow-up 20261201000000, the schedule-confirmation-monitor deployment and its one-minute schedule are still needed, then an Admin switches it on. See docs/WORKFLOW_INBOX_ROLLOUT.md." },
       { type: "bullet", text: "Code changes reach users only after CRM Publish; migrations are applied by hand in the Supabase SQL editor and Edge Functions are deployed separately. See docs/HANDOVER.md for items recorded as awaiting these steps." },
     ],
   },
