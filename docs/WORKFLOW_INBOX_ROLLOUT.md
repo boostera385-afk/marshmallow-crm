@@ -35,6 +35,8 @@ activation quota. Admin controls are now Off / Shadow / On with an audited reaso
 (Notifications → *AI schedule confirmation · Admin controls*), plus a per-job
 *Check again*. Daily cap 200 AI checks; 429 cooldown and pause handling unchanged.
 
+**Status 2026-11-04:** the migration was applied to production by the user and `151` returned 17/17 PASS. Worker deployment, secrets/schedule, type regeneration, CRM Publish and the Admin mode switch are still pending.
+
 **Install (each step needs its own approval; production is `kxiqholnmhkwhdkhtopp`):**
 
 1. If not already installed, apply `20261020065810_workflow_resolution_notifications.sql`

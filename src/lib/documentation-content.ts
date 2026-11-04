@@ -364,7 +364,7 @@ export const DOC_SECTIONS: DocSection[] = [
     title: "21. Paused or Not Yet Live",
     blocks: [
       { type: "bullet", text: "Marshmallow Copilot (read-only assistant): paused in the database pending testing; do not re-enable without testing. See docs/COPILOT_ROLLOUT.md." },
-      { type: "bullet", text: "AI schedule confirmation: needs migration 20261130000000, the schedule-confirmation-monitor deployment and its one-minute schedule, then an Admin switches it on. See docs/WORKFLOW_INBOX_ROLLOUT.md." },
+      { type: "bullet", text: "AI schedule confirmation: migration 20261130000000 is applied; it still needs the schedule-confirmation-monitor deployment and its one-minute schedule, then an Admin switches it on. See docs/WORKFLOW_INBOX_ROLLOUT.md." },
       { type: "bullet", text: "Code changes reach users only after CRM Publish; migrations are applied by hand in the Supabase SQL editor and Edge Functions are deployed separately. See docs/HANDOVER.md for items recorded as awaiting these steps." },
     ],
   },
