@@ -8,8 +8,8 @@
 `SCHEDULE_MONITOR_CRON_SECRET` are set, and the one-minute cron
 `schedule-confirmation-monitor` is registered; a direct worker call returned 200.
 
-**Worker change (`supabase/functions/_shared/schedule-confirmation.ts`, awaiting
-deployment of `schedule-confirmation-monitor`):** the AI used to confirm only clear,
+**Worker change (`supabase/functions/_shared/schedule-confirmation.ts`; deployed as
+`schedule-confirmation-monitor` v9 on 2026-11-05, smoke call 200):** the AI used to confirm only clear,
 explicit replies and had to retype the customer's words exactly. Now:
 
 - The prompt reads the reply in context of what was proposed: a bare "ok"/"sure"/👍
