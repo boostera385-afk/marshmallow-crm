@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import {
-  assessScheduleCandidate, buildScheduleTranscript, parseScheduleBatch, schedulePrecheck, verifyCustomerQuote,
+  assessScheduleCandidate, buildScheduleTranscript, MAX_TRANSCRIPT_MESSAGES, parseScheduleBatch, resolveConfirmingQuote, schedulePrecheck, verifyCustomerQuote,
   type ConversationMessage, type ScheduleCheck,
 } from "../../supabase/functions/_shared/schedule-confirmation";
 import { createScheduleMonitorHandler } from "../../supabase/functions/_shared/schedule-monitor-handler";
@@ -43,17 +43,17 @@ describe("schedule confirmation prechecks", () => {
 describe("conversation handling", () => {
   it("orders texts and summaries oldest first and marks what came after the waiting tag", () => {
     expect(buildScheduleTranscript(conversation, enteredAt)).toEqual([
-      { from: "customer", via: "text", at: "2026-11-29T09:00:00Z", after_waiting_tag: false, text: "My AC stopped working" },
-      { from: "our_team", via: "text", at: "2026-11-30T11:00:00Z", after_waiting_tag: true, text: "Can the technician come tomorrow at 10am?" },
-      { from: "customer", via: "text", at: "2026-11-30T12:00:00Z", after_waiting_tag: true, text: "Yes 10am works for me" },
-      { from: "call_summary", via: "summary", at: "2026-11-30T12:30:00Z", after_waiting_tag: true, text: "Call summary: yes" },
+      { id: 0, from: "customer", via: "text", at: "2026-11-29T09:00:00Z", after_waiting_tag: false, text: "My AC stopped working" },
+      { id: 1, from: "our_team", via: "text", at: "2026-11-30T11:00:00Z", after_waiting_tag: true, text: "Can the technician come tomorrow at 10am?" },
+      { id: 2, from: "customer", via: "text", at: "2026-11-30T12:00:00Z", after_waiting_tag: true, text: "Yes 10am works for me" },
+      { id: 3, from: "call_summary", via: "summary", at: "2026-11-30T12:30:00Z", after_waiting_tag: true, text: "Call summary: yes" },
     ]);
   });
   it("reads each spoken call line with its speaker", () => {
     expect(buildScheduleTranscript(call, enteredAt)).toEqual([
-      { from: "our_team", via: "call", at: "2026-11-30T13:00:00Z", after_waiting_tag: true, text: "Shall we book Friday at 9?" },
-      { from: "customer", via: "call", at: "2026-11-30T13:00:00Z", after_waiting_tag: true, text: "Friday at 9 works great" },
-      { from: "call_summary", via: "summary", at: "2026-11-30T13:00:05Z", after_waiting_tag: true, text: "Call summary: customer agreed to Friday 9am" },
+      { id: 0, from: "our_team", via: "call", at: "2026-11-30T13:00:00Z", after_waiting_tag: true, text: "Shall we book Friday at 9?" },
+      { id: 1, from: "customer", via: "call", at: "2026-11-30T13:00:00Z", after_waiting_tag: true, text: "Friday at 9 works great" },
+      { id: 2, from: "call_summary", via: "summary", at: "2026-11-30T13:00:05Z", after_waiting_tag: true, text: "Call summary: customer agreed to Friday 9am" },
     ]);
   });
   it("treats a transcript without speakers as background, never as the customer", () => {
@@ -67,6 +67,18 @@ describe("conversation handling", () => {
     expect(verifyCustomerQuote("My AC stopped", conversation, enteredAt)).toBe(false); // before the tag
     expect(verifyCustomerQuote("yes", conversation, enteredAt)).toBe(false); // only in a call summary
     expect(verifyCustomerQuote(" ", conversation, enteredAt)).toBe(false);
+    const thumbs = [{ ...conversation[0], text: "👍" }];
+    expect(verifyCustomerQuote("👍", thumbs, enteredAt)).toBe(false); // one character, as the database counts it
+  });
+  it("keeps the most recent items when a chat has more lines than the AI reads", () => {
+    const lines = Array.from({ length: MAX_TRANSCRIPT_MESSAGES + 40 }, (_, i): ConversationMessage => ({
+      sender: i % 2 ? "customer" : "agent", direction: i % 2 ? "inbound" : "outbound", text: `line ${i}`,
+      message_time: new Date(Date.parse(enteredAt) + i * 1000).toISOString(), quo_message_id: `t${i}`,
+    }));
+    const transcript = buildScheduleTranscript(lines, enteredAt);
+    expect(transcript).toHaveLength(MAX_TRANSCRIPT_MESSAGES);
+    expect(transcript[0]).toMatchObject({ id: 0, text: "line 40" });
+    expect(transcript.at(-1)).toMatchObject({ id: MAX_TRANSCRIPT_MESSAGES - 1, text: `line ${MAX_TRANSCRIPT_MESSAGES + 39}` });
   });
   it("accepts the customer's words on a call, but not ours or the summary", () => {
     expect(verifyCustomerQuote("Friday at 9 works great", call, enteredAt)).toBe(true);
@@ -76,26 +88,58 @@ describe("conversation handling", () => {
 });
 
 describe("AI decision", () => {
-  it("confirms with the customer's quote when the AI quotes them exactly", async () => {
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ confirmed: true, customer_quote: "Yes 10am works for me", reason: "Customer agreed to 10am." }));
+  it("confirms with the exact words of the customer item the AI cites", async () => {
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "We offered 10am; customer accepted.", confirmed: true, confirming_items: [2], reason: "Customer agreed to 10am." }));
     expect(await assessScheduleCandidate(job, "synthetic", fetcher)).toEqual({ decision: "confirmed", reason: "Customer agreed to 10am.", quote: "Yes 10am works for me" });
     const body = JSON.parse(fetcher.mock.calls[0][1].body);
     expect(body.model).toBe("gpt-4o-mini");
-    expect(JSON.parse(body.messages[1].content).CONVERSATION).toHaveLength(4);
+    // The model must reason before it decides, and cite items rather than retype words.
+    expect(body.response_format.json_schema.schema.required).toEqual(["analysis", "confirmed", "confirming_items", "reason"]);
+    const sent = JSON.parse(body.messages[1].content);
+    expect(sent.CONVERSATION).toHaveLength(4);
+    expect(sent.CONVERSATION.map((item: { id: number }) => item.id)).toEqual([0, 1, 2, 3]);
+    expect(sent.JOB.waiting_since).toBe(enteredAt);
+  });
+  it("confirms an indirect reply: a bare 'ok' and logistics after our proposal", async () => {
+    const indirect: ConversationMessage[] = [
+      { sender: "agent", direction: "outbound", text: "We can send the tech Tuesday between 10 and 12. Does that work?", message_time: "2026-11-30T11:00:00Z", quo_message_id: "a1" },
+      { sender: "customer", direction: "inbound", text: "ok", message_time: "2026-11-30T11:05:00Z", quo_message_id: "a2" },
+      { sender: "customer", direction: "inbound", text: "I'll leave the side gate open, dog will be inside", message_time: "2026-11-30T11:06:00Z", quo_message_id: "a3" },
+    ];
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "Tuesday 10-12 offered; customer said ok and gave access details.", confirmed: true, confirming_items: [1, 2], reason: "Customer accepted Tuesday 10-12." }));
+    // The longest cited customer line becomes the quote shown to the office team.
+    expect(await assessScheduleCandidate({ ...job, messages: indirect }, "synthetic", fetcher))
+      .toMatchObject({ decision: "confirmed", quote: "I'll leave the side gate open, dog will be inside" });
+  });
+  it("confirms a short spoken 'yeah' answering our team on a call", async () => {
+    const choppy: ConversationMessage[] = [{ kind: "call_transcript", sender: "customer", direction: "inbound", text: null, message_time: "2026-11-30T13:00:00Z",
+      quo_message_id: "c3:call.transcript.completed", dialogue: [
+        { speaker: "our_team", content: "So I'll put you down for Thursday morning, eight to ten, is that alright?" },
+        { speaker: "customer", content: "Yeah." }, { speaker: "customer", content: "Yeah, that's fine." }, { speaker: "our_team", content: "Perfect." }] }];
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "Thursday 8-10 offered on the call; customer agreed.", confirmed: true, confirming_items: [2, 1], reason: "Agreed on the call." }));
+    expect(await assessScheduleCandidate({ ...job, messages: choppy }, "synthetic", fetcher)).toMatchObject({ decision: "confirmed", quote: "Yeah, that's fine." });
   });
   it("confirms from a phone call when the AI quotes the customer's spoken words", async () => {
     const callJob = { ...job, messages: call, evidence: { ...job.evidence!, quo_message_id: "c2:call.summary.completed", sender: "customer" } };
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ confirmed: true, customer_quote: "Friday at 9 works great", reason: "Agreed on the call." }));
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "", confirmed: true, confirming_items: [1], reason: "Agreed on the call." }));
     expect(await assessScheduleCandidate(callJob, "synthetic", fetcher)).toMatchObject({ decision: "confirmed", quote: "Friday at 9 works great" });
-    fetcher.mockResolvedValue(aiAnswer({ confirmed: true, customer_quote: "customer agreed to Friday 9am", reason: "Summary says so." }));
+    fetcher.mockResolvedValue(aiAnswer({ analysis: "", confirmed: true, confirming_items: [2], reason: "Summary says so." }));
     expect((await assessScheduleCandidate(callJob, "synthetic", fetcher)).decision).toBe("needs_review");
   });
-  it("refuses a confirmation whose quote is not the customer's words", async () => {
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ confirmed: true, customer_quote: "tomorrow at 10am", reason: "Agreed" }));
-    expect((await assessScheduleCandidate(job, "synthetic", fetcher)).decision).toBe("needs_review");
+  it.each([
+    ["our team's message", [1]], ["a customer text from before the waiting tag", [0]], ["a call summary", [3]],
+    ["an id that does not exist", [42]], ["no item at all", []], ["a non-numeric id", ["2"]],
+  ])("refuses a confirmation that cites %s", async (_label, ids) => {
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "", confirmed: true, confirming_items: ids, reason: "Agreed" }));
+    expect(await assessScheduleCandidate(job, "synthetic", fetcher)).toMatchObject({ decision: "needs_review", reason: "AI said confirmed but did not point to the customer's own words." });
+  });
+  it("keeps only valid customer items when the AI cites a mix", () => {
+    const transcript = buildScheduleTranscript(conversation, enteredAt);
+    expect(resolveConfirmingQuote(transcript, [1, 2, 3])).toBe("Yes 10am works for me");
+    expect(resolveConfirmingQuote(transcript, "2")).toBeNull();
   });
   it("keeps the job waiting when the AI says the customer has not confirmed", async () => {
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ confirmed: false, customer_quote: "", reason: "Customer asked for Friday instead." }));
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "Customer asked for another day.", confirmed: false, confirming_items: [], reason: "Customer asked for Friday instead." }));
     expect(await assessScheduleCandidate(job, "synthetic", fetcher)).toEqual({ decision: "needs_review", reason: "Customer asked for Friday instead." });
   });
   it("distinguishes missing config, provider failures and bad answers", async () => {
@@ -105,6 +149,8 @@ describe("AI decision", () => {
     fetcher.mockResolvedValue(new Response("", { status: 429 }));
     expect(await assessScheduleCandidate(job, "synthetic", fetcher)).toMatchObject({ decision: "unavailable", provider_status: 429 });
     fetcher.mockResolvedValue(aiAnswer({ confirmed: true }));
+    expect((await assessScheduleCandidate(job, "synthetic", fetcher)).decision).toBe("unavailable");
+    fetcher.mockResolvedValue(aiAnswer({ confirmed: true, customer_quote: "Yes 10am works for me", reason: "old answer shape" }));
     expect((await assessScheduleCandidate(job, "synthetic", fetcher)).decision).toBe("unavailable");
   });
   it("does not spend an AI call when nothing new came from the customer", async () => {

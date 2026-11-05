@@ -1,5 +1,34 @@
 # Request resolution, notifications and schedule monitoring
 
+## AI schedule confirmation: reads indirect and spoken confirmations (2026-11-05)
+
+**Production status (verified 2026-11-05):** both migrations (`20261130000000`,
+`20261201000000`) are applied, mode is Automatic, Vault entries
+`schedule_monitor_project_url` / `schedule_monitor_cron_secret` and the Edge secret
+`SCHEDULE_MONITOR_CRON_SECRET` are set, and the one-minute cron
+`schedule-confirmation-monitor` is registered; a direct worker call returned 200.
+
+**Worker change (`supabase/functions/_shared/schedule-confirmation.ts`, awaiting
+deployment of `schedule-confirmation-monitor`):** the AI used to confirm only clear,
+explicit replies and had to retype the customer's words exactly. Now:
+
+- The prompt reads the reply in context of what was proposed: a bare "ok"/"sure"/👍
+  or a spoken "yeah" right after our team states the time, choosing one of our
+  offered options, our team accepting the customer's requested time, logistics that
+  imply the visit ("I'll leave the gate open", "see you then"), other languages and
+  typos. Hedges, questions, reschedules and a "yes" to a different question stay
+  unconfirmed.
+- The model writes a short `analysis` before deciding and cites the confirming
+  customer items by id (`confirming_items`). The worker copies that item's exact text
+  as the quote (longest cited customer line), so punctuation or casing can no longer
+  make the database's exact-words check fail. Items cited from our team, summaries,
+  call logs, or before the waiting tag are refused.
+- The AI reads up to 160 transcript items (was 80); one call averages ~33 lines.
+
+No SQL change: `finish_schedule_check` still requires the quote to be the customer's
+own words since the tag, plus eligibility, freshness and a single waiting job.
+Rollback: redeploy the previous worker version.
+
 ## AI schedule confirmation: our texts, calls and call transcripts (2026-11-04 follow-up)
 
 Migration `supabase/migrations/20261201000000_ai_schedule_confirmation_calls.sql`
