@@ -1,7 +1,7 @@
 -- WRITE-BASED, ISOLATED ONLY. Real triggers/service RPCs, synthetic fixtures,
 -- rollback. Never run this harness against the shared production project.
 -- Covers 20261020070343 as superseded by 20261130000000_ai_schedule_confirmation
--- and 20261201000000_ai_schedule_confirmation_calls, and 20261202000000_ai_schedule_new_schedule_tag.
+-- and 20261201000000_ai_schedule_confirmation_calls, 20261202000000_ai_schedule_new_schedule_tag and 20261202010000_schedule_new_alert_compat.
 BEGIN;
 CREATE TEMP TABLE checks(name text,result text);
 GRANT ALL ON checks TO authenticated,service_role;
@@ -249,9 +249,13 @@ SELECT set_config('request.jwt.claim.role','authenticated',true);
 SELECT set_config('request.jwt.claim.sub','16000000-0000-4000-8000-000000000002',true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.check_result('New-schedule alert is a Schedule notification and a pop-up',(SELECT
-  EXISTS(SELECT 1 FROM jsonb_array_elements(public.workflow_notifications('{"action":"list","category":"schedule"}')->'rows') r WHERE r->>'event_type'='schedule_new_needed')
-  AND EXISTS(SELECT 1 FROM jsonb_array_elements(public.workflow_notifications('{"action":"alerts","after":"2000-01-01T00:00:00Z"}')->'rows') r WHERE r->>'event_type'='schedule_new_needed')
-  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.workflow_notifications('{"action":"list","category":"other"}')->'rows') r WHERE r->>'event_type'='schedule_new_needed')));
+  EXISTS(SELECT 1 FROM jsonb_array_elements(public.workflow_notifications('{"action":"list","category":"schedule"}')->'rows') r WHERE r->>'event_kind'='schedule_new_needed')
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements(public.workflow_notifications('{"action":"alerts","after":"2000-01-01T00:00:00Z"}')->'rows') r WHERE r->>'event_kind'='schedule_new_needed')
+  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.workflow_notifications('{"action":"list","category":"other"}')->'rows') r WHERE r->>'event_kind'='schedule_new_needed')));
+-- 20261202010000: older CRM builds only accept known event types.
+SELECT pg_temp.check_result('Older CRM builds receive only event types they know',(SELECT bool_and(r->>'event_type' IN ('update_requested','update_answered','update_resolved','schedule_ready') OR r->>'event_type' IS NULL)
+  AND bool_or(r->>'event_kind'='schedule_new_needed' AND r->>'event_type'='schedule_ready')
+  FROM jsonb_array_elements(public.workflow_notifications('{"action":"list"}')->'rows') r));
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','',true);
 SELECT set_config('request.jwt.claim.role','service_role',true);

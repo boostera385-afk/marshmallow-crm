@@ -27,6 +27,8 @@ WITH checks(name,ok) AS (
       AND pg_get_constraintdef(oid) LIKE '%schedule_new_needed%')),
     ('Worker can record a new-schedule decision',position('new_schedule_needed' IN coalesce(pg_get_functiondef(to_regprocedure('public.finish_schedule_check(jsonb)')),''))>0),
     ('New-schedule alerts are listed as Schedule',position('schedule_new_needed' IN coalesce(pg_get_functiondef(to_regprocedure('public.workflow_notifications(jsonb)')),''))>0),
+    -- 20261202010000_schedule_new_alert_compat
+    ('Older CRM builds get known alert types',position('event_kind' IN coalesce(pg_get_functiondef(to_regprocedure('public.workflow_notifications(jsonb)')),''))>0),
     ('Every waiting lead is queued',NOT EXISTS(SELECT 1 FROM public.leads l WHERE l.cs_tag='waiting_schedule_confirmation'
       AND NOT EXISTS(SELECT 1 FROM marshmallow_private.schedule_monitor_queue q WHERE q.lead_id=l.id)))
 )

@@ -9,7 +9,8 @@ export default function WorkflowToast({ notification, onOpen, onDismiss }: { not
   // AI schedule results (confirmed, or the customer needs a new schedule) carry job
   // details and stay until dismissed or opened, like the other lead pop-ups;
   // request notices still fade after five seconds.
-  const isJob = notification.event_type === "schedule_ready" || notification.event_type === "schedule_new_needed";
+  const isNewSchedule = notification.event_kind === "schedule_new_needed" || notification.event_type === "schedule_new_needed";
+  const isJob = notification.event_type === "schedule_ready" || isNewSchedule;
   const persistent = isJob;
   useEffect(() => {
     if (paused || persistent) return;
@@ -23,7 +24,7 @@ export default function WorkflowToast({ notification, onOpen, onDismiss }: { not
     return () => window.clearInterval(timer);
   }, [paused, persistent]);
   useEffect(() => { if (!remaining && !persistent) onDismiss(); }, [remaining, persistent, onDismiss]);
-  const Icon = notification.event_type === "schedule_ready" ? CheckCircle2 : notification.event_type === "schedule_new_needed" ? CalendarClock : Bell;
+  const Icon = isNewSchedule ? CalendarClock : notification.event_type === "schedule_ready" ? CheckCircle2 : Bell;
   return <div role="status" className="w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-primary/20 bg-background shadow-xl"
     onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocusCapture={() => setPaused(true)}
     onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false); }}>
