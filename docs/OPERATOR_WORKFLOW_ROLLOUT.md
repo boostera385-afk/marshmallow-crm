@@ -325,3 +325,36 @@ Never apply the minimal fixture to an existing Supabase project.
   configuration. No production writes, backend deployment, CRM Publish or live
   workflow verification were performed. Updating the PR branch does not merge
   it into `main` or publish the CRM.
+
+## Operator (opr) sees City, State and ZIP only — 2026-11-06
+
+Business rule: users with the **Operator** role (`opr`) — not Operator Admin
+(`opr_admin`) — see a job's location as **City, ST ZIP** only. They never see the
+street address or map position, the customer's phone or landline, or the
+technician's name or number. Operator Admin and every other role are unchanged.
+
+- **Location** comes from the server: `public.location_label(leads)` (PostgREST
+  computed field, selected as `location_label` for Operators only), from migration
+  `20261203000000_opr_location_only.sql`. It uses the saved city/state/ZIP when they
+  are clean, otherwise the state and ZIP at the end of the address; the city is
+  shown only when it is a Census place (`us_places`) or a plain place name with no
+  digits, units or street words. Anything doubtful falls back to `ST ZIP`. Checked
+  read-only on production data (2026-11-06): all 65 urgent jobs get a ZIP and 63 a
+  city; no label contained street text or a house number.
+- **CRM screens** (`src/lib/operator-privacy.ts`, `redactLeadForOperator`): lead
+  cards, the lead detail page (phone/landline/contact and technician fields hidden,
+  Address shown as Location, nearby-areas panel hidden), both urgent tables, the
+  nearby urgent leads list, and Copy Complete Details. The customer number is still
+  used invisibly for the reply/attention highlights.
+- **Hold alerts**: the server stores Operator snapshots without address, customer
+  numbers or technician details, redacts them again when an Operator reads them,
+  and the migration redacts Operator snapshots stored before it.
+- **Limit**: lead rows are still readable by Operators in the database (the
+  existing lead RLS); hiding is enforced on every CRM screen, not at the row level.
+  A server-only Operator read path is the follow-up for full database enforcement.
+- No Donut counterpart (Donut is not an Operator tool).
+- Tests: `src/lib/operator-privacy.test.ts`, Copy and hold-card tests, isolated SQL
+  harness `supabase/tests/105_opr_location_only.sql` (via
+  `scripts/test-operator-workflow-db.mjs`).
+- Order: apply the migration **before** publishing the CRM (the CRM selects
+  `location_label`, which the migration creates).

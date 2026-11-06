@@ -1,3 +1,4 @@
+import { redactLeadForOperator, withOperatorLocation } from "@/lib/operator-privacy";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useCallback } from "react";
@@ -322,7 +323,10 @@ export default function LeadDetailPage() {
 
     setLoading(true);
 
-    const { data: lead, error } = await supabase.from("leads").select("*").eq("id", id).single();
+    // Operators also get the server's City, ST ZIP; their copy is redacted below.
+    // location_label is a computed field the generated types do not list; the row
+    // shape is otherwise exactly "*".
+    const { data: lead, error } = await supabase.from("leads").select(withOperatorLocation("*", role) as "*").eq("id", id).single();
 
     if (error || !lead) {
       toast.error("Lead not found");
@@ -332,13 +336,14 @@ export default function LeadDetailPage() {
 
     setLeadId(lead.id);
     setExternalUpdateBy(null);
-    const typedLead = { ...lead, status: lead.status as LeadStatus } as Lead;
+    // Operators: City, ST ZIP only — no address, customer number or technician.
+    const typedLead = redactLeadForOperator({ ...(lead as unknown as Lead), status: lead.status as LeadStatus }, role);
     setOriginalLead(typedLead);
     setJobId(lead.job_id);
     setFormFromLead(typedLead);
     await fetchProfilesAndMeta(typedLead);
     setLoading(false);
-  }, [id, isNew, navigate]);
+  }, [id, isNew, navigate, role]);
 
   const fetchPhotos = async (currentLeadId: string) => {
     const { data } = await supabase
@@ -1348,6 +1353,7 @@ export default function LeadDetailPage() {
           </div>
 
           <div className="grid gap-3 border-t border-border/50 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+            {!isOpr && (
             <div className="crm-lead-card-inner rounded-2xl px-4 py-3">
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 <Phone className="h-3.5 w-3.5" />
@@ -1371,13 +1377,14 @@ export default function LeadDetailPage() {
                 </p>
               )}
             </div>
+            )}
             <div className="crm-lead-card-inner rounded-2xl px-4 py-3">
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 <MapPin className="h-3.5 w-3.5" />
                 Service
               </div>
               <p className="mt-2 text-sm font-semibold text-foreground">{form.service_type || "Service not set"}</p>
-              <p className="mt-1 text-[12px] text-muted-foreground">{form.address || "Address not entered yet"}</p>
+              <p className="mt-1 text-[12px] text-muted-foreground">{form.address || (isOpr ? "Location not available" : "Address not entered yet")}</p>
             </div>
             <div className="crm-lead-card-inner rounded-2xl px-4 py-3">
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -1451,6 +1458,7 @@ export default function LeadDetailPage() {
               </div>
             </div>
 
+            {!isOpr && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className={labelClass}>Cell Phone</Label>
@@ -1492,6 +1500,7 @@ export default function LeadDetailPage() {
                 <p className="text-[11px] text-muted-foreground">A cell phone or a landline is required.</p>
               </div>
             </div>
+            )}
           </div>
 
           <Collapsible open={csOpen} onOpenChange={setCsOpen}>
@@ -1506,7 +1515,7 @@ export default function LeadDetailPage() {
 
             <CollapsibleContent className="mt-3 space-y-4 px-1">
               <div className="space-y-1.5">
-                <Label className={labelClass}>Address</Label>
+                <Label className={labelClass}>{isOpr ? "Location" : "Address"}</Label>
                 <Input
                   value={form.address}
                   onChange={(e) => update("address", e.target.value)}
@@ -1607,6 +1616,7 @@ export default function LeadDetailPage() {
 
               <CollapsibleContent className="mt-3 space-y-4 px-1">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+                  {!isOpr && (
                   <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
                     <div className="space-y-1.5">
                       <Label className={labelClass}>Tech Name</Label>
@@ -1639,6 +1649,7 @@ export default function LeadDetailPage() {
                     )}
                   </div>
                   </div>
+                  )}
 
                   {currentCopyLead && (
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -1755,7 +1766,7 @@ export default function LeadDetailPage() {
             </Collapsible>
           )}
 
-          {!hideProcessorDetails && leadId && (
+          {!hideProcessorDetails && !isOpr && leadId && (
             <NearbyAreasList
               leadId={leadId}
               customerAddress={form.address ?? originalLead?.address ?? null}

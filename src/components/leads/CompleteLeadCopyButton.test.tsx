@@ -31,6 +31,21 @@ describe("complete lead copy action", () => {
     expect(writeText).toHaveBeenCalledWith("Service Details: Repair\nAddress: 10 Main St Apt 2\nSchedule Requirement: Friday\nQuote: $150");
   });
 
+  it("copies only City, ST ZIP for an Operator once the lead is redacted", async () => {
+    const { redactLeadForOperator } = await import("@/lib/operator-privacy");
+    auth.role = "opr";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const lead = redactLeadForOperator({ service_details: "Repair", address: "10 Main St Apt 2", customer_phone: "5550100000",
+      tech_name: "Sam Tech", tech_number: "5550108888", location_label: "Miami, FL 33101", customer_schedule_requirements: "Friday" }, "opr");
+    render(<CompleteLeadCopyButton lead={lead} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Complete Details" }));
+    await screen.findByRole("button", { name: "Copied" });
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain("Miami, FL 33101");
+    for (const secret of ["10 Main St", "5550100000", "Sam Tech", "5550108888"]) expect(copied).not.toContain(secret);
+  });
+
   it("hides the copy action when Admin denies access", () => {
     permission.allowed = false;
     render(<CompleteLeadCopyButton lead={{ quote: "private" }} />);
