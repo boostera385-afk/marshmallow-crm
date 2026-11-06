@@ -33,7 +33,8 @@ it("keeps an AI schedule confirmation on screen with the job details until dismi
 });
 it("keeps an AI 'customer requires new schedule' alert on screen with the customer's words and opens the job", () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] }); const dismiss = vi.fn(); const open = vi.fn();
-  const newSchedule = { id: "synthetic-new", title: "AI: Customer requires new schedule", event_type: "schedule_new_needed" as const,
+  // The server reports it as schedule_ready (for older CRM builds) with event_kind carrying the exact type.
+  const newSchedule = { id: "synthetic-new", title: "AI: Customer requires new schedule", event_type: "schedule_ready" as const, event_kind: "schedule_new_needed",
     message: "Job ID: SYN-2\nCustomer: Jane Sample\nCustomer said: \"How about the 14th?\"\nTag changed by AI: Waiting for CX for schedule confirmation -> Customer Require New Schedule" };
   render(<WorkflowToast notification={newSchedule} onDismiss={dismiss} onOpen={open} />);
   const status = screen.getByRole("status");
