@@ -142,8 +142,14 @@ export function verifyCustomerQuote(quote: string, messages: ConversationMessage
   return customerWords(messages, enteredAt).some((words) => words.includes(needle));
 }
 
-/** A line that asks something ("How about the 14th?") is never an acceptance on its own. */
-const isQuestion = (text: string) => /\?\s*$/.test(text.trim());
+/**
+ * A line that only asks something ("How about the 14th?") is never an acceptance.
+ * A line that accepts and then asks ("That is fine. How do you want payment?") is.
+ */
+export const isOnlyQuestion = (text: string) => {
+  const sentences = text.trim().split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+  return sentences.length > 0 && sentences.every((s) => /\?+\W*$/u.test(s));
+};
 
 /**
  * The exact words of the customer items the AI cited. Only customer texts or call
@@ -156,7 +162,7 @@ export function resolveConfirmingQuote(transcript: TranscriptItem[], ids: unknow
   if (!Array.isArray(ids)) return null;
   const cited = ids.flatMap((id) => {
     const item = typeof id === "number" && id > afterId ? transcript.find((t) => t.id === id) : undefined;
-    return item && item.from === "customer" && item.after_waiting_tag && [...item.text.trim()].length >= 2 && !isQuestion(item.text) ? [item.text.trim()] : [];
+    return item && item.from === "customer" && item.after_waiting_tag && [...item.text.trim()].length >= 2 && !isOnlyQuestion(item.text) ? [item.text.trim()] : [];
   });
   if (!cited.length) return null;
   return cited.reduce((best, text) => (text.length > best.length ? text : best)).slice(0, 300);
@@ -170,15 +176,20 @@ Step 1 - analysis: in one or two sentences, say which day/time OUR TEAM last pro
 
 Step 2 - our_proposal_item: the id of the LATEST from=our_team item (text or call line) that states or offers the appointment day/time the customer is responding to. Use -1 when our team never proposed a day/time in the conversation.
 
-Step 3 - customer_changed_time: true when the customer, at any point after our_proposal_item, names, asks for or suggests a day, date or time of their own, or a different one from ours ("let's do it Saturday", "how about the 7th?", "can you come at 3 instead?", "9:30 or 10:30 on Saturday", "in about a week", "next week works better"), or asks whether another time is possible. A customer repeating back exactly our proposed day/time ("ok Tuesday at 10") is NOT a change. When the customer only picks one of several options we offered ("the first one", "Tuesday" when we offered Tuesday or Wednesday), that is NOT a change.
+Step 3 - customer_changed_time: true when the customer, at any point after our_proposal_item, names, asks for or suggests a day, date or time of their own, or a different one from ours ("let's do it Saturday", "how about the 7th?", "can you come at 3 instead?", "9:30 or 10:30 on Saturday", "in about a week", "next week works better", "is Tuesday an option?"), or asks whether another time is possible. These are NOT a change:
+- repeating back our proposed day/time ("ok Tuesday at 10", "Nov 1st is good", "four to six, yes");
+- picking one of the options we offered, or going back to a day/time our team offered earlier ("No problem. Thursday, Nov 5 works", "Oh okay tomorrow then", "Let's just do Monday 4-6" when we had offered Monday 4-6);
+- a preference or limit INSIDE our window on the same day ("I should be free by 11" for 10-12, "you can come at 4" for 4-6, "before 4:30 is fine" for 3-5, "earlier would be better", "if you can be here at 9 then yes" for 9-10).
+If the customer asked for a change and our team then sent a new day/time, that new message is the latest our_proposal_item, and the earlier request is not counted.
 
 Step 4 - confirmed=true only when ALL hold: our_proposal_item is not -1; customer_changed_time is false; and after our_proposal_item the customer accepts that exact proposal, directly or indirectly. Count as acceptance:
 - short replies to our proposal or reminder: "yes", "ok", "k", "sure", "yep", "sounds good", "perfect", "that works", "fine", "great thanks", a thumbs-up, or "yeah"/"okay"/"mm-hmm" right after our team states or asks about the time on a call;
 - choosing one of the options we offered;
-- logistics that only make sense if the visit is on as proposed: "I'll leave the gate open", "my husband will be home", "the code is 1234", "text me when the tech is on the way", "see you then", "I'll be there";
-- other languages, slang and typos with the same meaning ("si esta bien", "ya thats fine", "wrks for me").
+- logistics that only make sense if the visit is on as proposed: "I'll leave the gate open", "my husband will be home", "my daughter will be there", "the code is 1234", "text me when the tech is on the way", "please have him text me", "see you then", "I'll be there", "I'll be here";
+- acceptance followed by a question or detail ("That is fine. How do you want payment?", "Yes, we are available. What is his name?", "Sounds great, will be paying with cash");
+- other languages, slang and typos with the same meaning ("si esta bien", "oké", "ya thats fine", "wrks for me", "inshallah, yep").
 
-confirmed=false when: the customer proposes, requests or asks about their own or a different day/date/time (even if our team then agrees to it - a person must update the schedule first); is unsure ("maybe", "let me check", "I'll get back to you", "I'll let you know"); wants to cancel or postpone; only asks a question or only talks about price, the problem or other topics; only greets; their "yes"/"ok" clearly answers a different question (an address, a photo, a price); or anything the customer said later withdraws, changes or questions the appointment. Our team saying the customer agreed, or a call summary saying so, is never enough on its own: there must be customer words that show it.
+confirmed=false when: the customer proposes, requests or asks about their own or a different day/date/time and our team has not sent a new day/time that they then accepted (our team only replying "yes we can do that" to the customer's time is not enough - a person must update the schedule); is unsure ("maybe", "let me check", "I'll get back to you", "I'll let you know", "I will confirm tomorrow", "I'll let you know by end of day if I can be there"); wants to cancel, hold or postpone ("let's hold for the moment", "I'm out of town, I'll text you when I'm back"); only asks a question (including only asking our company name, who is coming or where we are based) or only talks about price, the problem or other topics; only greets; their "yes"/"ok" clearly answers a different question (an address, a photo, a price); or anything the customer said later withdraws, changes or questions the appointment. Our team saying the customer agreed, or a call summary saying so, is never enough on its own: there must be customer words that show it.
 
 confirming_items: the ids of the from=customer items (after_waiting_tag=true, after our_proposal_item) whose words show the acceptance; put the most telling one first. Never cite a customer question or a line where the customer names their own time. Use [] when confirmed=false.
 reason: one short sentence for the office team.

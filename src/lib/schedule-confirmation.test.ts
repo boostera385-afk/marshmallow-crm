@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import {
-  assessScheduleCandidate, buildScheduleTranscript, MAX_TRANSCRIPT_MESSAGES, parseScheduleBatch, resolveConfirmingQuote, schedulePrecheck, verifyCustomerQuote,
+  assessScheduleCandidate, buildScheduleTranscript, isOnlyQuestion, MAX_TRANSCRIPT_MESSAGES, parseScheduleBatch, resolveConfirmingQuote, schedulePrecheck, verifyCustomerQuote,
   type ConversationMessage, type ScheduleCheck,
 } from "../../supabase/functions/_shared/schedule-confirmation";
 import { createScheduleMonitorHandler } from "../../supabase/functions/_shared/schedule-monitor-handler";
@@ -179,6 +179,35 @@ describe("AI decision", () => {
           { speaker: "our_team", content: "Sure, Saturday works." }, { speaker: "customer", content: "Okay great." }] }];
       const fetcher = vi.fn().mockResolvedValue(answer({ our_proposal_item: 2, customer_changed_time: true, confirming_items: [3] }));
       expect((await assessScheduleCandidate({ ...job, messages: onCall }, "synthetic", fetcher)).decision).toBe("needs_review");
+    });
+    it("tells only-question lines apart from an acceptance followed by a question", () => {
+      for (const q of ["How about the 14th?", "Is Tuesday an option?", "What is the name of your company?", "Can he come Tuesday? ", "So not on Wednesday??"]) expect(isOnlyQuestion(q)).toBe(true);
+      for (const a of ["That is fine. How do you want payment?", "Yes, we are available. What is his name?", "Yes It works", "Si está bien", "ok"]) expect(isOnlyQuestion(a)).toBe(false);
+    });
+    it("confirms an acceptance followed by a question", async () => {
+      const fetcher = vi.fn().mockResolvedValue(answer({}));
+      expect(await assessScheduleCandidate({ ...job, messages: [proposal, reply("That is fine. How do you want payment?")] }, "synthetic", fetcher))
+        .toMatchObject({ decision: "confirmed", quote: "That is fine. How do you want payment?" });
+    });
+    // Seen in 109 real chats: customer asks for another time, our team sends a new
+    // schedule, customer accepts that one. The new message is our latest proposal.
+    it("confirms when the customer accepts the new schedule our team sent after their request", async () => {
+      const messages: ConversationMessage[] = [
+        proposal, reply("Saturday morning would be better. Is that available", 5),
+        { ...proposal, text: "My guy will be there on Saturday, October 31, between 9 and 11 AM. Is that work for you?", message_time: "2026-11-30T11:20:00Z", quo_message_id: "p2" },
+        reply("Awesome thank you", 25),
+      ];
+      const fetcher = vi.fn().mockResolvedValue(answer({ our_proposal_item: 2, confirming_items: [3] }));
+      expect(await assessScheduleCandidate({ ...job, messages }, "synthetic", fetcher)).toMatchObject({ decision: "confirmed", quote: "Awesome thank you" });
+    });
+    it("does not confirm when our team only agreed to the customer's own time and the customer said nothing after", async () => {
+      const messages: ConversationMessage[] = [
+        proposal, reply("Hi! We can do starting at 9. Does that work?", 5),
+        { ...proposal, text: "Yes we can start 9am", message_time: "2026-11-30T11:10:00Z", quo_message_id: "p2" },
+      ];
+      // Even if the AI wrongly cites the customer's own request, it comes before our latest message.
+      const fetcher = vi.fn().mockResolvedValue(answer({ our_proposal_item: 2, confirming_items: [1] }));
+      expect((await assessScheduleCandidate({ ...job, messages }, "synthetic", fetcher)).decision).toBe("needs_review");
     });
     it("tells the AI to reject customer-proposed times and treats a missing field as an invalid answer", async () => {
       const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "", confirmed: true, confirming_items: [1], reason: "old shape" }));
