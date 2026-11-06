@@ -358,3 +358,8 @@ technician's name or number. Operator Admin and every other role are unchanged.
   `scripts/test-operator-workflow-db.mjs`).
 - Order: apply the migration **before** publishing the CRM (the CRM selects
   `location_label`, which the migration creates).
+- Status (2026-11-06): migration **applied in production**. Verified read-only:
+  `location_label` callable by signed-in users (not anonymous); 403 Operator hold
+  snapshots, 0 still holding address/number/technician; Operator Admin snapshots
+  unchanged; all 65 urgent jobs labelled with a ZIP, 63 with a city. CRM screen
+  changes **await CRM Publish**.
