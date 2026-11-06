@@ -65,10 +65,15 @@ export function isScheduleTag(tag: string | null | undefined): boolean {
 }
 
 /**
- * Whether the lead's current tag was set by the schedule confirmation AI. Only
- * Ready to schedule is ever set by AI, and any later tag change by a person
- * clears the marker in the database.
+ * Tags the schedule confirmation AI can set: Ready to schedule (customer accepted
+ * our time) and Customer Require New Schedule (customer asked for another time).
+ */
+export const AI_SETTABLE_TAGS: CsTag[] = ["ready_to_schedule", "confirmation_sent"];
+
+/**
+ * Whether the lead's current tag was set by the schedule confirmation AI. Any
+ * later tag change by a person clears the marker in the database.
  */
 export function isAiSetTag(lead: { cs_tag?: string | null; cs_tag_source?: string | null }): boolean {
-  return lead.cs_tag === "ready_to_schedule" && lead.cs_tag_source === "ai";
+  return AI_SETTABLE_TAGS.includes(lead.cs_tag as CsTag) && lead.cs_tag_source === "ai";
 }

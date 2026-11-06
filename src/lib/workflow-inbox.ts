@@ -4,7 +4,7 @@ import { cxNotificationHref } from "@/lib/cx-update-requests";
 
 export const notificationSchema = z.object({
   id: z.string().uuid(), title: z.string(), message: z.string(), lead_id: z.string().uuid().nullable(),
-  read: z.boolean(), created_at: z.string(), event_type: z.enum(["update_requested", "update_answered", "update_resolved", "schedule_ready"]).nullable(),
+  read: z.boolean(), created_at: z.string(), event_type: z.enum(["update_requested", "update_answered", "update_resolved", "schedule_ready", "schedule_new_needed"]).nullable(),
   request_kind: z.enum(["cx", "tech"]).nullable(), request_id: z.string().uuid().nullable(), revision: z.number().nullable(),
   job_id: z.string().nullable(), action_required: z.boolean(),
 });

@@ -22,6 +22,11 @@ WITH checks(name,ok) AS (
     -- 20261201000000_ai_schedule_confirmation_calls
     ('Customer words checked in texts and calls',to_regprocedure('marshmallow_private.schedule_quote_is_customer(public.quo_conversations,public.leads,timestamp with time zone,text)') IS NOT NULL),
     ('Call transcript speakers are read',to_regprocedure('marshmallow_private.schedule_dialogue(jsonb,text[])') IS NOT NULL),
+    -- 20261202000000_ai_schedule_new_schedule_tag
+    ('New-schedule alert type allowed',EXISTS(SELECT 1 FROM pg_constraint WHERE conname='workflow_notification_events_event_type_check'
+      AND pg_get_constraintdef(oid) LIKE '%schedule_new_needed%')),
+    ('Worker can record a new-schedule decision',position('new_schedule_needed' IN coalesce(pg_get_functiondef(to_regprocedure('public.finish_schedule_check(jsonb)')),''))>0),
+    ('New-schedule alerts are listed as Schedule',position('schedule_new_needed' IN coalesce(pg_get_functiondef(to_regprocedure('public.workflow_notifications(jsonb)')),''))>0),
     ('Every waiting lead is queued',NOT EXISTS(SELECT 1 FROM public.leads l WHERE l.cs_tag='waiting_schedule_confirmation'
       AND NOT EXISTS(SELECT 1 FROM marshmallow_private.schedule_monitor_queue q WHERE q.lead_id=l.id)))
 )
