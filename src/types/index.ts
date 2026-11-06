@@ -136,6 +136,8 @@ export interface Lead {
   cs_tag_source?: 'ai' | null;
   booked_at?: string | null;
   half_address?: string | null;
+  /** Server-computed "City, ST ZIP" (selected for Operators only; never street text). */
+  location_label?: string | null;
   labor_amount: number | null;
   material_amount: number | null;
   for_you_amount: number | null;

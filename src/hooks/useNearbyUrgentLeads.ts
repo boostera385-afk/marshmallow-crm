@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { findNearbyUrgentLeads, isUrgentLead, type ProximityLead } from "@/lib/lead-proximity";
 import { preloadZipDataset } from "@/lib/zipCentroids";
+import { useAuth } from "@/contexts/AuthContext";
+import { redactLeadForOperator, withOperatorLocation } from "@/lib/operator-privacy";
 
 const QUERY_KEY = ["urgent-leads-proximity"];
 
@@ -16,18 +18,21 @@ const QUERY_KEY = ["urgent-leads-proximity"];
  */
 export function useNearbyUrgentLeads(lead: ProximityLead | null): ProximityLead[] {
   const queryClient = useQueryClient();
+  const { role } = useAuth();
   const active = Boolean(lead) && isUrgentLead(lead?.status);
 
   const { data: urgentLeads = [] } = useQuery<ProximityLead[]>({
-    queryKey: QUERY_KEY,
+    // Scoped by role: Operators hold a redacted (City, ST ZIP) copy.
+    queryKey: [...QUERY_KEY, role ?? "none"],
     enabled: active,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("id, customer_name, status, address, city, state, zip_code, job_id")
+        .select(withOperatorLocation("id, customer_name, status, address, city, state, zip_code, job_id", role))
         .eq("status", "urgent_job");
       if (error) throw error;
-      return (data ?? []) as ProximityLead[];
+      // Operators never receive other jobs' street addresses in this list.
+      return ((data ?? []) as unknown as ProximityLead[]).map((row) => redactLeadForOperator(row, role));
     },
     staleTime: 30_000,
   });

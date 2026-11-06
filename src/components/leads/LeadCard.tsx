@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { redactLeadForOperator } from "@/lib/operator-privacy";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { memo } from "react";
 import { differenceInCalendarDays, startOfDay, isBefore } from "date-fns";
@@ -697,7 +698,7 @@ function NoteCollapsible({
 }
 
 function LeadCard({
-  lead,
+  lead: incomingLead,
   profiles,
   onRefresh,
   photoUrls,
@@ -714,6 +715,9 @@ function LeadCard({
   quoteApproval = null,
 }: LeadCardProps) {
   const { user, role, profile, canAccess } = useAuth();
+  // Operators see City, ST ZIP only: no address, customer number or technician.
+  // The original phone is used only for the attention/blink signals, never shown.
+  const lead = useMemo(() => redactLeadForOperator(incomingLead, role), [incomingLead, role]);
   const navigate = useNavigate();
   const [changingStatus, setChangingStatus] = useState(false);
   const [csOpen, setCsOpen] = useState(false);
@@ -777,7 +781,7 @@ function LeadCard({
   const reduceMotion = useReducedMotion();
   const { needsAttention: quoNeedsAttention } = useQuoAttention({
     leadId: lead.id,
-    phone: lead.customer_phone,
+    phone: incomingLead.customer_phone,
     status: lead.status,
     updatedAt: lead.updated_at,
   });
@@ -909,7 +913,7 @@ function LeadCard({
     currentTag === "waiting_schedule_confirmation" ||
     currentTag === "booked";
 
-  const { isFromCustomer } = useIsLastMessageFromCustomer(lead.customer_phone, hasScheduleTag);
+  const { isFromCustomer } = useIsLastMessageFromCustomer(incomingLead.customer_phone, hasScheduleTag);
   const needsScheduleBlink = hasScheduleTag && isFromCustomer;
   const isActivateCustomer = lead.status === "activate_customer";
   const isQuoteUpdatedForMe = lead.status === "quote_updated" && (role === "cs_admin" || lead.quote_requested_by === user?.id);

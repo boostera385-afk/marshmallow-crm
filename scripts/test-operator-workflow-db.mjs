@@ -18,11 +18,18 @@ try {
   const scheduleConfirmationMigration = await readFile(path.join(root, "supabase/migrations/20261121000000_operator_hold_waiting_schedule_confirmation.sql"), "utf8");
   await db.exec(scheduleConfirmationMigration);
   await db.exec(scheduleConfirmationMigration); // The follow-up migration is independently idempotent.
-  const results = await db.exec(await readFile(path.join(root, "supabase/tests/100_copy_permissions_operator_hold.sql"), "utf8"));
-  const checks = results.flatMap((result) => result.rows).filter((row) => typeof row.name === "string" && typeof row.result === "string");
-  console.table(checks);
-  if (!checks.length || checks.some((row) => row.result !== "PASS")) throw new Error("SQL behavioral harness failed");
-  console.log(`${checks.length} SQL behavior checks passed; migration applied twice to disposable Postgres. Shared project untouched.`);
+  const locationMigration = await readFile(path.join(root, "supabase/migrations/20261203000000_opr_location_only.sql"), "utf8");
+  await db.exec(locationMigration);
+  await db.exec(locationMigration); // Operator location-only follow-up is idempotent.
+  let total = 0;
+  for (const harness of ["supabase/tests/100_copy_permissions_operator_hold.sql", "supabase/tests/105_opr_location_only.sql"]) {
+    const results = await db.exec(await readFile(path.join(root, harness), "utf8"));
+    const checks = results.flatMap((result) => result.rows).filter((row) => typeof row.name === "string" && typeof row.result === "string");
+    console.table(checks);
+    if (!checks.length || checks.some((row) => row.result !== "PASS")) throw new Error(`SQL behavioral harness failed: ${harness}`);
+    total += checks.length;
+  }
+  console.log(`${total} SQL behavior checks passed; migrations applied twice to disposable Postgres. Shared project untouched.`);
 } finally {
   await db.close();
 }

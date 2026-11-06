@@ -16,6 +16,14 @@ export const alertFixture: HoldAlert = {
   },
 };
 describe("Marshmallow read-only hold card", () => {
+  it("shows an Operator's server-redacted snapshot as City, State and ZIP only", () => {
+    const redacted = { ...alertFixture, snapshot: { ...alertFixture.snapshot, customer_phone: null, customer_landline: null, address: null,
+      tech_name: null, tech_number: null, city: "Coral Springs", state: "FL", zip_code: "33071" } };
+    const { container } = render(<HoldJobCard alert={redacted} onAcknowledge={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /complete card/i }));
+    expect(container).toHaveTextContent("Coral Springs, FL, 33071");
+    for (const secret of ["10 Main St", "5550100000", "Test Tech", "5550100001"]) expect(container).not.toHaveTextContent(secret);
+  });
   it("labels the CX schedule-confirmation hold reason", () => {
     render(<HoldJobCard alert={{ ...alertFixture, reason: "waiting_schedule_confirmation" }} onAcknowledge={vi.fn()} />);
     expect(screen.getByText("Urgent Job → Waiting for CX for Schedule Confirmation")).toBeInTheDocument();

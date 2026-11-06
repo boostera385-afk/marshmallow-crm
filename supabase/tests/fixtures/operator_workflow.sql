@@ -32,3 +32,13 @@ INSERT INTO public.user_roles VALUES
   ('00000000-0000-4000-8000-000000000001','admin'),('00000000-0000-4000-8000-000000000002','opr'),
   ('00000000-0000-4000-8000-000000000003','opr_admin'),('00000000-0000-4000-8000-000000000004','customer_service');
 INSERT INTO public.profiles SELECT id,'Synthetic User' FROM auth.users;
+-- 20261203000000_opr_location_only: service role and a few Census places (synthetic subset).
+CREATE ROLE service_role;
+CREATE TABLE public.us_places(geoid text PRIMARY KEY, name text NOT NULL, state_code text NOT NULL, state_name text, population integer);
+CREATE INDEX us_places_normalized_name_state_idx ON public.us_places(state_code, regexp_replace(lower(name), '[^a-z0-9]', '', 'g'));
+GRANT SELECT ON public.us_places TO authenticated;
+INSERT INTO public.us_places VALUES
+  ('1','Coral Springs city','FL','Florida',134000),('2','Orlando city','FL','Florida',307000),('3','Miami city','FL','Florida',449000),
+  ('4','Austin city','TX','Texas',974000),('5','Austin city','MN','Minnesota',26000),('6','Sauk Rapids city','MN','Minnesota',14000),
+  ('7','St. Louis city','MO','Missouri',300000),('8','Ball Ground city','GA','Georgia',2500),('9','Atlanta city','GA','Georgia',498000),
+  ('10','Lake Harmony CDP','PA','Pennsylvania',800),('11','Little Elm city','TX','Texas',50000),('12','Bonaire CDP','GA','Georgia',1500);

@@ -1,3 +1,4 @@
+import { redactLeadForOperator, withOperatorLocation } from "@/lib/operator-privacy";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { selectWithAiTagColumn } from "@/lib/lead-optional-columns";
@@ -88,7 +89,7 @@ const URGENT_TABLE_COLUMNS = "id, customer_name, customer_phone, service_type, c
 // because it only reads the tiny urgent subset, not the whole leads table.
 const URGENT_TABLE_POLL_MS = 5000;
 
-type UrgentRow = Pick<Lead, "id" | "customer_name" | "customer_phone" | "service_type" | "city" | "state" | "address" | "zip_code" | "urgent_at" | "created_at" | "customer_schedule_requirements" | "terms"> & { lead_ai_statuses?: { status: string; checked_at?: string } | null };
+type UrgentRow = Pick<Lead, "id" | "customer_name" | "customer_phone" | "service_type" | "city" | "state" | "address" | "zip_code" | "urgent_at" | "created_at" | "customer_schedule_requirements" | "terms" | "location_label"> & { lead_ai_statuses?: { status: string; checked_at?: string } | null };
 
 function CopyableCell({ text, title, className, defaultWidth = true, emptyClassName = "text-muted-foreground", align = "left", truncate = true }: { text: string; title?: string; className?: string; defaultWidth?: boolean; emptyClassName?: string; align?: "left" | "right"; truncate?: boolean }) {
   if (!text || text === "—") return <td className={`px-2 py-2 ${className || ""}`}><span className={emptyClassName}>—</span></td>;
@@ -641,7 +642,7 @@ export default function LeadsPage() {
   const loadPagedLeadRows = useCallback(async (ids: string[]) => {
     setPageRowsLoading(true);
     try {
-      const { data, error } = await selectWithAiTagColumn(LEAD_LIST_COLUMNS, (columns) => supabase
+      const { data, error } = await selectWithAiTagColumn(withOperatorLocation(LEAD_LIST_COLUMNS, role), (columns) => supabase
         .from("leads")
         .select(columns)
         .in("id", ids));
@@ -657,7 +658,7 @@ export default function LeadsPage() {
     } finally {
       setPageRowsLoading(false);
     }
-  }, []);
+  }, [role]);
 
   // Re-hydrate on page change, keeping the previous rows in state so pagination
   // never paints a half-loaded card.
@@ -857,7 +858,7 @@ export default function LeadsPage() {
     if (!user || !role) return;
     let q = supabase
       .from("leads")
-      .select(URGENT_TABLE_COLUMNS + ", lead_ai_statuses(status, checked_at)")
+      .select(withOperatorLocation(URGENT_TABLE_COLUMNS, role) + ", lead_ai_statuses(status, checked_at)")
       .eq("status", "urgent_job")
       .order("urgent_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -865,6 +866,8 @@ export default function LeadsPage() {
     if (role === "customer_service") q = q.eq("created_by", user.id);
     const { data, error } = await q;
     if (error) return; // keep the last good list on a transient error
+    // Raw rows: the customer number is still needed for the hidden reply check.
+    // Both urgent tables redact for Operators where they render.
     const next = (data ?? []) as unknown as UrgentRow[];
     setUrgentTableLeads((prev) => {
       // Keep the same array reference when nothing changed, so a quiet poll
@@ -1427,7 +1430,7 @@ export default function LeadsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {urgentNeedsCxReply.map((l) => (
+                    {urgentNeedsCxReply.map((row) => redactLeadForOperator(row, role)).map((l) => (
                       <tr
                         key={l.id}
                         onClick={(event) => openLeadFromClick(event, l.id, navigate)}
@@ -1513,7 +1516,7 @@ export default function LeadsPage() {
                 </tr>
               </thead>
               <tbody>
-                {urgentTableLeads.map((l) => {
+                {urgentTableLeads.map((row) => redactLeadForOperator(row, role)).map((l) => {
                   const c = l.city || extractCity(l.address);
                   const s = l.state || extractState(l.address);
                   const areaText = [c, s].filter((x) => x && x !== "Unknown").join(", ") || "—";
