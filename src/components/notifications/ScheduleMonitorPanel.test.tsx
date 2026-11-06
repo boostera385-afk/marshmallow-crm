@@ -53,3 +53,12 @@ it("shows each waiting job's AI result with the customer's words and can check a
 it("never fetches Admin configuration for a Processor", () => {
   state.role = "processor"; mount(); expect(state.fetch).not.toHaveBeenCalled(); expect(screen.queryByText(/Admin controls/)).not.toBeInTheDocument();
 });
+it("labels Shadow and applied 'customer needs a new schedule' results separately from confirmations", async () => {
+  const change = (applied: boolean, id: string) => ({ ...job, lead_id: id, job_id: `SYN-${id.slice(-1)}`,
+    result: { decision: "new_schedule_needed", reason: "Customer asked for the 14th.", quote: "How about the 14th?", evidence_id: "m2", applied } });
+  state.fetch.mockResolvedValue({ ...config, mode: "shadow", rows: [change(false, "16000000-0000-4000-8000-000000000011"), change(true, "16000000-0000-4000-8000-000000000012")], total: 2 });
+  mount(); expand();
+  expect(await screen.findByText("AI: customer asked for a different day/time (Shadow, tag not changed).")).toBeInTheDocument();
+  expect(screen.getByText("AI: customer asked for a different day/time. Tag changed to Customer Require New Schedule.")).toBeInTheDocument();
+  expect(screen.queryByText(/^AI: customer confirmed/)).not.toBeInTheDocument();
+});

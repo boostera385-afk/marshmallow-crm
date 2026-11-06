@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import {
-  assessScheduleCandidate, buildScheduleTranscript, MAX_TRANSCRIPT_MESSAGES, parseScheduleBatch, resolveConfirmingQuote, schedulePrecheck, verifyCustomerQuote,
+  assessScheduleCandidate, buildScheduleTranscript, isOnlyQuestion, MAX_TRANSCRIPT_MESSAGES, parseScheduleBatch, resolveConfirmingQuote, schedulePrecheck, verifyCustomerQuote,
   type ConversationMessage, type ScheduleCheck,
 } from "../../supabase/functions/_shared/schedule-confirmation";
 import { createScheduleMonitorHandler } from "../../supabase/functions/_shared/schedule-monitor-handler";
@@ -89,12 +89,12 @@ describe("conversation handling", () => {
 
 describe("AI decision", () => {
   it("confirms with the exact words of the customer item the AI cites", async () => {
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "We offered 10am; customer accepted.", confirmed: true, confirming_items: [2], reason: "Customer agreed to 10am." }));
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "We offered 10am; customer accepted.", our_proposal_item: 1, customer_changed_time: false, change_items: [], confirmed: true, confirming_items: [2], reason: "Customer agreed to 10am." }));
     expect(await assessScheduleCandidate(job, "synthetic", fetcher)).toEqual({ decision: "confirmed", reason: "Customer agreed to 10am.", quote: "Yes 10am works for me" });
     const body = JSON.parse(fetcher.mock.calls[0][1].body);
     expect(body.model).toBe("gpt-4o-mini");
     // The model must reason before it decides, and cite items rather than retype words.
-    expect(body.response_format.json_schema.schema.required).toEqual(["analysis", "confirmed", "confirming_items", "reason"]);
+    expect(body.response_format.json_schema.schema.required).toEqual(["analysis", "our_proposal_item", "customer_changed_time", "change_items", "confirmed", "confirming_items", "reason"]);
     const sent = JSON.parse(body.messages[1].content);
     expect(sent.CONVERSATION).toHaveLength(4);
     expect(sent.CONVERSATION.map((item: { id: number }) => item.id)).toEqual([0, 1, 2, 3]);
@@ -106,7 +106,7 @@ describe("AI decision", () => {
       { sender: "customer", direction: "inbound", text: "ok", message_time: "2026-11-30T11:05:00Z", quo_message_id: "a2" },
       { sender: "customer", direction: "inbound", text: "I'll leave the side gate open, dog will be inside", message_time: "2026-11-30T11:06:00Z", quo_message_id: "a3" },
     ];
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "Tuesday 10-12 offered; customer said ok and gave access details.", confirmed: true, confirming_items: [1, 2], reason: "Customer accepted Tuesday 10-12." }));
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "Tuesday 10-12 offered; customer said ok and gave access details.", our_proposal_item: 0, customer_changed_time: false, change_items: [], confirmed: true, confirming_items: [1, 2], reason: "Customer accepted Tuesday 10-12." }));
     // The longest cited customer line becomes the quote shown to the office team.
     expect(await assessScheduleCandidate({ ...job, messages: indirect }, "synthetic", fetcher))
       .toMatchObject({ decision: "confirmed", quote: "I'll leave the side gate open, dog will be inside" });
@@ -116,31 +116,145 @@ describe("AI decision", () => {
       quo_message_id: "c3:call.transcript.completed", dialogue: [
         { speaker: "our_team", content: "So I'll put you down for Thursday morning, eight to ten, is that alright?" },
         { speaker: "customer", content: "Yeah." }, { speaker: "customer", content: "Yeah, that's fine." }, { speaker: "our_team", content: "Perfect." }] }];
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "Thursday 8-10 offered on the call; customer agreed.", confirmed: true, confirming_items: [2, 1], reason: "Agreed on the call." }));
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "Thursday 8-10 offered on the call; customer agreed.", our_proposal_item: 0, customer_changed_time: false, change_items: [], confirmed: true, confirming_items: [2, 1], reason: "Agreed on the call." }));
     expect(await assessScheduleCandidate({ ...job, messages: choppy }, "synthetic", fetcher)).toMatchObject({ decision: "confirmed", quote: "Yeah, that's fine." });
   });
   it("confirms from a phone call when the AI quotes the customer's spoken words", async () => {
     const callJob = { ...job, messages: call, evidence: { ...job.evidence!, quo_message_id: "c2:call.summary.completed", sender: "customer" } };
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "", confirmed: true, confirming_items: [1], reason: "Agreed on the call." }));
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "", our_proposal_item: 0, customer_changed_time: false, change_items: [], confirmed: true, confirming_items: [1], reason: "Agreed on the call." }));
     expect(await assessScheduleCandidate(callJob, "synthetic", fetcher)).toMatchObject({ decision: "confirmed", quote: "Friday at 9 works great" });
-    fetcher.mockResolvedValue(aiAnswer({ analysis: "", confirmed: true, confirming_items: [2], reason: "Summary says so." }));
+    fetcher.mockResolvedValue(aiAnswer({ analysis: "", our_proposal_item: 0, customer_changed_time: false, change_items: [], confirmed: true, confirming_items: [2], reason: "Summary says so." }));
     expect((await assessScheduleCandidate(callJob, "synthetic", fetcher)).decision).toBe("needs_review");
   });
   it.each([
     ["our team's message", [1]], ["a customer text from before the waiting tag", [0]], ["a call summary", [3]],
     ["an id that does not exist", [42]], ["no item at all", []], ["a non-numeric id", ["2"]],
   ])("refuses a confirmation that cites %s", async (_label, ids) => {
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "", confirmed: true, confirming_items: ids, reason: "Agreed" }));
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "", our_proposal_item: 1, customer_changed_time: false, change_items: [], confirmed: true, confirming_items: ids, reason: "Agreed" }));
     expect(await assessScheduleCandidate(job, "synthetic", fetcher)).toMatchObject({ decision: "needs_review", reason: "AI said confirmed but did not point to the customer's own words." });
+  });
+  describe("only our exact schedule is Ready; any customer change needs a new schedule", () => {
+    const proposal: ConversationMessage = { sender: "agent", direction: "outbound", text: "We can send the tech Friday 11/13 between 9 and 11. Does that work?", message_time: "2026-11-30T11:00:00Z", quo_message_id: "p1" };
+    const reply = (text: string, minute = 5): ConversationMessage => ({ sender: "customer", direction: "inbound", text, message_time: `2026-11-30T11:${String(minute).padStart(2, "0")}:00Z`, quo_message_id: `r${minute}` });
+    const answer = (patch: object) => aiAnswer({ analysis: "", our_proposal_item: 0, customer_changed_time: false, change_items: [], confirmed: true, confirming_items: [1], reason: "Agreed.", ...patch });
+    const changed = (change_items: number[], patch: object = {}) => answer({ customer_changed_time: true, change_items, confirmed: false, confirming_items: [], reason: "Customer asked for another time.", ...patch });
+
+    // Scenario H — real replies, including three the old worker wrongly moved to Ready on 2026-11-05.
+    it.each(["How about the 14th?", "09:30 and 10:30 on Saturday.", "Lets do it on Sat", "Can we do the 7th instead", "What about next week?"])(
+      "needs a new schedule when the customer names or asks for their own time: %s", async (text) => {
+        const fetcher = vi.fn().mockResolvedValue(changed([1]));
+        expect(await assessScheduleCandidate({ ...job, messages: [proposal, reply(text)] }, "synthetic", fetcher))
+          .toEqual({ decision: "new_schedule_needed", reason: "Customer asked for another time.", quote: text });
+      });
+    // Scenario F — a limit or preference inside our window is still a change.
+    it.each(["Ok . I should be free by 11:00.", "If you can be at my house at 9am then yes", "Yes we are waiting. Earlier would be better"])(
+      "needs a new schedule when the customer narrows or conditions our window: %s", async (text) => {
+        const fetcher = vi.fn().mockResolvedValue(changed([1]));
+        expect(await assessScheduleCandidate({ ...job, messages: [proposal, reply(text)] }, "synthetic", fetcher))
+          .toMatchObject({ decision: "new_schedule_needed", quote: text });
+      });
+    // Scenario C — the customer turned our time down, we sent a new one, they said ok.
+    it("still needs a new schedule after the customer accepts a new time we sent following their request", async () => {
+      const messages: ConversationMessage[] = [
+        proposal, reply("Saturday morning would be better. Is that available", 5),
+        { ...proposal, text: "My guy will be there on Saturday, October 31, between 9 and 11 AM. Is that work for you?", message_time: "2026-11-30T11:20:00Z", quo_message_id: "p2" },
+        reply("Awesome thank you", 25),
+      ];
+      // Even if the AI also says "confirmed", the requested change wins.
+      const fetcher = vi.fn().mockResolvedValue(changed([1], { our_proposal_item: 2, confirmed: true, confirming_items: [3] }));
+      expect(await assessScheduleCandidate({ ...job, messages }, "synthetic", fetcher))
+        .toMatchObject({ decision: "new_schedule_needed", quote: "Saturday morning would be better. Is that available" });
+    });
+    it("needs a new schedule when the customer asks for another day on a call", async () => {
+      const onCall: ConversationMessage[] = [{ kind: "call_transcript", sender: "customer", direction: "inbound", text: null, message_time: "2026-11-30T13:00:00Z",
+        quo_message_id: "c8:call.transcript.completed", dialogue: [
+          { speaker: "our_team", content: "We have you for Friday nine to eleven." }, { speaker: "customer", content: "It'll have to be afternoon, I have a doctor's appointment" },
+          { speaker: "our_team", content: "Sure, afternoon works." }, { speaker: "customer", content: "Okay great." }] }];
+      const fetcher = vi.fn().mockResolvedValue(changed([1]));
+      expect(await assessScheduleCandidate({ ...job, messages: onCall }, "synthetic", fetcher))
+        .toMatchObject({ decision: "new_schedule_needed", quote: "It'll have to be afternoon, I have a doctor's appointment" });
+    });
+    // Scenario D — asked about another day, then accepted our ORIGINAL time unchanged: Ready.
+    it("confirms when the customer goes back to the time our team had already sent", async () => {
+      const messages: ConversationMessage[] = [
+        proposal, reply("Is there any availability on Friday or Saturday?", 5),
+        { ...proposal, text: "Sorry, we are fully booked those days.", message_time: "2026-11-30T11:10:00Z", quo_message_id: "p2" },
+        reply("No problem. Friday 11/13 between 9 and 11 works.", 15),
+      ];
+      const fetcher = vi.fn().mockResolvedValue(answer({ our_proposal_item: 0, confirming_items: [3] }));
+      expect(await assessScheduleCandidate({ ...job, messages }, "synthetic", fetcher))
+        .toMatchObject({ decision: "confirmed", quote: "No problem. Friday 11/13 between 9 and 11 works." });
+    });
+    // Scenario I — vague "later" is neither acceptance nor a new-schedule request: stays waiting.
+    it.each(["I do. In about 1 week", "I will confirm tomorrow"])("keeps waiting on a vague answer: %s", async (text) => {
+      const fetcher = vi.fn().mockResolvedValue(answer({ confirmed: false, confirming_items: [], reason: "Customer has not decided." }));
+      expect(await assessScheduleCandidate({ ...job, messages: [proposal, reply(text)] }, "synthetic", fetcher))
+        .toEqual({ decision: "needs_review", reason: "Customer has not decided." });
+    });
+    it("does not act on a change the AI cannot tie to the customer's own words", async () => {
+      for (const change_items of [[], [0], [42], ["1"]]) {
+        const fetcher = vi.fn().mockResolvedValue(changed(change_items as number[]));
+        expect(await assessScheduleCandidate({ ...job, messages: [proposal, reply("Lets do it on Sat")] }, "synthetic", fetcher))
+          .toMatchObject({ decision: "needs_review", reason: "AI said the customer asked for a new time but did not point to the customer's own words." });
+      }
+      // A customer request from before the waiting tag is history, not a new request.
+      const old = { ...reply("Can we do Monday", 5), message_time: "2026-11-29T08:00:00Z" };
+      const fetcher = vi.fn().mockResolvedValue(changed([0], { our_proposal_item: 1 }));
+      expect((await assessScheduleCandidate({ ...job, messages: [old, proposal, reply("ok", 6)] }, "synthetic", fetcher)).decision).toBe("needs_review");
+    });
+
+    it("confirms a plain yes to our proposal, by text or on a call", async () => {
+      const fetcher = vi.fn().mockImplementation(async () => answer({}));
+      expect(await assessScheduleCandidate({ ...job, messages: [proposal, reply("Yes It works")] }, "synthetic", fetcher))
+        .toMatchObject({ decision: "confirmed", quote: "Yes It works" });
+      const onCall: ConversationMessage[] = [{ kind: "call_transcript", sender: "customer", direction: "inbound", text: null, message_time: "2026-11-30T13:00:00Z",
+        quo_message_id: "c9:call.transcript.completed", dialogue: [
+          { speaker: "our_team", content: "We have you for Friday nine to eleven, does that still work?" }, { speaker: "customer", content: "Yes, Friday is good." }] }];
+      expect(await assessScheduleCandidate({ ...job, messages: onCall }, "synthetic", fetcher)).toMatchObject({ decision: "confirmed", quote: "Yes, Friday is good." });
+    });
+    it("confirms an acceptance followed by a question", async () => {
+      const fetcher = vi.fn().mockResolvedValue(answer({}));
+      expect(await assessScheduleCandidate({ ...job, messages: [proposal, reply("That is fine. How do you want payment?")] }, "synthetic", fetcher))
+        .toMatchObject({ decision: "confirmed", quote: "That is fine. How do you want payment?" });
+    });
+    it("refuses a customer question even if the AI calls it a confirmation", async () => {
+      const fetcher = vi.fn().mockResolvedValue(answer({}));
+      expect(await assessScheduleCandidate({ ...job, messages: [proposal, reply("How about the 14th?")] }, "synthetic", fetcher))
+        .toMatchObject({ decision: "needs_review", reason: "AI said confirmed but did not point to the customer's own words." });
+    });
+    it("refuses when there is no proposal from our team", async () => {
+      const lone = [reply("Saturday works for me")];
+      for (const our_proposal_item of [-1, 0]) {
+        const fetcher = vi.fn().mockResolvedValue(answer({ our_proposal_item, confirming_items: [0] }));
+        expect(await assessScheduleCandidate({ ...job, messages: lone }, "synthetic", fetcher))
+          .toMatchObject({ decision: "needs_review", reason: "AI did not point to a schedule our team sent. No tag change." });
+      }
+    });
+    it("refuses customer words from before our latest proposal", async () => {
+      const messages = [reply("yes that works", 1), { ...proposal, message_time: "2026-11-30T11:03:00Z" }, reply("I'll check with my wife", 5)];
+      const fetcher = vi.fn().mockResolvedValue(answer({ our_proposal_item: 1, confirming_items: [0] }));
+      expect((await assessScheduleCandidate({ ...job, messages }, "synthetic", fetcher)).decision).toBe("needs_review");
+    });
+    it("tells only-question lines apart from an acceptance followed by a question", () => {
+      for (const q of ["How about the 14th?", "Is Tuesday an option?", "What is the name of your company?", "Can he come Tuesday? ", "So not on Wednesday??"]) expect(isOnlyQuestion(q)).toBe(true);
+      for (const a of ["That is fine. How do you want payment?", "Yes, we are available. What is his name?", "Yes It works", "Si está bien", "ok"]) expect(isOnlyQuestion(a)).toBe(false);
+    });
+    it("sends the new rule to the AI and treats a missing field as an invalid answer", async () => {
+      const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "", our_proposal_item: 0, customer_changed_time: false, confirmed: true, confirming_items: [1], reason: "no change_items" }));
+      expect((await assessScheduleCandidate({ ...job, messages: [proposal, reply("ok")] }, "synthetic", fetcher)).decision).toBe("unavailable");
+      const prompt = JSON.parse(fetcher.mock.calls[0][1].body).messages[0].content as string;
+      for (const phrase of ["OUR TEAM", "customer_changed_time", "change_items", "our team then sends a NEW day/time", "I should be free by 11", "what about next week?",
+        "had ALREADY sent before that request", "I do. In about 1 week"]) expect(prompt).toContain(phrase);
+    });
   });
   it("keeps only valid customer items when the AI cites a mix", () => {
     const transcript = buildScheduleTranscript(conversation, enteredAt);
     expect(resolveConfirmingQuote(transcript, [1, 2, 3])).toBe("Yes 10am works for me");
     expect(resolveConfirmingQuote(transcript, "2")).toBeNull();
   });
-  it("keeps the job waiting when the AI says the customer has not confirmed", async () => {
-    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "Customer asked for another day.", confirmed: false, confirming_items: [], reason: "Customer asked for Friday instead." }));
-    expect(await assessScheduleCandidate(job, "synthetic", fetcher)).toEqual({ decision: "needs_review", reason: "Customer asked for Friday instead." });
+  it("keeps the job waiting when the customer neither accepts nor asks for a change", async () => {
+    const fetcher = vi.fn().mockResolvedValue(aiAnswer({ analysis: "Customer is unsure.", our_proposal_item: 1, customer_changed_time: false, change_items: [], confirmed: false, confirming_items: [], reason: "Customer will confirm tomorrow." }));
+    expect(await assessScheduleCandidate(job, "synthetic", fetcher)).toEqual({ decision: "needs_review", reason: "Customer will confirm tomorrow." });
   });
   it("distinguishes missing config, provider failures and bad answers", async () => {
     const fetcher = vi.fn();

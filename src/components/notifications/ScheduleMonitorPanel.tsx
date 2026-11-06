@@ -11,13 +11,14 @@ const selectClass = "h-10 w-full rounded-md border bg-background px-3 text-sm";
 const MODE_LABELS: Record<ScheduleMonitorMode, string> = {
   off: "Off",
   shadow: "Shadow — AI records its answer, tags never change",
-  automatic: "On — AI moves confirmed jobs to Ready to schedule",
+  automatic: "On — AI moves confirmed jobs to Ready to schedule, and jobs where the customer asked for another time to Customer Require New Schedule",
 };
 
 function resultSummary(job: ScheduleMonitorRow): string {
   const result = job.result;
   if (!result) return job.evidence ? "New message or call. AI check is queued." : "Waiting for a new message or call.";
   if (result.decision === "confirmed") return result.applied ? "AI: customer confirmed. Tag changed to Ready to schedule." : "AI: customer confirmed (Shadow, tag not changed).";
+  if (result.decision === "new_schedule_needed") return result.applied ? "AI: customer asked for a different day/time. Tag changed to Customer Require New Schedule." : "AI: customer asked for a different day/time (Shadow, tag not changed).";
   if (result.decision === "unavailable") return "AI check unavailable. It will retry.";
   return "AI: not confirmed yet.";
 }

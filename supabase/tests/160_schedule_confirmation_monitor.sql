@@ -1,7 +1,7 @@
 -- WRITE-BASED, ISOLATED ONLY. Real triggers/service RPCs, synthetic fixtures,
 -- rollback. Never run this harness against the shared production project.
 -- Covers 20261020070343 as superseded by 20261130000000_ai_schedule_confirmation
--- and 20261201000000_ai_schedule_confirmation_calls.
+-- and 20261201000000_ai_schedule_confirmation_calls, and 20261202000000_ai_schedule_new_schedule_tag.
 BEGIN;
 CREATE TEMP TABLE checks(name text,result text);
 GRANT ALL ON checks TO authenticated,service_role;
@@ -215,6 +215,46 @@ INSERT INTO batch SELECT public.claim_schedule_checks();
 SELECT pg_temp.check_result('Customer confirmation on a call commits',public.finish_schedule_check(pg_temp.finish_input('confirmed','Yes tomorrow at 10 is perfect')));
 RESET ROLE;
 SELECT pg_temp.check_result('Call confirmation moves the tag and marks it AI',(SELECT cs_tag='ready_to_schedule' AND cs_tag_source='ai' FROM public.leads WHERE job_id='SCHED-TEST'));
+
+-- 20261202000000: a customer who asks for a different time needs a new schedule.
+UPDATE public.leads SET cs_tag='waiting_schedule_confirmation' WHERE job_id='SCHED-TEST';
+SELECT set_config('request.jwt.claim.role','service_role',true);
+SET LOCAL ROLE service_role;
+INSERT INTO public.quo_messages(id,conversation_id,quo_message_id,sender,direction,text,message_time)
+ VALUES('16000000-0000-4000-8000-000000000070','16000000-0000-4000-8000-000000000030','trusted-change','customer','inbound','How about the 14th instead?',now()+interval '5 seconds');
+RESET ROLE;
+UPDATE marshmallow_private.schedule_monitor_queue SET available_at=now()-interval '1 second' WHERE lead_id='16000000-0000-4000-8000-000000000010';
+TRUNCATE batch;
+SET LOCAL ROLE service_role;
+INSERT INTO batch SELECT public.claim_schedule_checks();
+SELECT pg_temp.check_error('Unknown AI decision is rejected',$q$SELECT public.finish_schedule_check(pg_temp.finish_input('reschedule','How about the 14th instead?'))$q$,'22023');
+SELECT public.finish_schedule_check(pg_temp.finish_input('new_schedule_needed','Can we move it to Friday'));
+RESET ROLE;
+SELECT pg_temp.check_result('New-schedule decision with invented words changes nothing',(SELECT l.cs_tag='waiting_schedule_confirmation' AND q.result->>'decision'='needs_review'
+  FROM public.leads l JOIN marshmallow_private.schedule_monitor_queue q ON q.lead_id=l.id WHERE l.job_id='SCHED-TEST'));
+UPDATE marshmallow_private.schedule_monitor_queue SET state='pending',available_at=now()-interval '1 second' WHERE lead_id='16000000-0000-4000-8000-000000000010';
+TRUNCATE batch;
+SET LOCAL ROLE service_role;
+INSERT INTO batch SELECT public.claim_schedule_checks();
+SELECT pg_temp.check_result('Customer asking for another time commits',public.finish_schedule_check(pg_temp.finish_input('new_schedule_needed','How about the 14th instead?')));
+RESET ROLE;
+SELECT pg_temp.check_result('Tag moves to Customer Require New Schedule and is marked AI',(SELECT cs_tag='confirmation_sent' AND cs_tag_source='ai' FROM public.leads WHERE job_id='SCHED-TEST'));
+SELECT pg_temp.check_result('New-schedule decision changes only the tag and its AI marker',(SELECT (to_jsonb(l)-'cs_tag'-'cs_tag_source')=(o.value-'cs_tag'-'cs_tag_source') FROM public.leads l CROSS JOIN original o WHERE job_id='SCHED-TEST'));
+SELECT pg_temp.check_result('One audited AI new-schedule transition',(SELECT count(*)=1 FROM public.activity_logs WHERE action='schedule_new_schedule_tag_applied' AND user_name='AI schedule confirmation'
+  AND details LIKE '%-> Customer Require New Schedule. Customer said: "How about the 14th instead?"%'));
+SELECT pg_temp.check_result('New-schedule alert goes to lead CS, CS Admin, Admin and Processor only',(SELECT array_agg(n.user_id ORDER BY n.user_id)=ARRAY['16000000-0000-4000-8000-000000000001','16000000-0000-4000-8000-000000000002','16000000-0000-4000-8000-000000000003','16000000-0000-4000-8000-000000000005']::uuid[]
+  AND bool_and(n.title='AI: Customer requires new schedule' AND n.message LIKE 'Job ID: SCHED-TEST%' AND n.message LIKE '%Customer said: "How about the 14th instead?"%')
+  FROM public.notifications n JOIN public.workflow_notification_events e ON e.notification_id=n.id WHERE e.event_type='schedule_new_needed'));
+SELECT set_config('request.jwt.claim.role','authenticated',true);
+SELECT set_config('request.jwt.claim.sub','16000000-0000-4000-8000-000000000002',true);
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.check_result('New-schedule alert is a Schedule notification and a pop-up',(SELECT
+  EXISTS(SELECT 1 FROM jsonb_array_elements(public.workflow_notifications('{"action":"list","category":"schedule"}')->'rows') r WHERE r->>'event_type'='schedule_new_needed')
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements(public.workflow_notifications('{"action":"alerts","after":"2000-01-01T00:00:00Z"}')->'rows') r WHERE r->>'event_type'='schedule_new_needed')
+  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.workflow_notifications('{"action":"list","category":"other"}')->'rows') r WHERE r->>'event_type'='schedule_new_needed')));
+RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','',true);
+SELECT set_config('request.jwt.claim.role','service_role',true);
 
 -- Two waiting jobs for the same customer: the AI cannot know which one.
 UPDATE public.leads SET cs_tag='waiting_schedule_confirmation' WHERE job_id='SCHED-TEST';

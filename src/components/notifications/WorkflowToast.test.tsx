@@ -31,3 +31,13 @@ it("keeps an AI schedule confirmation on screen with the job details until dismi
   fireEvent.click(screen.getByRole("button", { name: "Dismiss notification" })); expect(dismiss).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole("button", { name: "View job" })); expect(open).toHaveBeenCalledOnce();
 });
+it("keeps an AI 'customer requires new schedule' alert on screen with the customer's words and opens the job", () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] }); const dismiss = vi.fn(); const open = vi.fn();
+  const newSchedule = { id: "synthetic-new", title: "AI: Customer requires new schedule", event_type: "schedule_new_needed" as const,
+    message: "Job ID: SYN-2\nCustomer: Jane Sample\nCustomer said: \"How about the 14th?\"\nTag changed by AI: Waiting for CX for schedule confirmation -> Customer Require New Schedule" };
+  render(<WorkflowToast notification={newSchedule} onDismiss={dismiss} onOpen={open} />);
+  const status = screen.getByRole("status");
+  for (const text of ["AI: Customer requires new schedule", "Job ID: SYN-2", "Customer said: \"How about the 14th?\"", "-> Customer Require New Schedule"]) expect(status).toHaveTextContent(text);
+  act(() => { vi.advanceTimersByTime(60000); }); expect(dismiss).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "View job" })); expect(open).toHaveBeenCalledOnce();
+});
