@@ -45,4 +45,10 @@ Operator) also see only their range once one is set.
 | opr_admin | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
   After applying, with no grants, the matrix must be identical.
+- **Applied in production 2026-11-07.** The after-run of the same harness matched
+  the table above cell for cell. Read-only checks: grants table has RLS on and 0
+  rows; signed-in users can read it but not write it; `set_paid_lead_access` is
+  callable by signed-in users (Admin check inside) and not anonymously; the new
+  lead policy is SELECT only; no user has Paid switched on yet. The Settings range
+  dialog **awaits CRM Publish**.
 - No Donut counterpart (Donut has no status visibility settings).
