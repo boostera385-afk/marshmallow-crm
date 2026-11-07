@@ -29,6 +29,8 @@ import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy
 import { DocumentationTab } from "@/components/settings/DocumentationTab";
 import { GoogleSheetsTab } from "@/components/settings/GoogleSheetsTab";
 import LeadCopyAccessSettings from "@/components/settings/LeadCopyAccessSettings";
+import PaidLeadAccessDialog from "@/components/settings/PaidLeadAccessDialog";
+import { describePaidWindow, fetchPaidLeadAccess, setPaidLeadAccess, type PaidAccessChoice } from "@/lib/paid-lead-access";
 import { type AccessFeature } from "@/components/settings/FeatureAccessMatrix";
 const CrmUpdates = lazy(() => import("@/pages/CrmUpdates"));
 import { cn } from "@/lib/utils";
@@ -361,6 +363,28 @@ const Settings = () => {
       if (error) throw error;
       return data ?? [];
     },
+  });
+
+  // Paid-lead grants: which paid leads each user with Paid switched on can see.
+  const { data: paidGrants = [] } = useQuery({
+    queryKey: ["settings-paid-lead-access"],
+    enabled: isAdmin,
+    queryFn: fetchPaidLeadAccess,
+  });
+  const paidGrantByUser = useMemo(() => new Map(paidGrants.map((grant) => [grant.user_id, grant])), [paidGrants]);
+  const [paidDialogUserId, setPaidDialogUserId] = useState<string | null>(null);
+  const savePaidAccess = useMutation({
+    mutationFn: ({ userId, choice }: { userId: string; choice: PaidAccessChoice | null }) => setPaidLeadAccess(userId, choice),
+    onSuccess: (_data, { choice }) => {
+      setPaidDialogUserId(null);
+      queryClient.invalidateQueries({ queryKey: ["settings-paid-lead-access"] });
+      queryClient.invalidateQueries({ queryKey: ["settings-status-visibility"] });
+      queryClient.invalidateQueries({ queryKey: ["lead-status-visibility"] });
+      queryClient.invalidateQueries({ queryKey: ["paid-lead-access"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast.success(choice ? `Paid leads shared: ${choice.mode === "all" ? "all time" : describePaidWindow({ start_date: choice.start, end_date: choice.end })}` : "Paid leads access removed");
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed to update paid lead access"),
   });
 
   const { data: statusVisibility = [] } = useQuery<StatusVisibilityRow[]>({
@@ -1416,26 +1440,65 @@ const Settings = () => {
                           </div>
                         </td>
 
-                        {ALL_LEAD_STATUSES.map((status) => (
-                          <td key={status} className="px-2 py-3 text-center">
-                            <Switch
-                              checked={getStatusVisibility(targetUser.id, status)}
-                              onCheckedChange={(checked) =>
-                                toggleStatusVisibility.mutate({
-                                  userId: targetUser.id,
-                                  status,
-                                  isVisible: checked,
-                                })
-                              }
-                            />
-                          </td>
-                        ))}
+                        {ALL_LEAD_STATUSES.map((status) => {
+                          // Paid for a user also decides which paid leads they can see:
+                          // switching it on asks All time or a date range.
+                          if (status === "paid") {
+                            const grant = paidGrantByUser.get(targetUser.id);
+                            const on = getStatusVisibility(targetUser.id, status);
+                            return (
+                              <td key={status} className="px-2 py-3 text-center">
+                                <Switch
+                                  checked={on}
+                                  disabled={savePaidAccess.isPending}
+                                  aria-label={`Paid leads for ${targetUser.full_name || targetUser.email || "user"}`}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) setPaidDialogUserId(targetUser.id);
+                                    else savePaidAccess.mutate({ userId: targetUser.id, choice: null });
+                                  }}
+                                />
+                                {on && grant && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPaidDialogUserId(targetUser.id)}
+                                    className="mt-1 block w-full whitespace-nowrap text-[9px] text-primary underline-offset-2 hover:underline"
+                                    title="Change which paid leads this user can see"
+                                  >
+                                    {describePaidWindow(grant)}
+                                  </button>
+                                )}
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={status} className="px-2 py-3 text-center">
+                              <Switch
+                                checked={getStatusVisibility(targetUser.id, status)}
+                                onCheckedChange={(checked) =>
+                                  toggleStatusVisibility.mutate({
+                                    userId: targetUser.id,
+                                    status,
+                                    isVisible: checked,
+                                  })
+                                }
+                              />
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
+            <PaidLeadAccessDialog
+              open={paidDialogUserId !== null}
+              userName={(paidDialogUserId && (getUserById(paidDialogUserId)?.full_name || getUserById(paidDialogUserId)?.email)) || "this user"}
+              current={paidDialogUserId ? paidGrantByUser.get(paidDialogUserId) ?? null : null}
+              saving={savePaidAccess.isPending}
+              onCancel={() => setPaidDialogUserId(null)}
+              onConfirm={(choice) => { if (paidDialogUserId) savePaidAccess.mutate({ userId: paidDialogUserId, choice }); }}
+            />
           </CardContent>
         </Card>
       )}

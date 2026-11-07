@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getDefaultVisibleStatuses, isOperatorRole } from "@/lib/access";
 import { isScheduleTag } from "@/lib/lead-tags";
+import { fetchPaidLeadAccess, isInPaidWindow } from "@/lib/paid-lead-access";
 import type { LeadStatus } from "@/types";
 
 type VisibilityRow = {
@@ -61,11 +62,23 @@ export function useAllowedStatuses() {
     staleTime: 30_000,
   });
 
+  // The user's paid-lead grant (Settings -> Status visibility -> Paid). A date range
+  // limits which paid leads show, matching the database for every role.
+  const { data: paidGrant = null } = useQuery({
+    queryKey: ["paid-lead-access", user?.id],
+    enabled: !!user?.id && !!role && role !== "admin",
+    queryFn: async () => (await fetchPaidLeadAccess()).find((grant) => grant.user_id === user?.id) ?? null,
+    staleTime: 30_000,
+  });
+
   const statuses = allowedStatuses ?? getDefaultVisibleStatuses(role);
 
-  const filterLeads = <T extends { status: string; cs_tag?: string | null }>(leads: T[]): T[] => {
-    // Operators see tagged leads, but only for the scheduling tags their workflow covers.
-    return leads.filter((lead) => statuses.has(lead.status) || (isOperatorRole(role) && isScheduleTag(lead.cs_tag)));
+  const filterLeads = <T extends { status: string; cs_tag?: string | null; created_at?: string | null }>(leads: T[]): T[] => {
+    return leads.filter((lead) => {
+      if (lead.status === "paid" && paidGrant && !isInPaidWindow(lead.created_at, paidGrant)) return false;
+      // Operators see tagged leads, but only for the scheduling tags their workflow covers.
+      return statuses.has(lead.status) || (isOperatorRole(role) && isScheduleTag(lead.cs_tag));
+    });
   };
 
   return {
