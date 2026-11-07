@@ -1,3 +1,4 @@
+import { onScheduleRequirementSaved } from "@/lib/schedule-requirement";
 import { redactLeadForOperator, withOperatorLocation } from "@/lib/operator-privacy";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -439,6 +440,17 @@ export default function LeadDetailPage() {
       void supabase.removeChannel(channel);
     };
   }, [leadId, isNew, user?.id, navigate]);
+
+  // A schedule requirement saved from a prompt in this tab updates this page too, so a
+  // later "Save Lead" cannot write the old value back.
+  useEffect(() => {
+    if (!leadId) return;
+    return onScheduleRequirementSaved(({ leadId: savedId, value }) => {
+      if (savedId !== leadId) return;
+      setForm((previous) => ({ ...previous, customer_schedule_requirements: value ?? "" }));
+      setOriginalLead((previous) => (previous ? { ...previous, customer_schedule_requirements: value } : previous));
+    });
+  }, [leadId]);
 
   const refreshPendingCancellationRequest = useCallback(async () => {
     if (!leadId) {

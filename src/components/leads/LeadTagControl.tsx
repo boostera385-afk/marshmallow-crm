@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isOperatorRole } from "@/lib/access";
 import { getAssignableLeadTags } from "@/lib/lead-tags";
 import { saveLeadTag } from "@/lib/lead-tag-actions";
+import { promptsForNewSchedule, requestScheduleRequirementPrompt } from "@/lib/schedule-requirement";
 import { CS_TAG_LABELS, type CsTag, type Lead } from "@/types";
 import BookingDateTimeDialog, { formatBookingCompact, isBookingExpired } from "./BookingDateTimeDialog";
 import AiTagBadge from "./AiTagBadge";
@@ -38,6 +39,10 @@ export default function LeadTagControl({ lead, onSaved, className }: Props) {
     setSaving(false);
 
     if (ok) {
+      // Customer Require New Schedule: ask for the customer's new schedule right away.
+      if (promptsForNewSchedule(currentTag, newTag)) {
+        requestScheduleRequirementPrompt({ key: `tag:${lead.id}:${Date.now()}`, leadId: lead.id, customerName: lead.customer_name });
+      }
       onSaved({
         cs_tag: newTag,
         // A person's tag change clears the AI marker in the database too.

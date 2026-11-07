@@ -1,3 +1,5 @@
+import ScheduleRequirementDialog from "./ScheduleRequirementDialog";
+import { promptsForNewSchedule, requestScheduleRequirementPrompt } from "@/lib/schedule-requirement";
 import { redactLeadForOperator } from "@/lib/operator-privacy";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -55,7 +57,6 @@ import LeadShareDialog from "./LeadShareDialog";
 import CancelledStatusBadge from "./CancelledStatusBadge";
 import NearbyUrgentLeads from "./NearbyUrgentLeads";
 import type { ProximityLead } from "@/lib/lead-proximity";
-import MultiDateTimePicker from "./MultiDateTimePicker";
 import {
   Dialog,
   DialogContent,
@@ -731,8 +732,6 @@ function LeadCard({
   // Schedule requirement is editable straight from the card, so CS does not have to open the
   // lead just to add a date.
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [scheduleDraft, setScheduleDraft] = useState("");
-  const [savingSchedule, setSavingSchedule] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // Service details shows on the card surface, clamped until the user expands it.
   const [serviceDetailsExpanded, setServiceDetailsExpanded] = useState(false);
@@ -1291,32 +1290,7 @@ function LeadCard({
   };
 
   const openScheduleDialog = () => {
-    setScheduleDraft(lead.customer_schedule_requirements || "");
     setScheduleOpen(true);
-  };
-
-  const saveScheduleRequirement = async () => {
-    setSavingSchedule(true);
-    const next = scheduleDraft.trim() ? scheduleDraft.trim() : null;
-    const patch = {
-      customer_schedule_requirements: next,
-      last_edited_by: user?.id,
-      last_edited_by_name: profile?.full_name || user?.email || "Unknown user",
-      updated_at: new Date().toISOString(),
-      last_edited_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase.from("leads").update(patch as never).eq("id", lead.id);
-    setSavingSchedule(false);
-
-    if (error) {
-      toast.error("Failed to update schedule requirement");
-      return;
-    }
-
-    toast.success(next ? "Schedule requirement updated" : "Schedule requirement cleared");
-    setScheduleOpen(false);
-    onRefresh();
   };
 
   const persistCsTag = async (
@@ -1330,7 +1304,14 @@ function LeadCard({
       editor: { id: user?.id, name: profile?.full_name || user?.email || "Unknown user" },
       options: opts,
     });
-    if (ok) onRefresh();
+    if (ok) {
+      onRefresh();
+      // Customer Require New Schedule: ask for the customer's new schedule right away.
+      // Shown app-wide, so it stays open if this card leaves the list after the change.
+      if (promptsForNewSchedule(lead.cs_tag, newTag)) {
+        requestScheduleRequirementPrompt({ key: `tag:${lead.id}:${Date.now()}`, leadId: lead.id, customerName: lead.customer_name });
+      }
+    }
     return ok;
   };
 
@@ -2120,27 +2101,15 @@ function LeadCard({
           leadId={lead.id}
         />
 
-        <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
-          <DialogContent className="sm:max-w-[460px]" onClick={(e) => e.stopPropagation()}>
-            <DialogHeader>
-              <DialogTitle className="text-base">Customer Schedule Requirement</DialogTitle>
-              <DialogDescription className="text-xs">
-                {lead.customer_name} - add or remove the dates the customer is available.
-              </DialogDescription>
-            </DialogHeader>
-
-            <MultiDateTimePicker value={scheduleDraft} onChange={setScheduleDraft} />
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setScheduleOpen(false)} disabled={savingSchedule}>
-                Cancel
-              </Button>
-              <Button onClick={saveScheduleRequirement} disabled={savingSchedule}>
-                {savingSchedule ? "Saving..." : "Save"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <ScheduleRequirementDialog
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+          leadId={lead.id}
+          customerName={lead.customer_name}
+          initialValue={lead.customer_schedule_requirements}
+          editor={{ id: user?.id, name: profile?.full_name || user?.email || "Unknown user" }}
+          onSaved={() => onRefresh()}
+        />
 
         <BookingDateTimeDialog
           open={bookingDialogOpen}

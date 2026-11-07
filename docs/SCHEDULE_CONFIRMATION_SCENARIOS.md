@@ -71,3 +71,21 @@ Business rule set on 2026-11-06, stricter than how people tagged these leads:
    Schedule. After setting the new schedule, set Waiting for CX for schedule
    confirmation again; the AI then reads only replies after that.
 4. Texts and call transcripts follow the same rules.
+
+## Schedule requirement prompt for "Customer Require New Schedule" (2026-11-07)
+
+- **Set by a person** (lead card or lead page): right after the tag saves, a
+  "Customer requires a new schedule" pop-up opens with the schedule requirement
+  picker, starting from the saved requirement. Save or Later.
+- **Set by the AI**: when the "AI: Customer requires new schedule" alert reaches a
+  **CS** (only for leads they created or are assigned to, since others cannot edit
+  them) or a **CS Admin**, the same pop-up opens for that lead with the customer's
+  words. Admin and Processor get the alert only. Each alert prompts once, like the
+  alert itself.
+- The pop-up is app-wide (`ScheduleRequirementPrompt`), so it stays open if the
+  lead card leaves the list after the tag change; requests queue one at a time.
+- Saving uses `saveScheduleRequirement` (same write as the card's schedule chip) and
+  updates an open lead page's form, so a later "Save Lead" cannot write back the old
+  value. The tag stays Customer Require New Schedule until a person changes it.
+- Frontend only: no migration or worker change. Needs CRM Publish. No Donut
+  counterpart (Donut does not set lead tags).
