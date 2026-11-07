@@ -9,12 +9,14 @@ vi.mock("@/lib/workflow-inbox", () => ({ fetchWorkflowAlerts: state.fetch, openI
 vi.mock("@/lib/notification-sound", () => ({ playAssignmentSound: state.sound }));
 vi.mock("@/lib/realtime", () => ({ realtimeBus: new EventTarget(), subscribeToNotifications: (_user: string, listener: () => void) => { state.listener = listener; return state.unsubscribe; } }));
 vi.mock("sonner", () => ({ toast: { custom: state.custom, dismiss: state.dismiss, error: vi.fn() } }));
+const prompt = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/schedule-requirement", async () => ({ ...(await vi.importActual<object>("@/lib/schedule-requirement")), requestScheduleRequirementPrompt: prompt }));
 const event = { id: "event-a", title: "CS Updated", message: "Job SYN-1 needs review", read: false, lead_id: null, event_type: "update_answered", created_at: "2026-10-20T00:00:00Z" };
 const empty = { rows: [], total: 0, unread_count: 0 };
 const mount = () => render(<MemoryRouter><WorkflowAlerts /></MemoryRouter>);
 beforeEach(() => {
   state.user = { id: "synthetic-a" }; state.role = "processor";
-  state.fetch.mockReset().mockResolvedValue(empty); state.custom.mockReset(); state.dismiss.mockReset(); state.sound.mockReset(); state.unsubscribe.mockReset();
+  state.fetch.mockReset().mockResolvedValue(empty); prompt.mockReset(); state.custom.mockReset(); state.dismiss.mockReset(); state.sound.mockReset(); state.unsubscribe.mockReset();
   localStorage.clear();
   Object.defineProperty(navigator, "locks", { configurable: true, value: { request: (_key: string, action: () => unknown) => Promise.resolve(action()) } });
   setWorkflowSounds(state.user.id, true);
@@ -54,4 +56,25 @@ it("cleans up shown notices and the shared subscription on unmount", async () =>
 it("does not fetch or subscribe for excluded roles", async () => {
   state.role = "opr"; mount(); await act(async () => undefined);
   expect(state.fetch).not.toHaveBeenCalled(); expect(state.custom).not.toHaveBeenCalled();
+});
+
+const newSchedule = { ...event, id: "event-ns", title: "AI: Customer requires new schedule", event_type: "schedule_ready", event_kind: "schedule_new_needed", job_id: "LD-SYN1",
+  message: 'Job ID: LD-SYN1\nCustomer said: "Lets do it on Sat"\nTag changed by AI: Waiting for CX for schedule confirmation -> Customer Require New Schedule' };
+it.each(["customer_service", "cs_admin"])("asks %s for the new schedule requirement when the AI sets the tag", async (role) => {
+  state.role = role;
+  state.fetch.mockResolvedValue({ rows: [newSchedule], total: 1, unread_count: 1 });
+  mount(); await waitFor(() => expect(state.custom).toHaveBeenCalledOnce());
+  expect(prompt).toHaveBeenCalledWith({ key: "alert:event-ns", jobId: "LD-SYN1", customerSaid: "Lets do it on Sat" });
+});
+it.each(["processor", "admin"])("only shows the alert, without the schedule prompt, for %s", async (role) => {
+  state.role = role;
+  state.fetch.mockResolvedValue({ rows: [newSchedule, { ...event, id: "event-ready", event_type: "schedule_ready", job_id: "LD-SYN2" }], total: 2, unread_count: 2 });
+  mount(); await waitFor(() => expect(state.custom).toHaveBeenCalledTimes(2));
+  expect(prompt).not.toHaveBeenCalled();
+});
+it("does not prompt CS for other alerts", async () => {
+  state.role = "customer_service";
+  state.fetch.mockResolvedValue({ rows: [{ ...event, id: "event-ready", event_type: "schedule_ready", event_kind: "schedule_ready", job_id: "LD-SYN2" }], total: 1, unread_count: 1 });
+  mount(); await waitFor(() => expect(state.custom).toHaveBeenCalledOnce());
+  expect(prompt).not.toHaveBeenCalled();
 });

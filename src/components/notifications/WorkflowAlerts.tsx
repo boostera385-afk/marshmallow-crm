@@ -8,6 +8,7 @@ import { claimWorkflowAlert, claimWorkflowChime, loadAlertCursor, pollAlertDelay
 import { playAssignmentSound } from "@/lib/notification-sound";
 import { subscribeToNotifications, realtimeBus } from "@/lib/realtime";
 import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
+import { customerSaidFromAlert, isNewScheduleAlert, requestScheduleRequirementPrompt } from "@/lib/schedule-requirement";
 import WorkflowToast from "./WorkflowToast";
 
 export default function WorkflowAlerts() {
@@ -34,6 +35,11 @@ export default function WorkflowAlerts() {
             displayed.current.add(toastId);
             const dismiss = () => { toast.dismiss(toastId); displayed.current.delete(toastId); };
             if (claimWorkflowChime(user.id)) playAssignmentSound();
+            // AI set "Customer Require New Schedule": CS and CS Admin also get the
+            // schedule requirement prompt for that lead (shown once, like the alert).
+            if (isNewScheduleAlert(notification) && (role === "customer_service" || role === "cs_admin") && notification.job_id) {
+              requestScheduleRequirementPrompt({ key: `alert:${notification.id}`, jobId: notification.job_id, customerSaid: customerSaidFromAlert(notification.message) });
+            }
             toast.custom(() => <WorkflowToast notification={notification} onDismiss={dismiss} onOpen={() => {
               void openInboxNotification(notification).then((href) => {
                 if (!isCurrent()) return;

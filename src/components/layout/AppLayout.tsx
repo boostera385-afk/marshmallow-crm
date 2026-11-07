@@ -1,3 +1,4 @@
+import ScheduleRequirementPrompt from "@/components/leads/ScheduleRequirementPrompt";
 import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/layout/AppSidebar";
 import NotificationBell from "@/components/notifications/NotificationBell";
@@ -151,6 +152,7 @@ export default function AppLayout() {
             </main>
           <NotificationPopupProvider>
             <WorkflowAlerts />
+            <ScheduleRequirementPrompt />
             <HoldJobPopup />
             {!isQuoMonitor && <UrgentLeadPopup />}
             {!isQuoMonitor && <JobInProgressPopup />}
