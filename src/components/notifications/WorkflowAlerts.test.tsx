@@ -64,7 +64,7 @@ it.each(["customer_service", "cs_admin"])("asks %s for the new schedule requirem
   state.role = role;
   state.fetch.mockResolvedValue({ rows: [newSchedule], total: 1, unread_count: 1 });
   mount(); await waitFor(() => expect(state.custom).toHaveBeenCalledOnce());
-  expect(prompt).toHaveBeenCalledWith({ key: "alert:event-ns", jobId: "LD-SYN1", customerSaid: "Lets do it on Sat" });
+  expect(prompt).toHaveBeenCalledWith({ key: "alert:event-ns", source: "ai", jobId: "LD-SYN1", customerSaid: "Lets do it on Sat" });
 });
 it.each(["processor", "admin"])("only shows the alert, without the schedule prompt, for %s", async (role) => {
   state.role = role;

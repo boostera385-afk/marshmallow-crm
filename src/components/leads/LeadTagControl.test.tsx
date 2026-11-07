@@ -27,7 +27,9 @@ it("asks for the new schedule requirement right after Customer Require New Sched
   fireEvent.change(screen.getByLabelText("Lead tag"), { target: { value: "confirmation_sent" } });
   await waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ cs_tag: "confirmation_sent" })));
   expect(state.prompt).toHaveBeenCalledOnce();
-  expect(state.prompt).toHaveBeenCalledWith(expect.objectContaining({ leadId: "lead-1", customerName: "Jane Sample" }));
+  expect(state.prompt).toHaveBeenCalledWith(expect.objectContaining({ source: "manual", leadId: "lead-1", customerName: "Jane Sample" }));
+  // Only this person's screen: the tag save sends no alert or notification to anyone else.
+  expect(state.save).toHaveBeenCalledOnce();
 });
 
 it("does not prompt for other tags, or when the tag save fails", async () => {

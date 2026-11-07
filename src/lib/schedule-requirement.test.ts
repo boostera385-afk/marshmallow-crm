@@ -30,11 +30,11 @@ describe("new schedule prompt rules", () => {
   it("delivers prompt requests to listeners", () => {
     const listener = vi.fn();
     const stop = onScheduleRequirementPrompt(listener);
-    requestScheduleRequirementPrompt({ key: "k", leadId: "lead-1" });
+    requestScheduleRequirementPrompt({ key: "k", source: "manual", leadId: "lead-1" });
     stop();
-    requestScheduleRequirementPrompt({ key: "k2", leadId: "lead-1" });
+    requestScheduleRequirementPrompt({ key: "k2", source: "manual", leadId: "lead-1" });
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener).toHaveBeenCalledWith({ key: "k", leadId: "lead-1" });
+    expect(listener).toHaveBeenCalledWith({ key: "k", source: "manual", leadId: "lead-1" });
   });
 });
 

@@ -1309,7 +1309,7 @@ function LeadCard({
       // Customer Require New Schedule: ask for the customer's new schedule right away.
       // Shown app-wide, so it stays open if this card leaves the list after the change.
       if (promptsForNewSchedule(lead.cs_tag, newTag)) {
-        requestScheduleRequirementPrompt({ key: `tag:${lead.id}:${Date.now()}`, leadId: lead.id, customerName: lead.customer_name });
+        requestScheduleRequirementPrompt({ key: `tag:${lead.id}:${Date.now()}`, source: "manual", leadId: lead.id, customerName: lead.customer_name });
       }
     }
     return ok;

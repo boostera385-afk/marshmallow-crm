@@ -11,7 +11,7 @@ interface PromptLead { key: string; leadId: string; jobId: string | null; custom
  * Customer Require New Schedule tag, and for CS / CS Admin when the AI sets it. Lives
  * at the app level so it survives the lead card leaving the list after its tag change.
  * Requests queue and each one shows once; the lead is re-read so the picker starts
- * from the saved requirement, and a CS only gets it for a lead they can edit.
+ * from the saved requirement. For AI alerts a CS is asked only for leads they created.
  */
 export default function ScheduleRequirementPrompt() {
   const { user, role, profile } = useAuth();
@@ -30,8 +30,10 @@ export default function ScheduleRequirementPrompt() {
         const { data } = await query.maybeSingle();
         // No access (RLS) or the lead is gone: nothing to prompt for.
         if (!data) return;
-        // A CS can only edit leads they created or are assigned to.
-        if (role === "customer_service" && data.created_by !== userId && data.assigned_cs !== userId) return;
+        // AI alerts: among CS users, only the CS who created the lead is asked
+        // (assigned or shared CS still get the alert itself). A manual tag change
+        // prompts only the person who made it, in their own tab.
+        if (request.source === "ai" && role === "customer_service" && data.created_by !== userId) return;
         setQueue((current) => current.some((item) => item.leadId === data.id) ? current : [...current, {
           key: request.key, leadId: data.id, jobId: data.job_id ?? null, customerName: data.customer_name ?? request.customerName ?? null,
           initialValue: data.customer_schedule_requirements ?? null, customerSaid: request.customerSaid ?? null,
