@@ -41,7 +41,7 @@ export default function LeadTagControl({ lead, onSaved, className }: Props) {
     if (ok) {
       // Customer Require New Schedule: ask for the customer's new schedule right away.
       if (promptsForNewSchedule(currentTag, newTag)) {
-        requestScheduleRequirementPrompt({ key: `tag:${lead.id}:${Date.now()}`, leadId: lead.id, customerName: lead.customer_name });
+        requestScheduleRequirementPrompt({ key: `tag:${lead.id}:${Date.now()}`, source: "manual", leadId: lead.id, customerName: lead.customer_name });
       }
       onSaved({
         cs_tag: newTag,

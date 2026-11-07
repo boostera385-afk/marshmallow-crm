@@ -25,9 +25,9 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it("opens for the AI alert with the customer's words, starting from the saved requirement, and saves", async () => {
+it("AI alert: opens for the CS who created the lead, with the customer's words, starting from the saved requirement, and saves", async () => {
   render(<ScheduleRequirementPrompt />);
-  act(() => requestScheduleRequirementPrompt({ key: "alert:n1", jobId: "LD-SYN1", customerSaid: "How about the 14th?" }));
+  act(() => requestScheduleRequirementPrompt({ key: "alert:n1", source: "ai", jobId: "LD-SYN1", customerSaid: "How about the 14th?" }));
   expect(await screen.findByText("Customer requires a new schedule")).toBeInTheDocument();
   expect(state.filters).toEqual([["job_id", "LD-SYN1"]]);
   expect(screen.getByText("Customer said: “How about the 14th?”")).toBeInTheDocument();
@@ -40,9 +40,43 @@ it("opens for the AI alert with the customer's words, starting from the saved re
   await waitFor(() => expect(screen.queryByText("Customer requires a new schedule")).toBeNull());
 });
 
+it.each([
+  ["assigned to the lead but did not create it", { created_by: "creator-cs", assigned_cs: "cs-1" }],
+  ["only shared or unrelated", { created_by: "creator-cs", assigned_cs: "another-cs" }],
+])("AI alert: does not open for a CS who is %s", async (_label, owner) => {
+  state.lead = { ...lead, ...owner };
+  render(<ScheduleRequirementPrompt />);
+  act(() => requestScheduleRequirementPrompt({ key: "a", source: "ai", jobId: "LD-SYN1" }));
+  await waitFor(() => expect(state.filters).toHaveLength(1));
+  expect(screen.queryByText("Customer requires a new schedule")).toBeNull();
+});
+
+it("AI alert: does not open when the lead cannot be read", async () => {
+  state.lead = null;
+  render(<ScheduleRequirementPrompt />);
+  act(() => requestScheduleRequirementPrompt({ key: "b", source: "ai", jobId: "LD-SYN1" }));
+  await waitFor(() => expect(state.filters).toHaveLength(1));
+  expect(screen.queryByText("Customer requires a new schedule")).toBeNull();
+});
+
+it("AI alert: opens for a CS Admin on any lead they can read", async () => {
+  state.role = "cs_admin"; state.lead = { ...lead, created_by: "someone-else" };
+  render(<ScheduleRequirementPrompt />);
+  act(() => requestScheduleRequirementPrompt({ key: "a", source: "ai", jobId: "LD-SYN1" }));
+  expect(await screen.findByText("Customer requires a new schedule")).toBeInTheDocument();
+});
+
+it("Manual tag: opens for the person who set it, even if they did not create the lead", async () => {
+  state.lead = { ...lead, created_by: "creator-cs", assigned_cs: "cs-1" };
+  render(<ScheduleRequirementPrompt />);
+  act(() => requestScheduleRequirementPrompt({ key: "tag:lead-1:1", source: "manual", leadId: "lead-1" }));
+  expect(await screen.findByText("Customer requires a new schedule")).toBeInTheDocument();
+  expect(screen.queryByText(/Customer said/)).toBeNull();
+});
+
 it("shows each request once and closes with Later without saving", async () => {
   render(<ScheduleRequirementPrompt />);
-  act(() => { requestScheduleRequirementPrompt({ key: "tag:lead-1:1", leadId: "lead-1" }); requestScheduleRequirementPrompt({ key: "tag:lead-1:1", leadId: "lead-1" }); });
+  act(() => { requestScheduleRequirementPrompt({ key: "tag:lead-1:1", source: "manual", leadId: "lead-1" }); requestScheduleRequirementPrompt({ key: "tag:lead-1:1", source: "manual", leadId: "lead-1" }); });
   expect(await screen.findByText("Customer requires a new schedule")).toBeInTheDocument();
   expect(state.filters).toEqual([["id", "lead-1"]]);
   fireEvent.click(screen.getByRole("button", { name: "Later" }));
@@ -53,26 +87,8 @@ it("shows each request once and closes with Later without saving", async () => {
 it("keeps the prompt open and unsaved when the save fails", async () => {
   state.save.mockResolvedValue({ ok: false, value: "x" });
   render(<ScheduleRequirementPrompt />);
-  act(() => requestScheduleRequirementPrompt({ key: "k", leadId: "lead-1" }));
+  act(() => requestScheduleRequirementPrompt({ key: "k", source: "manual", leadId: "lead-1" }));
   fireEvent.click(await screen.findByRole("button", { name: "Save" }));
   await waitFor(() => expect(state.save).toHaveBeenCalledOnce());
   expect(screen.getByText("Customer requires a new schedule")).toBeInTheDocument();
-});
-
-it("does not open for a CS who cannot edit the lead, or when the lead cannot be read", async () => {
-  state.lead = { ...lead, created_by: "someone-else", assigned_cs: "another-cs" };
-  render(<ScheduleRequirementPrompt />);
-  act(() => requestScheduleRequirementPrompt({ key: "a", jobId: "LD-SYN1" }));
-  await waitFor(() => expect(state.filters).toHaveLength(1));
-  state.lead = null;
-  act(() => requestScheduleRequirementPrompt({ key: "b", jobId: "LD-SYN1" }));
-  await waitFor(() => expect(state.filters).toHaveLength(2));
-  expect(screen.queryByText("Customer requires a new schedule")).toBeNull();
-});
-
-it("opens for a CS Admin on any lead they can read", async () => {
-  state.role = "cs_admin"; state.lead = { ...lead, created_by: "someone-else" };
-  render(<ScheduleRequirementPrompt />);
-  act(() => requestScheduleRequirementPrompt({ key: "a", jobId: "LD-SYN1" }));
-  expect(await screen.findByText("Customer requires a new schedule")).toBeInTheDocument();
 });

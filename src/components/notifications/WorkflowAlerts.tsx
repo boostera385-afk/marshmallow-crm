@@ -38,7 +38,7 @@ export default function WorkflowAlerts() {
             // AI set "Customer Require New Schedule": CS and CS Admin also get the
             // schedule requirement prompt for that lead (shown once, like the alert).
             if (isNewScheduleAlert(notification) && (role === "customer_service" || role === "cs_admin") && notification.job_id) {
-              requestScheduleRequirementPrompt({ key: `alert:${notification.id}`, jobId: notification.job_id, customerSaid: customerSaidFromAlert(notification.message) });
+              requestScheduleRequirementPrompt({ key: `alert:${notification.id}`, source: "ai", jobId: notification.job_id, customerSaid: customerSaidFromAlert(notification.message) });
             }
             toast.custom(() => <WorkflowToast notification={notification} onDismiss={dismiss} onOpen={() => {
               void openInboxNotification(notification).then((href) => {

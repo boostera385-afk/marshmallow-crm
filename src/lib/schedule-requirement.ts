@@ -53,6 +53,8 @@ export function promptsForNewSchedule(previousTag: string | null | undefined, ne
 export interface ScheduleRequirementPromptRequest {
   /** Stable id, so the same request (one tag change or one alert) shows once. */
   key: string;
+  /** "manual": the person who set the tag, in their own tab. "ai": an AI alert. */
+  source: "manual" | "ai";
   leadId?: string;
   /** Used to find the lead when only the job ID is known (AI alerts). */
   jobId?: string;

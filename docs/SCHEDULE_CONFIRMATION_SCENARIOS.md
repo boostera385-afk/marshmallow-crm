@@ -78,10 +78,13 @@ Business rule set on 2026-11-06, stricter than how people tagged these leads:
   "Customer requires a new schedule" pop-up opens with the schedule requirement
   picker, starting from the saved requirement. Save or Later.
 - **Set by the AI**: when the "AI: Customer requires new schedule" alert reaches a
-  **CS** (only for leads they created or are assigned to, since others cannot edit
-  them) or a **CS Admin**, the same pop-up opens for that lead with the customer's
-  words. Admin and Processor get the alert only. Each alert prompts once, like the
-  alert itself.
+  **CS Admin**, or the **CS who created the lead** (2026-11-07: not an assigned or
+  shared CS, who still get the alert itself), the same pop-up opens for that lead
+  with the customer's words. Admin and Processor get the alert only. Each alert
+  prompts once, like the alert itself.
+- **Set by a person**: the pop-up opens only for that person, in their own browser
+  tab. A manual tag change creates no alert (only the AI worker's
+  `finish_schedule_check` creates `schedule_new_needed`), so nobody else is asked.
 - The pop-up is app-wide (`ScheduleRequirementPrompt`), so it stays open if the
   lead card leaves the list after the tag change; requests queue one at a time.
 - Saving uses `saveScheduleRequirement` (same write as the card's schedule chip) and
