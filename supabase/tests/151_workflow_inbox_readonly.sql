@@ -31,8 +31,7 @@ WITH checks(name,ok) AS (
     ('Older CRM builds get known alert types',position('event_kind' IN coalesce(pg_get_functiondef(to_regprocedure('public.workflow_notifications(jsonb)')),''))>0),
     -- 20261206000000_notification_access_on_read
     ('Notification reads check lead access',coalesce((SELECT pg_get_expr(polqual,polrelid) FROM pg_policy
-      WHERE polrelid='public.notifications'::regclass AND polname='Users can select own notifications'),'') LIKE '%notification_visible(id, lead_id)%'),
-    ('Anonymous notification access check denied',NOT coalesce(has_function_privilege('anon',to_regprocedure('marshmallow_private.notification_visible(uuid,uuid)'),'EXECUTE'),true)),
+      WHERE polrelid='public.notifications'::regclass AND polname='Users can select own notifications'),'') LIKE '%FROM leads l%'),
     ('Every waiting lead is queued',NOT EXISTS(SELECT 1 FROM public.leads l WHERE l.cs_tag='waiting_schedule_confirmation'
       AND NOT EXISTS(SELECT 1 FROM marshmallow_private.schedule_monitor_queue q WHERE q.lead_id=l.id)))
 )

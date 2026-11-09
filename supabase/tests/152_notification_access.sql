@@ -1,6 +1,8 @@
 -- WRITE-BASED HARNESS. ISOLATED POSTGRES ONLY (scripts/test-workflow-inbox-db.mjs).
 -- Covers 20261206000000_notification_access_on_read: a notification that names a
--- lead is shown only while its recipient can open that lead. Everything rolls back.
+-- lead is shown only while its recipient can load that lead under lead RLS (the
+-- fixture's fixture_lead_visibility policy stands in for production's). Everything
+-- rolls back.
 BEGIN;
 CREATE TEMP TABLE checks(name text, result text);
 GRANT ALL ON checks TO authenticated;
@@ -55,27 +57,28 @@ SELECT pg_temp.check_result('Access granted later: the hidden alert reappears', 
 RESET ROLE;
 
 SELECT pg_temp.as_user('15200000-0000-4000-8000-000000000005'); SET LOCAL ROLE authenticated;
-SELECT pg_temp.check_result('CS Admin: no alerts for paid or (by default) quote-updated leads',
-  pg_temp.mine() = 'no-lead,other-urgent,own-urgent');
+SELECT pg_temp.check_result('CS Admin: no alerts for paid leads (lead RLS hides them)',
+  pg_temp.mine() = 'no-lead,other-urgent,own-urgent,quote-updated');
 RESET ROLE;
 
--- A user-specific status visibility grant opens quote-updated leads for that CS Admin.
-INSERT INTO public.lead_status_visibility(user_id, role, status, is_visible) VALUES ('15200000-0000-4000-8000-000000000005', 'cs_admin', 'quote_updated', true);
+-- Status visibility is a screen setting, not lead RLS: it does not hide alerts here.
+INSERT INTO public.lead_status_visibility(user_id, role, status, is_visible) VALUES ('15200000-0000-4000-8000-000000000005', 'cs_admin', 'quote_updated', false);
 SELECT pg_temp.as_user('15200000-0000-4000-8000-000000000005'); SET LOCAL ROLE authenticated;
-SELECT pg_temp.check_result('CS Admin with Quote Updated visibility sees that alert', pg_temp.mine() = 'no-lead,other-urgent,own-urgent,quote-updated');
+SELECT pg_temp.check_result('A screen-only status setting does not hide a lead the user can load',
+  pg_temp.mine() = 'no-lead,other-urgent,own-urgent,quote-updated');
 RESET ROLE;
 
 SELECT pg_temp.as_user('15200000-0000-4000-8000-000000000002'); SET LOCAL ROLE authenticated;
-SELECT pg_temp.check_result('Processor: same status visibility as the CRM (quote updated hidden by default)',
-  pg_temp.mine() = 'no-lead,other-urgent,own-urgent,paid');
-RESET ROLE;
-
-SELECT pg_temp.as_user('15200000-0000-4000-8000-000000000006'); SET LOCAL ROLE authenticated;
-SELECT pg_temp.check_result('Operator unchanged in this phase (bell scopes by assignment)',
+SELECT pg_temp.check_result('Processor: every lead is loadable, every alert shown',
   pg_temp.mine() = 'no-lead,other-urgent,own-urgent,paid,quote-updated');
 RESET ROLE;
 
--- Status change hides it again: the other CS lead is cancelled, a status CS Admin cannot see.
+SELECT pg_temp.as_user('15200000-0000-4000-8000-000000000006'); SET LOCAL ROLE authenticated;
+SELECT pg_temp.check_result('A user who can load none of the leads sees only alerts without a lead',
+  pg_temp.mine() = 'no-lead');
+RESET ROLE;
+
+-- Status change hides it again: the other CS lead is cancelled, a status CS Admin cannot load.
 UPDATE public.leads SET status = 'cancelled' WHERE job_id = 'ACC-OTHER';
 SELECT pg_temp.as_user('15200000-0000-4000-8000-000000000005'); SET LOCAL ROLE authenticated;
 SELECT pg_temp.check_result('Lead moves to a hidden status: its alert disappears for CS Admin', pg_temp.mine() = 'no-lead,own-urgent,quote-updated');
@@ -86,9 +89,8 @@ UPDATE public.notifications SET read = true WHERE title = 'own-urgent';
 SELECT pg_temp.check_result('Recipients can still mark visible alerts read', (SELECT read FROM public.notifications WHERE title = 'own-urgent'));
 RESET ROLE;
 
-SELECT pg_temp.check_result('Anonymous visitors cannot call the access check',
-  NOT has_function_privilege('anon', 'marshmallow_private.notification_visible(uuid,uuid)', 'EXECUTE'));
-SELECT pg_temp.check_result('Policy uses the new access check',
-  (SELECT pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polrelid = 'public.notifications'::regclass AND polname = 'Users can select own notifications') LIKE '%notification_visible(id, lead_id)%');
+SELECT pg_temp.check_result('Policy checks lead access as the caller',
+  (SELECT pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polrelid = 'public.notifications'::regclass AND polname = 'Users can select own notifications') LIKE '%FROM leads l%'
+  AND (SELECT pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polrelid = 'public.notifications'::regclass AND polname = 'Users can select own notifications') LIKE '%workflow_notification_visible(id)%');
 SELECT name, result FROM checks ORDER BY name;
 ROLLBACK;
