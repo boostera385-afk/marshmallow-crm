@@ -91,11 +91,24 @@ function emit(title: string, eventType: "INSERT" | "UPDATE" = "INSERT") {
   const payload = { eventType, new: { title, user_id: state.user.id } } as NotificationChange;
   state.channels.at(-1)!.handlers.find((handler) => handler.event === eventType)!.callback(payload);
 }
-function notification(title: string, id = "synthetic-alert") {
-  return { id, user_id: state.user.id, title, message: 'Lead "Synthetic Customer" needs attention.',
-    lead_id: "synthetic-lead", created_at: "2026-10-14T01:00:00Z", read: false };
+const KIND_BY_TITLE: Record<string, string> = {
+  "Urgent Job": "urgent_job", "Job in Progress": "job_in_progress", "Quote Updated": "quote_updated", "Incomplete Details": "incomplete_details",
+};
+function notification(title: string, id = "synthetic-alert", createdAt = "2026-10-14T01:00:00Z") {
+  return { id, user_id: state.user.id, title, kind: KIND_BY_TITLE[title] ?? null, message: 'Lead "Synthetic Customer" needs attention.',
+    lead_id: "synthetic-lead", created_at: createdAt, read: false };
 }
 function notificationReads() { return state.reads.filter((read) => read.table === "notifications"); }
+/** The pop-ups' shared read (selected by kind). */
+function popupReads() { return notificationReads().filter((read) => Array.isArray(read.filters.kind)); }
+function bellReads() { return notificationReads().filter((read) => !Array.isArray(read.filters.kind)); }
+const kindsOf = (read: Read) => [...(read.filters.kind as string[])].sort();
+/** Respond to the pop-up read with the given rows (only those of the requested kinds). */
+function respondWith(rows: ReturnType<typeof notification>[], count = 0) {
+  state.respond = (read) => Promise.resolve(Array.isArray(read.filters.kind)
+    ? { data: rows.filter((row) => (read.filters.kind as string[]).includes(row.kind ?? "")) }
+    : { data: [], count: read.head ? count : undefined });
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -116,86 +129,93 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("notification request optimization", () => {
   it.each(["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin"] as AppRole[])(
-    "%s keeps its eligible queries but shares one transport", async (role) => {
+    "%s reads only its own pop-up types, in one shared query, over one transport", async (role) => {
       state.role = role;
       const view = mountAll();
       await flush();
+      await act(async () => { await vi.advanceTimersByTimeAsync(30); });
       expect(state.channels).toHaveLength(1);
-      const popupTitles = notificationReads().filter((read) => read.title).map((read) => read.title);
-      const expected = ["%Urgent Job%"];
-      if (role === "admin" || role === "processor") expected.push("%Job in Progress%");
-      if (role === "customer_service" || role === "cs_admin") expected.push("%Quote Updated%", "%Incomplete Details%");
-      expect(popupTitles.sort()).toEqual(expected.sort());
+      const expected = ["urgent_job"];
+      if (role === "admin" || role === "processor") expected.push("job_in_progress");
+      if (role === "customer_service" || role === "cs_admin") expected.push("quote_updated", "incomplete_details");
+      expect(popupReads()).toHaveLength(1);
+      expect(kindsOf(popupReads()[0])).toEqual(expected.sort());
+      expect(popupReads()[0].filters.read).toBe(false);
+      expect(popupReads()[0].limit).toBe(100 * expected.length);
       expect(notificationReads().every((read) => read.filters.user_id === state.user.id)).toBe(true);
-      expect(notificationReads().filter((read) => !read.title && !read.head).every((read) => read.limit === 20)).toBe(true);
-      expect(notificationReads().filter((read) => read.title).every((read) => read.limit === 100 && read.filters.read === false)).toBe(true);
+      expect(bellReads().filter((read) => !read.head).every((read) => read.limit === 20)).toBe(true);
       if (role === "opr") {
         expect(state.reads.some((read) => read.table === "lead_operator_assignments")).toBe(true);
-        expect(notificationReads().filter((read) => !read.title).every((read) => read.filters.lead_id === null)).toBe(true);
+        expect(bellReads().every((read) => read.filters.lead_id === null)).toBe(true);
       }
       view.unmount();
       expect(state.remove).toHaveBeenCalledTimes(1);
     },
   );
 
-  it("keeps the 15/20/25-second fallback intervals and hidden-tab popup polling", async () => {
+  it("keeps the 15-second bell and 20-second pop-up cadence, and pop-ups keep polling in a hidden tab", async () => {
     mountAll();
     await flush();
-    expect(notificationReads()).toHaveLength(4);
-    await act(async () => { await vi.advanceTimersByTimeAsync(14_999); });
-    expect(notificationReads()).toHaveLength(6); // Bell list + exact count at 15s.
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    expect(bellReads()).toHaveLength(2);
+    expect(popupReads()).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(bellReads()).toHaveLength(4); // Bell list + exact count at 15s.
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
-    expect(notificationReads().filter((read) => read.title === "%Urgent Job%")).toHaveLength(2);
-    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
-    expect(notificationReads().filter((read) => read.title === "%Job in Progress%")).toHaveLength(2);
+    expect(popupReads()).toHaveLength(2); // All pop-up types in one read at 20s.
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-    const bells = notificationReads().filter((read) => !read.title).length;
-    await act(async () => { await vi.advanceTimersByTimeAsync(25_000); });
-    expect(notificationReads().filter((read) => !read.title)).toHaveLength(bells);
-    expect(notificationReads().filter((read) => read.title === "%Urgent Job%")).toHaveLength(3);
-    expect(notificationReads().filter((read) => read.title === "%Job in Progress%")).toHaveLength(3);
+    const bells = bellReads().length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(bellReads()).toHaveLength(bells);
+    expect(popupReads()).toHaveLength(3);
   });
 
-  it("coalesces a 50-event burst without fetching unrelated popup types", async () => {
+  it("coalesces a 50-event burst into one read of only the affected pop-up type", async () => {
     mountAll();
     await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
     state.reads = [];
     await act(async () => { for (let i = 0; i < 50; i++) emit("Urgent Job"); });
-    expect(notificationReads()).toHaveLength(3); // One bell read/count pair + one urgent read, not 150.
-    expect(notificationReads().filter((read) => read.title === "%Job in Progress%")).toHaveLength(0);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    expect(bellReads()).toHaveLength(2); // One bell read/count pair, not 100.
+    expect(popupReads()).toHaveLength(1);
+    expect(kindsOf(popupReads()[0])).toEqual(["urgent_job"]);
   });
 
   it("catches events during a slow read with one trailing query and one sound", async () => {
     let resolve!: (result: Result) => void;
-    state.respond = (read) => read.title === "%Urgent Job%"
+    state.respond = (read) => Array.isArray(read.filters.kind)
       ? new Promise<Result>((done) => { resolve = done; }) : Promise.resolve({ data: [], count: 0 });
     render(<MemoryRouter><UrgentLeadPopup /></MemoryRouter>);
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
     await act(async () => { for (let i = 0; i < 50; i++) emit("Urgent Job"); });
-    expect(notificationReads()).toHaveLength(1);
-    state.respond = () => Promise.resolve({ data: [notification("Urgent Job")] });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    expect(popupReads()).toHaveLength(1);
+    respondWith([notification("Urgent Job")]);
     await act(async () => { resolve({ data: [] }); });
-    await flush();
-    expect(notificationReads()).toHaveLength(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    expect(popupReads()).toHaveLength(2);
     expect(screen.getByText("Urgent Job")).toBeInTheDocument();
     expect(state.urgentSound).toHaveBeenCalledTimes(1);
     await act(async () => { emit("Urgent Job", "UPDATE"); });
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
     expect(state.urgentSound).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves popup priority, quote baseline, grouping and dismissal", async () => {
+  it("preserves popup priority, quote session cut-off, grouping and dismissal", async () => {
     state.role = "customer_service";
     sessionStorage.setItem("quote_updated_popup_baseline_at:synthetic-user", "2026-10-14T00:00:00Z");
-    state.respond = (read) => Promise.resolve({ data: read.title ? [
-      notification(read.title.replace(/%/g, "")), notification(read.title.replace(/%/g, ""), "duplicate-alert"),
-    ] : [], count: read.head ? 250 : undefined });
+    respondWith([
+      notification("Urgent Job"), notification("Urgent Job", "duplicate-alert"),
+      notification("Incomplete Details", "incomplete-a"), notification("Incomplete Details", "incomplete-b"),
+      notification("Quote Updated", "quote-new"),
+      notification("Quote Updated", "quote-before-session", "2026-10-13T23:00:00Z"),
+    ], 250);
     mountAll();
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
     expect(screen.getByRole("button", { name: "Notifications" })).toHaveTextContent("250");
     expect(screen.getByText("Urgent Job")).toBeInTheDocument();
     expect(screen.queryByText("Quote Updated")).not.toBeInTheDocument();
-    expect(notificationReads().find((read) => read.title === "%Quote Updated%")?.since).toBe("2026-10-14T00:00:00Z");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     await flush();
     expect(state.writes[0].filters.id).toEqual(["synthetic-alert", "duplicate-alert"]);
@@ -204,14 +224,19 @@ describe("notification request optimization", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     await flush();
     expect(screen.getByText("Quote Updated")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await flush();
+    // Only the alert newer than this session's start was shown and dismissed.
+    expect(state.writes.at(-1)!.filters.id).toEqual(["quote-new"]);
   });
 
   it("retains data on failed reads and recovers at the unchanged interval", async () => {
-    state.respond = () => Promise.resolve({ data: [notification("Urgent Job")] });
+    respondWith([notification("Urgent Job")]);
     render(<MemoryRouter><UrgentLeadPopup /></MemoryRouter>);
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
     state.respond = () => Promise.resolve({ data: null, error: { message: "Denied" } });
     await act(async () => { emit("Urgent Job"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
     expect(screen.getByText("Urgent Job")).toBeInTheDocument();
     state.respond = () => Promise.resolve({ data: [] });
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
@@ -256,13 +281,13 @@ describe("notification request optimization", () => {
     let resolve!: (result: Result) => void;
     state.respond = () => new Promise<Result>((done) => { resolve = done; });
     const view = render(<MemoryRouter><UrgentLeadPopup /></MemoryRouter>);
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
     const oldResolve = resolve;
     await act(async () => { emit("Urgent Job"); });
     state.user = { id: "second-user" };
     state.respond = () => Promise.resolve({ data: [] });
     view.rerender(<MemoryRouter><UrgentLeadPopup /></MemoryRouter>);
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
     await act(async () => { oldResolve({ data: [notification("Urgent Job")] }); });
     await flush();
     expect(screen.queryByText("Urgent Job")).not.toBeInTheDocument();
@@ -276,8 +301,7 @@ describe("notification request optimization", () => {
 });
 
 describe("several tabs of one browser", () => {
-  const titled = (title: string) => notificationReads().filter((read) => read.title === title);
-  const bellLists = () => notificationReads().filter((read) => !read.title && !read.head);
+  const bellLists = () => bellReads().filter((read) => !read.head);
 
   it("polls once per browser, not once per tab, and every tab still shows the alert", async () => {
     const locks = new FakeLocks();
@@ -287,17 +311,14 @@ describe("several tabs of one browser", () => {
     mountTab(first.coordinator);
     await flush();
     mountTab(second.coordinator);
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
     state.reads = [];
 
-    state.respond = (read) => Promise.resolve(read.title === "%Urgent Job%"
-      ? { data: [notification("Urgent Job")] }
-      : { data: [], count: read.head ? 0 : undefined });
+    respondWith([notification("Urgent Job")]);
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
 
-    // One tab's cadence: urgent every 20s, job-in-progress every 25s, bell every 15s.
-    expect(titled("%Urgent Job%")).toHaveLength(3);
-    expect(titled("%Job in Progress%")).toHaveLength(2);
+    // One tab's cadence: pop-ups every 20s (one shared read), bell every 15s.
+    expect(popupReads()).toHaveLength(3);
     expect(bellLists()).toHaveLength(4);
     expect(screen.getAllByText(/Synthetic Customer/)).toHaveLength(2);
   });
@@ -310,13 +331,14 @@ describe("several tabs of one browser", () => {
     const firstView = mountTab(first.coordinator);
     await flush();
     mountTab(second.coordinator);
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
     firstView.unmount();
     await flush();
     state.reads = [];
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
-    expect(titled("%Urgent Job%")).toHaveLength(1);
+    // The remaining tab's 20-second tick plus the 25 ms pop-up batch window.
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_100); });
+    expect(popupReads()).toHaveLength(1);
     expect(bellLists()).toHaveLength(1);
   });
 
@@ -328,31 +350,29 @@ describe("several tabs of one browser", () => {
     mountTab(first.coordinator);
     await flush();
     mountTab(second.coordinator);
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
     state.reads = [];
-    state.respond = (read) => Promise.resolve(read.title === "%Urgent Job%"
-      ? { data: [notification("Urgent Job")] }
-      : { data: [], count: read.head ? 0 : undefined });
+    respondWith([notification("Urgent Job")]);
 
     // Only the second tab's realtime transport delivers this event.
     await act(async () => { emit("Urgent Job"); });
     await act(async () => { await vi.advanceTimersByTimeAsync(100); });
-    expect(titled("%Urgent Job%")).toHaveLength(1);
+    expect(popupReads()).toHaveLength(1);
     expect(screen.getAllByText(/Synthetic Customer/)).toHaveLength(2);
   });
 });
 
 describe("how long notifications are shown", () => {
   const DAY = 24 * 60 * 60 * 1000;
-  it("bell, unread count and every pop-up read only the last 3 days", async () => {
+  it("bell, unread count and the pop-up read only the last 3 days", async () => {
     state.role = "cs_admin";
     const now = Date.now();
     mountAll();
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
     const reads = notificationReads();
-    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.length).toBe(3);
     for (const read of reads) {
-      expect(read.from, `${read.title || (read.head ? "bell count" : "bell list")} has a lower bound`).toBeDefined();
+      expect(read.from, `${Array.isArray(read.filters.kind) ? "pop-ups" : read.head ? "bell count" : "bell list"} has a lower bound`).toBeDefined();
       expect(Math.abs(Date.parse(read.from!) - (now - 3 * DAY))).toBeLessThan(60_000);
     }
   });
@@ -361,7 +381,8 @@ describe("how long notifications are shown", () => {
     const createdAt = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(); // joined 6 hours ago
     state.user = { id: "synthetic-user", created_at: createdAt };
     mountAll();
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    expect(notificationReads().length).toBe(3);
     expect(notificationReads().every((read) => read.from === createdAt)).toBe(true);
   });
 });

@@ -884,6 +884,35 @@ export type Database = {
           },
         ]
       }
+      lead_paid_dates: {
+        Row: {
+          lead_id: string
+          paid_at: string
+          recorded_at: string
+          source: string
+        }
+        Insert: {
+          lead_id: string
+          paid_at: string
+          recorded_at?: string
+          source: string
+        }
+        Update: {
+          lead_id?: string
+          paid_at?: string
+          recorded_at?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_paid_dates_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_payment_requests: {
         Row: {
           amount: number
@@ -1382,6 +1411,7 @@ export type Database = {
           created_by_name: string | null
           cs_notes: string | null
           cs_tag: string | null
+          cs_tag_source: string | null
           customer_email: string | null
           customer_landline: string | null
           customer_name: string
@@ -1444,6 +1474,7 @@ export type Database = {
           created_by_name?: string | null
           cs_notes?: string | null
           cs_tag?: string | null
+          cs_tag_source?: string | null
           customer_email?: string | null
           customer_landline?: string | null
           customer_name: string
@@ -1506,6 +1537,7 @@ export type Database = {
           created_by_name?: string | null
           cs_notes?: string | null
           cs_tag?: string | null
+          cs_tag_source?: string | null
           customer_email?: string | null
           customer_landline?: string | null
           customer_name?: string
@@ -1678,28 +1710,37 @@ export type Database = {
       notifications: {
         Row: {
           created_at: string | null
+          entity_id: string | null
           id: string
+          kind: string | null
           lead_id: string | null
           message: string
           read: boolean
+          resolved_at: string | null
           title: string
           user_id: string
         }
         Insert: {
           created_at?: string | null
+          entity_id?: string | null
           id?: string
+          kind?: string | null
           lead_id?: string | null
           message: string
           read?: boolean
+          resolved_at?: string | null
           title: string
           user_id: string
         }
         Update: {
           created_at?: string | null
+          entity_id?: string | null
           id?: string
+          kind?: string | null
           lead_id?: string | null
           message?: string
           read?: boolean
+          resolved_at?: string | null
           title?: string
           user_id?: string
         }
@@ -1822,6 +1863,33 @@ export type Database = {
           name?: string
           slug?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      paid_lead_access: {
+        Row: {
+          end_date: string | null
+          granted_by: string | null
+          granted_by_name: string | null
+          start_date: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          end_date?: string | null
+          granted_by?: string | null
+          granted_by_name?: string | null
+          start_date?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          end_date?: string | null
+          granted_by?: string | null
+          granted_by_name?: string | null
+          start_date?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -3264,6 +3332,10 @@ export type Database = {
           status: string
         }[]
       }
+      location_label: {
+        Args: { l: Database["public"]["Tables"]["leads"]["Row"] }
+        Returns: string
+      }
       manual_lead_access: {
         Args: never
         Returns: {
@@ -3275,6 +3347,7 @@ export type Database = {
         Args: { p_conversation_id: string; p_handled?: boolean }
         Returns: undefined
       }
+      my_paid_lead_ids: { Args: never; Returns: string[] }
       optimized_areas_with_performance: {
         Args: never
         Returns: {
@@ -3500,6 +3573,15 @@ export type Database = {
           p_user_id: string
         }
         Returns: undefined
+      }
+      set_paid_lead_access: {
+        Args: {
+          p_enabled: boolean
+          p_end: string
+          p_start: string
+          p_user_id: string
+        }
+        Returns: Json
       }
       sheets_sync_lag: {
         Args: never

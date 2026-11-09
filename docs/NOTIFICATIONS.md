@@ -72,6 +72,159 @@ read-only on production. CRM tests: `notification-requests.test.tsx`,
 `WorkflowAlerts.test.tsx`, `useNotificationInbox.test.tsx`,
 `CrmUpdatePopup.test.tsx`, `notification-window.test.ts`.
 
-Not in phase 1: decided cancellation/paid requests still count as unread until they
-age out of the 3-day window (phase 3 resolves them); the browser can still create
-notifications for other users (phase 2 closes this).
+Phase 1 limits that phases 2 and 3 closed: decided requests no longer stay unread,
+and browsers can no longer create notifications for other users.
+
+## Phase 2 — the server sends every lead alert (applied 2026-11-09)
+
+Migration `supabase/migrations/20261207000000_notification_server_sender.sql`, applied
+to production. Database triggers send what the browser used to send, with the same
+titles, messages and recipients:
+
+| Event | Alert (`kind`) | Recipients |
+| --- | --- | --- |
+| Lead becomes Urgent Job / Need Tech (insert or status change) | `urgent_job` / `need_tech` | Admin, Processor, CS Admin, the lead's CS (assigned, else creator), shared users, assigned Operators; CS only for their own lead |
+| Lead becomes Job in Progress, or its expected completion date changes | `job_in_progress` | Admin, Processor |
+| Lead becomes Quote Updated | `quote_updated` | quote requester, CS Admin |
+| Lead tagged Incomplete Details | `incomplete_details` | lead creator, CS Admin |
+| Cancellation request created | `cancellation_request` | Admin, plus Processor unless a Processor asked |
+| Paid approval request created | `paid_approval_request` | Admin |
+| Lead shared | `lead_shared` | the user it was shared with |
+| Lead assigned to an Operator | `lead_assigned` | that Operator |
+
+The person who made the change is never notified; a repeat refreshes the open
+unread alert instead of adding a copy. `notifications.kind` is set for every new row
+(a BEFORE INSERT trigger labels rows from other server producers by title).
+
+Security: the INSERT policy "Self or admin can create notifications" is removed;
+browsers cannot create notifications and can only change `read` on their own.
+`dispatch_lead_status_notification` returns 0, so CRM builds published before this
+change cannot send duplicates or choose recipients. The CRM no longer contains a
+sender (`src/lib/lead-notifications.ts` removed).
+
+Previous `dispatch_lead_status_notification` (production before 2026-11-09), for rollback:
+
+```sql
+CREATE OR REPLACE FUNCTION public.dispatch_lead_status_notification(p_lead_id uuid, p_title text, p_message text, p_user_ids uuid[])
+ RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_recipients uuid[];
+  v_inserted integer := 0;
+BEGIN
+  IF v_actor IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  IF NOT (
+    public.has_role(v_actor, 'admin'::public.app_role) OR public.has_role(v_actor, 'processor'::public.app_role)
+    OR public.has_role(v_actor, 'opr'::public.app_role) OR public.has_role(v_actor, 'cs_admin'::public.app_role)
+    OR public.has_role(v_actor, 'customer_service'::public.app_role)
+  ) THEN RAISE EXCEPTION 'Not permitted to dispatch lead notifications'; END IF;
+  IF p_lead_id IS NULL OR p_user_ids IS NULL OR array_length(p_user_ids, 1) IS NULL THEN RETURN 0; END IF;
+
+  SELECT coalesce(array_agg(DISTINCT candidate), '{}'::uuid[]) INTO v_recipients
+  FROM unnest(p_user_ids) candidate
+  WHERE candidate IS NOT NULL AND candidate <> v_actor AND (
+    p_title <> '[Alert] Urgent Job'
+    OR NOT public.has_role(candidate, 'customer_service'::public.app_role)
+    OR EXISTS (
+      SELECT 1 FROM public.leads l WHERE l.id = p_lead_id AND (
+        l.assigned_cs = candidate
+        OR (l.assigned_cs IS NULL AND l.created_by = candidate)
+        OR EXISTS (SELECT 1 FROM public.lead_shares s WHERE s.lead_id = l.id AND s.shared_with_user_id = candidate)
+      )
+    )
+  );
+  IF array_length(v_recipients, 1) IS NULL THEN RETURN 0; END IF;
+
+  UPDATE public.notifications n SET message = p_message, created_at = now()
+   WHERE n.lead_id = p_lead_id AND n.title = p_title AND n.read = false
+     AND n.user_id = ANY(v_recipients);
+  INSERT INTO public.notifications(user_id, title, message, lead_id, read)
+  SELECT recipient, p_title, p_message, p_lead_id, false FROM unnest(v_recipients) recipient
+   WHERE NOT EXISTS (SELECT 1 FROM public.notifications n WHERE n.user_id = recipient
+     AND n.lead_id = p_lead_id AND n.title = p_title AND n.read = false);
+  GET DIAGNOSTICS v_inserted = ROW_COUNT;
+  RETURN v_inserted;
+END;
+$function$;
+```
+
+The browser side that called it is `git show acef29f:src/lib/lead-notifications.ts`.
+
+## Phase 3 — alerts close themselves; 30-day retention (applied 2026-11-09)
+
+Migration `supabase/migrations/20261208000000_notification_lifecycle_retention.sql`:
+- alerts resolve (`read = true`, `resolved_at`) when the lead leaves the status, the
+  Incomplete Details tag is removed, or the last pending cancellation / paid request
+  for the lead is decided; 1,229 already-stale unread alerts were closed once;
+- the Google Sheets warning keeps one open alert per Admin and closes when healthy
+  (it had been sent 623 times);
+- `marshmallow_private.purge_old_notifications(30)` runs daily at 03:17 UTC
+  (`cron.job` `notifications-retention`); it refuses anything below 30 days.
+
+### Retention backup
+
+Before the first run, rows older than 30 days were copied to
+`marshmallow_private.notifications_backup_20261109` (13,241 rows, 2026-03-25 to
+2026-10-09) and `marshmallow_private.notification_events_backup_20261109` (0 rows).
+Both are server-only (RLS on, no browser grants). The first run deleted exactly those
+rows: 17,503 → 4,262 notifications. Drop the backup tables once the result is
+confirmed. To restore: `INSERT INTO public.notifications SELECT id, user_id, title,
+message, lead_id, read, created_at, NULL, NULL, NULL FROM
+marshmallow_private.notifications_backup_20261109;` (columns in table order).
+
+Previous `raise_sheets_sync_stale_alert` (production before 2026-11-09), for rollback:
+
+```sql
+CREATE OR REPLACE FUNCTION public.raise_sheets_sync_stale_alert(p_stale_after_seconds integer DEFAULT 900, p_throttle_minutes integer DEFAULT 15)
+ RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_health record;
+  v_sent integer := 0;
+BEGIN
+  IF coalesce(auth.role(), '') <> 'service_role'
+     AND NOT public.has_role(auth.uid(), 'admin'::app_role) THEN
+    RAISE EXCEPTION 'Admin access required' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT * INTO v_health FROM public.get_sheets_sync_health(p_stale_after_seconds);
+  IF v_health.status NOT IN ('degraded', 'down') THEN RETURN 0; END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.notifications n
+     WHERE n.user_id IN (SELECT user_id FROM public.user_roles WHERE role = 'admin')
+       AND n.title = '[Alert] Google Sheets backup is behind'
+       AND n.created_at > now() - make_interval(mins => greatest(coalesce(p_throttle_minutes, 15), 1))
+  ) THEN RETURN 0; END IF;
+
+  INSERT INTO public.notifications (user_id, title, message)
+  SELECT ur.user_id,
+         '[Alert] Google Sheets backup is behind',
+          format(
+            'Status %s. %s failed attempt(s) in a row; %s failed job(s) and %s total job(s) are queued. Last error: %s.',
+            v_health.status, v_health.consecutive_failures, v_health.failed_jobs, v_health.queue_depth,
+           coalesce(left(v_health.last_error_message, 200), 'none recorded')
+         )
+    FROM public.user_roles ur WHERE ur.role = 'admin';
+  GET DIAGNOSTICS v_sent = ROW_COUNT;
+  RETURN v_sent;
+END;
+$function$;
+```
+
+## Phase 4 — CRM reads (code; awaiting CRM Publish)
+
+- The four pop-ups read through one batched query by `kind`
+  (`src/lib/active-alerts.ts`): one read per 20 seconds per browser for all pop-up
+  types the role uses, instead of four title searches (Job in Progress moved from 25
+  to 20 seconds to share it). Realtime events match by `kind`, older rows by title.
+- Notifications page and workflow toasts call `workflow_notifications` directly
+  instead of through the `workflow-inbox` Edge Function (no extra login check per
+  poll; same error messages and one retry). The schedule monitor still uses the Edge
+  Function.
+- `src/integrations/supabase/types.ts` regenerated from production (additive only).
+
+Verification: isolated `node scripts/test-notifications-db.mjs <pglite dir>` (all
+three notification migrations applied twice, harnesses 153 + 154: 39 checks) and
+`node scripts/test-workflow-inbox-db.mjs <pglite dir>` (136 checks). Production
+read-only checks after each step are recorded above.

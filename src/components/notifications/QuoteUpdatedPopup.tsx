@@ -7,7 +7,7 @@ import { FileCheck, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
-import { activeNotificationSince } from "@/lib/notification-window";
+import { isAlertOfKind, readActiveAlerts } from "@/lib/active-alerts";
 
 interface QuoteUpdatedNotification {
   id: string;
@@ -77,18 +77,9 @@ export default function QuoteUpdatedPopup() {
   const sharedKey = userId && baseline ? `notifications:quote-updated:${userId}:${baseline}` : null;
   const readUpdated = useCallback(async () => {
     if (!user || !baseline) return [];
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("id, title, message, lead_id, created_at")
-      .eq("user_id", user.id)
-      .eq("read", false)
-      .ilike("title", "%Quote Updated%")
-      .gt("created_at", baseline)
-      .gte("created_at", activeNotificationSince(user.created_at))
-      .order("created_at", { ascending: false })
-      .limit(FETCH_LIMIT);
-    if (error) throw new Error(error.message);
-    return (data ?? []) as QuoteUpdatedNotification[];
+    const rows = await readActiveAlerts(user.id, user.created_at, "quote_updated");
+    // Only alerts newer than this session's start (unchanged behaviour).
+    return rows.filter((row) => Date.parse(row.created_at) > Date.parse(baseline)) as QuoteUpdatedNotification[];
   }, [user, baseline]);
 
   const applyUpdated = useCallback((data: QuoteUpdatedNotification[], isCurrent: () => boolean) => {
@@ -123,8 +114,7 @@ export default function QuoteUpdatedPopup() {
     if (!user || !isEligible) return;
 
     return subscribeToNotifications(user.id, (payload) => {
-      const row = payload.new as { title?: string };
-      if (payload.eventType === "INSERT" && row.title?.toLowerCase().includes("quote updated")) {
+      if (payload.eventType === "INSERT" && isAlertOfKind(payload.new as { kind?: string; title?: string }, "quote_updated")) {
         void fetchUpdated();
       }
     });

@@ -7,7 +7,6 @@ import type { ChangeEvent, ElementType } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { logActivity } from "@/lib/activity";
-import { dispatchLeadStatusNotification } from "@/lib/lead-notifications";
 import { formatUSPhone, hasContactNumber } from "@/lib/phone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -896,16 +895,7 @@ export default function LeadDetailPage() {
           }
         }
 
-        try {
-          await dispatchLeadStatusNotification({
-            leadId: newLeadId,
-            leadName: form.customer_name,
-            status: savedStatus,
-            expectedCompletionDate: form.expected_completion_date,
-          });
-        } catch (notifErr) {
-          console.warn("Notification dispatch failed:", notifErr);
-        }
+        // Status alerts are sent by the database (leads_notify_change).
 
         try {
           await logActivity(user.id, "created", "lead", newLeadId, { customer_name: form.customer_name });
@@ -977,21 +967,7 @@ export default function LeadDetailPage() {
         }
       }
 
-      if (
-        (previousStatus !== savedStatus && (savedStatus === "urgent_job" || savedStatus === "need_tech" || savedStatus === "job_in_progress")) ||
-        (savedStatus === "job_in_progress" && originalLead?.expected_completion_date !== form.expected_completion_date && form.expected_completion_date)
-      ) {
-        try {
-          await dispatchLeadStatusNotification({
-            leadId: leadId,
-            leadName: form.customer_name,
-            status: savedStatus,
-            expectedCompletionDate: form.expected_completion_date,
-          });
-        } catch (notifErr) {
-          console.warn("Failed to dispatch notifications:", notifErr);
-        }
-      }
+      // Status alerts are sent by the database when the lead is saved (leads_notify_change).
 
       try {
         const changedDetails: Record<string, unknown> = { customer_name: form.customer_name };

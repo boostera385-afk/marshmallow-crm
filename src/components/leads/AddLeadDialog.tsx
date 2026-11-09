@@ -28,7 +28,6 @@ import { getChangeableStatuses, canChangeStatus } from "@/lib/constants";
 import { useDuplicatePhoneCheck } from "@/hooks/useDuplicatePhoneCheck";
 import { formatUSPhone, hasContactNumber } from "@/lib/phone";
 import { logActivity } from "@/lib/activity";
-import { dispatchLeadStatusNotification } from "@/lib/lead-notifications";
 import { showsUrgentCheck } from "@/lib/urgent-verification";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
@@ -400,12 +399,7 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
         await supabase.from("lead_notes").insert(noteInserts);
       }
 
-      await dispatchLeadStatusNotification({
-        leadId: data.id,
-        leadName: form.customer_name,
-        status: createdStatus,
-        isNewLead: true,
-      });
+      // Status alerts are sent by the database (leads_notify_change).
       await logActivity(user.id, "created", "lead", data.id, {
         customer_name: form.customer_name,
         status: createdStatus,

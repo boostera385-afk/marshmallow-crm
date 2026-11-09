@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import { Share2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { deliverLeadNotification } from "@/lib/lead-notifications";
 
 interface Props {
   leadId: string;
@@ -87,12 +86,7 @@ export default function LeadShareDialog({ leadId, customerName, className }: Pro
         shared_by: user!.id,
       });
 
-      await deliverLeadNotification({
-        leadId,
-        title: "Lead Shared with You",
-        message: `"${customerName}" has been shared with you by admin`,
-        userIds: [userId],
-      });
+      // The shared user is notified by the database (lead_shares_notify).
     } else {
       await supabase.from("lead_shares").delete().eq("lead_id", leadId).eq("shared_with_user_id", userId);
     }

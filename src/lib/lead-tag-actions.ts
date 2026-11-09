@@ -1,6 +1,5 @@
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { dispatchIncompleteDetailsNotification } from "@/lib/lead-notifications";
 import { CS_TAG_LABELS, type CsTag, type Lead } from "@/types";
 
 /**
@@ -53,17 +52,8 @@ export async function saveLeadTag(params: {
     return { ok: false, patch };
   }
 
-  if (newTag === "incomplete_details" && lead.cs_tag !== "incomplete_details") {
-    const notified = await dispatchIncompleteDetailsNotification({
-      leadId: lead.id,
-      leadName: lead.customer_name,
-      createdBy: lead.created_by,
-    });
-
-    if (!notified) {
-      toast.error("Tag saved, but CS could not be notified. Tell them directly.");
-    }
-  }
+  // Incomplete Details: the lead's creator and CS Admins are notified by the database
+  // when the tag is saved (leads_notify_change), in the same transaction as the tag.
 
   toast.success(options.successMessage ?? (newTag ? `Tag: ${CS_TAG_LABELS[newTag]}` : "Tag cleared"));
   return { ok: true, patch };

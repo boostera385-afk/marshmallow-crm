@@ -15,7 +15,6 @@ import { UserPlus, MapPin, Wrench, FileText, Image as ImageIcon, X, ImagePlus, S
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { logActivity } from "@/lib/activity";
 import { motion, AnimatePresence } from "framer-motion";
-import { deliverLeadNotification } from "@/lib/lead-notifications";
 import MultiDateTimePicker from "./MultiDateTimePicker";
 
 interface Props {
@@ -301,15 +300,7 @@ export default function AssignLeadToOperatorDialog({ open, onOpenChange, lead, o
         });
       }
 
-      // 6. Send notification to assigned operators
-      if (newAssignments.length > 0) {
-        await deliverLeadNotification({
-          leadId: lead.id,
-          title: "Lead Assigned",
-          message: `Lead "${lead.customer_name || lead.job_id}" has been assigned to you by ${profile?.full_name || "Admin/Processor"}.`,
-          userIds: newAssignments,
-        });
-      }
+      // 6. Assigned operators are notified by the database (lead_operator_assignments_notify).
 
       // 7. Log activity
       await logActivity(user.id, "lead_assigned_to_opr", "lead", lead.id, {

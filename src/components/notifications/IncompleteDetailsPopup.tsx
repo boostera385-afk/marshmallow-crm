@@ -7,7 +7,7 @@ import { ClipboardList, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
-import { activeNotificationSince } from "@/lib/notification-window";
+import { isAlertOfKind, readActiveAlerts } from "@/lib/active-alerts";
 
 interface IncompleteDetailsNotification {
   id: string;
@@ -53,20 +53,9 @@ export default function IncompleteDetailsPopup() {
 
   // One tab per browser reads (and polls); other tabs receive the same rows.
   const sharedKey = user && isEligible ? `notifications:incomplete:${user.id}` : null;
-  const readIncomplete = useCallback(async () => {
-    if (!user) return [];
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("id, title, message, lead_id, created_at")
-      .eq("user_id", user.id)
-      .eq("read", false)
-      .ilike("title", "%Incomplete Details%")
-      .gte("created_at", activeNotificationSince(user.created_at))
-      .order("created_at", { ascending: false })
-      .limit(FETCH_LIMIT);
-    if (error) throw new Error(error.message);
-    return (data ?? []) as IncompleteDetailsNotification[];
-  }, [user]);
+  const readIncomplete = useCallback(async () => (
+    user ? (await readActiveAlerts(user.id, user.created_at, "incomplete_details")) as IncompleteDetailsNotification[] : []
+  ), [user]);
 
   const applyIncomplete = useCallback((data: IncompleteDetailsNotification[], isCurrent: () => boolean) => {
     const rows = data.filter(
@@ -101,8 +90,7 @@ export default function IncompleteDetailsPopup() {
     if (!user || !isEligible) return;
 
     return subscribeToNotifications(user.id, (payload) => {
-      const row = payload.new as { title?: string };
-      if (payload.eventType === "INSERT" && row.title?.toLowerCase().includes("incomplete details")) {
+      if (payload.eventType === "INSERT" && isAlertOfKind(payload.new as { kind?: string; title?: string }, "incomplete_details")) {
         void fetchIncomplete();
       }
     });
