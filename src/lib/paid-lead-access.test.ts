@@ -1,26 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 const rpc = vi.hoisted(() => vi.fn());
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc, from: vi.fn() } }));
-import { companyDate, describePaidWindow, isInPaidWindow, setPaidLeadAccess, validatePaidChoice } from "./paid-lead-access";
+import { describePaidWindow, fetchMyPaidLeadIds, isInPaidGrant, setPaidLeadAccess, validatePaidChoice } from "./paid-lead-access";
 
 afterEach(() => rpc.mockReset());
 
 describe("paid lead window", () => {
-  it("uses the New York calendar date of the lead", () => {
-    expect(companyDate("2026-11-01T03:30:00Z")).toBe("2026-10-31"); // 11:30 pm Oct 31 in New York
-    expect(companyDate("2026-11-01T04:30:00Z")).toBe("2026-11-01");
-  });
-  it("includes both end dates and nothing outside them", () => {
+  it("ranges use the database's became-paid ids, never the created date", () => {
     const october = { start_date: "2026-10-01", end_date: "2026-10-31" };
-    expect(isInPaidWindow("2026-10-01T04:00:00Z", october)).toBe(true);  // midnight Oct 1 NY
-    expect(isInPaidWindow("2026-11-01T03:59:00Z", october)).toBe(true);  // 11:59 pm Oct 31 NY
-    expect(isInPaidWindow("2026-11-01T04:00:00Z", october)).toBe(false); // midnight Nov 1 NY
-    expect(isInPaidWindow("2026-10-01T03:59:00Z", october)).toBe(false); // 11:59 pm Sep 30 NY
-    expect(isInPaidWindow(null, october)).toBe(false);
+    const paidInOctober = new Set(["created-in-september"]);
+    expect(isInPaidGrant("created-in-september", october, paidInOctober)).toBe(true);
+    expect(isInPaidGrant("created-in-october-paid-in-november", october, paidInOctober)).toBe(false);
+  });
+  it("shows no ranged paid leads until the ids are known", () => {
+    const october = { start_date: "2026-10-01", end_date: "2026-10-31" };
+    expect(isInPaidGrant("any", october, undefined)).toBe(false);
+    expect(isInPaidGrant("any", october, null)).toBe(false);
   });
   it("treats no dates as all time and no grant as no access", () => {
-    expect(isInPaidWindow("2020-01-01T00:00:00Z", { start_date: null, end_date: null })).toBe(true);
-    expect(isInPaidWindow("2026-10-10T00:00:00Z", null)).toBe(false);
+    expect(isInPaidGrant("any", { start_date: null, end_date: null }, null)).toBe(true);
+    expect(isInPaidGrant("any", null, new Set(["any"]))).toBe(false);
   });
   it("describes the grant for the Settings grid", () => {
     expect(describePaidWindow({ start_date: null, end_date: null })).toBe("All time");
@@ -51,5 +50,17 @@ describe("saving a grant", () => {
   it("surfaces a refusal", async () => {
     rpc.mockResolvedValue({ error: new Error("Only an Admin can change paid lead access") });
     await expect(setPaidLeadAccess("u1", { mode: "all" })).rejects.toThrow("Only an Admin");
+  });
+});
+
+describe("in-range paid lead ids", () => {
+  it("reads the caller's ids from the database function", async () => {
+    rpc.mockResolvedValue({ data: ["17100000-0000-4000-8000-000000000001"], error: null });
+    await expect(fetchMyPaidLeadIds()).resolves.toEqual(["17100000-0000-4000-8000-000000000001"]);
+    expect(rpc).toHaveBeenCalledWith("my_paid_lead_ids");
+  });
+  it("surfaces a failure instead of returning an empty list", async () => {
+    rpc.mockResolvedValue({ data: null, error: new Error("function my_paid_lead_ids() does not exist") });
+    await expect(fetchMyPaidLeadIds()).rejects.toThrow("does not exist");
   });
 });

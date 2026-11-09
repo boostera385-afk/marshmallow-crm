@@ -1,9 +1,10 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getDefaultVisibleStatuses, isOperatorRole } from "@/lib/access";
 import { isScheduleTag } from "@/lib/lead-tags";
-import { fetchPaidLeadAccess, isInPaidWindow } from "@/lib/paid-lead-access";
+import { fetchMyPaidLeadIds, fetchPaidLeadAccess, isInPaidGrant } from "@/lib/paid-lead-access";
 import type { LeadStatus } from "@/types";
 
 type VisibilityRow = {
@@ -63,19 +64,28 @@ export function useAllowedStatuses() {
   });
 
   // The user's paid-lead grant (Settings -> Status visibility -> Paid). A date range
-  // limits which paid leads show, matching the database for every role.
+  // limits which paid leads show, by the date each lead became paid, matching the
+  // database for every role (the database reports which paid leads are in range).
   const { data: paidGrant = null } = useQuery({
     queryKey: ["paid-lead-access", user?.id],
     enabled: !!user?.id && !!role && role !== "admin",
     queryFn: async () => (await fetchPaidLeadAccess()).find((grant) => grant.user_id === user?.id) ?? null,
     staleTime: 30_000,
   });
+  const hasPaidRange = Boolean(paidGrant?.start_date && paidGrant?.end_date);
+  const { data: paidIdsInRange } = useQuery({
+    queryKey: ["paid-lead-ids", user?.id, paidGrant?.start_date ?? null, paidGrant?.end_date ?? null],
+    enabled: !!user?.id && hasPaidRange,
+    queryFn: fetchMyPaidLeadIds,
+    staleTime: 30_000,
+  });
+  const paidIdSet = useMemo(() => (paidIdsInRange ? new Set(paidIdsInRange) : null), [paidIdsInRange]);
 
   const statuses = allowedStatuses ?? getDefaultVisibleStatuses(role);
 
-  const filterLeads = <T extends { status: string; cs_tag?: string | null; created_at?: string | null }>(leads: T[]): T[] => {
+  const filterLeads = <T extends { id: string; status: string; cs_tag?: string | null }>(leads: T[]): T[] => {
     return leads.filter((lead) => {
-      if (lead.status === "paid" && paidGrant && !isInPaidWindow(lead.created_at, paidGrant)) return false;
+      if (lead.status === "paid" && paidGrant && !isInPaidGrant(lead.id, paidGrant, paidIdSet)) return false;
       // Operators see tagged leads, but only for the scheduling tags their workflow covers.
       return statuses.has(lead.status) || (isOperatorRole(role) && isScheduleTag(lead.cs_tag));
     });
