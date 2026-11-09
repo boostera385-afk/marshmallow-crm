@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { validatePaidChoice, type PaidAccessChoice, type PaidLeadAccess } from "@/lib/paid-lead-access";
+import { DateInput } from "@/components/ui/date-input";
 
 interface Props {
   open: boolean;
@@ -64,11 +65,11 @@ export default function PaidLeadAccessDialog({ open, userName, current, saving =
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="paid-access-start" className="text-xs">From</Label>
-              <Input id="paid-access-start" type="date" value={start} max={end || undefined} onChange={(e) => { setStart(e.target.value); setError(null); }} />
+              <DateInput id="paid-access-start" value={start} max={end || undefined} onChange={(value) => { setStart(value); setError(null); }} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="paid-access-end" className="text-xs">To</Label>
-              <Input id="paid-access-end" type="date" value={end} min={start || undefined} onChange={(e) => { setEnd(e.target.value); setError(null); }} />
+              <DateInput id="paid-access-end" value={end} min={start || undefined} onChange={(value) => { setEnd(value); setError(null); }} />
             </div>
           </div>
         )}

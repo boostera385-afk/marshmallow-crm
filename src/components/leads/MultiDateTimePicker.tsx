@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TimeInput } from "@/components/ui/time-input";
 
 function format12Hour(timeStr: string): string {
   if (!timeStr) return "";
@@ -228,11 +229,11 @@ export default function MultiDateTimePicker({
               </div>
 
               <div className="flex items-center gap-2">
-                <Input
-                  type="time"
+                <TimeInput
+                  aria-label="Exact time"
                   value={exactTime}
-                  onChange={(e) => setExactTime(e.target.value)}
-                  className="h-9 text-xs flex-1"
+                  onChange={setExactTime}
+                  className="h-9 flex-1 px-3 text-xs"
                 />
                 <span className="text-xs text-muted-foreground font-mono bg-muted/40 px-3 py-2 rounded-lg border border-border/40 whitespace-nowrap">
                   {exactTime ? format12Hour(exactTime) : "No time"}

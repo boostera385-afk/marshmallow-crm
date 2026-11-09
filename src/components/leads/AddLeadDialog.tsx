@@ -36,6 +36,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import NumberNameCombobox from "./NumberNameCombobox";
 import MultiDateTimePicker from "./MultiDateTimePicker";
 import { geocodeAndPersistLeadAddress } from "@/lib/lead-address-geocoding";
+import { DateInput } from "@/components/ui/date-input";
 
 interface Props {
   open: boolean;
@@ -890,10 +891,10 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
 
                 <div className="space-y-1.5">
                   <Label className={labelClass}>Job Scheduled For</Label>
-                  <Input
-                    type="date"
+                  <DateInput
+                    aria-label="Job Scheduled For"
                     value={form.scheduled_date}
-                    onChange={(e) => update("scheduled_date", e.target.value)}
+                    onChange={(value) => update("scheduled_date", value)}
                     className={fieldClass}
                   />
                 </div>

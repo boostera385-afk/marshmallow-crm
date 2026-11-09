@@ -29,6 +29,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import StatusBadge from "@/components/leads/StatusBadge";
 import QuoPhoneTrigger from "@/components/leads/QuoPhoneTrigger";
 import { useAuth } from "@/contexts/AuthContext";
+import { DateInput } from "@/components/ui/date-input";
 
 const EMPLOYEE_COLORS = [
   "bg-gradient-to-br from-blue-500 to-blue-600 text-white",
@@ -462,20 +463,20 @@ export default function SchedulePage() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
               <div className="space-y-1.5">
                 <label className="text-[12px] font-medium text-muted-foreground">From</label>
-                <Input
-                  type="date"
+                <DateInput
+                  aria-label="From"
                   value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
+                  onChange={setFromDate}
                   className="h-11 w-full rounded-xl border-border/60 bg-background shadow-sm lg:w-[190px]"
                 />
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-[12px] font-medium text-muted-foreground">To</label>
-                <Input
-                  type="date"
+                <DateInput
+                  aria-label="To"
                   value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
+                  onChange={setToDate}
                   className="h-11 w-full rounded-xl border-border/60 bg-background shadow-sm lg:w-[190px]"
                 />
               </div>

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import NotificationSoundControls from "@/components/notifications/NotificationSoundControls";
 import ScheduleMonitorPanel from "@/components/notifications/ScheduleMonitorPanel";
+import { DateInput } from "@/components/ui/date-input";
 
 const initial: InboxFilters = { view: "all", category: "all", search: "" };
 export default function NotificationsPage() {
@@ -23,6 +24,9 @@ export default function NotificationsPage() {
   const navigate = useNavigate();
   const [filters, setFilters] = useState<InboxFilters>(initial);
   const [search, setSearch] = useState("");
+  // Shown in the date pickers; the filter itself keeps the ISO bounds it always used.
+  const [sinceDay, setSinceDay] = useState("");
+  const [untilDay, setUntilDay] = useState("");
   const [offset, setOffset] = useState(0);
   const [saving, setSaving] = useState(false);
   const query = useNotificationInbox(filters, offset);
@@ -59,8 +63,8 @@ export default function NotificationsPage() {
         <div><Label htmlFor="notification-category">Category</Label><select id="notification-category" className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm" value={filters.category} onChange={(event) => filter({ category: event.target.value as InboxFilters["category"] })}>
           <option value="all">All notifications</option><option value="cx">CX updates</option><option value="tech">Tech updates</option><option value="schedule">Scheduling</option><option value="other">Other</option></select></div>
         <form onSubmit={(event) => { event.preventDefault(); filter({ search: search.trim() }); }}><Label htmlFor="notification-search">Job ID or notification</Label><div className="mt-1 flex gap-1"><Input id="notification-search" maxLength={100} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search history" /><Button type="submit" variant="outline" size="sm" className="h-10">Find</Button></div></form>
-        <div><Label htmlFor="notification-since">From</Label><Input id="notification-since" className="mt-1" type="date" onChange={(event) => filter({ since: event.target.value ? new Date(`${event.target.value}T00:00:00`).toISOString() : undefined })} /></div>
-        <div><Label htmlFor="notification-until">Through</Label><Input id="notification-until" className="mt-1" type="date" onChange={(event) => { const value = event.target.value; const end = value ? new Date(`${value}T00:00:00`) : null; if (end) end.setDate(end.getDate() + 1); filter({ until: end?.toISOString() }); }} /></div>
+        <div><Label htmlFor="notification-since">From</Label><DateInput id="notification-since" className="mt-1 h-10" value={sinceDay} onChange={(value) => { setSinceDay(value); filter({ since: value ? new Date(`${value}T00:00:00`).toISOString() : undefined }); }} /></div>
+        <div><Label htmlFor="notification-until">Through</Label><DateInput id="notification-until" className="mt-1 h-10" value={untilDay} onChange={(value) => { setUntilDay(value); const end = value ? new Date(`${value}T00:00:00`) : null; if (end) end.setDate(end.getDate() + 1); filter({ until: end?.toISOString() }); }} /></div>
       </div>
     </div>
     {query.isError ? <div role="alert" className="rounded-xl border border-destructive/40 p-4 text-sm">Notifications unavailable. {query.error.message}<Button variant="outline" className="ml-2" onClick={refresh}>Retry</Button></div>
