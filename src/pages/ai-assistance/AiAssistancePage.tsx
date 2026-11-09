@@ -72,6 +72,7 @@ import {
 } from "@/lib/cs-missed";
 import QuoChatDialog from "@/components/quo-dashboard/QuoChatDialog";
 import RenderEmoji from "@/components/common/RenderEmoji";
+import { DateInput } from "@/components/ui/date-input";
 
 type TypeFilter = "all" | "missed_call" | "unanswered_text" | "new_lead";
 
@@ -315,20 +316,20 @@ export default function AiAssistancePage() {
               <div className="space-y-1.5">
                 <div>
                   <Label className="text-[10px] text-muted-foreground">Start date</Label>
-                  <Input
-                    type="date"
+                  <DateInput
+                    aria-label="Start date"
                     value={startDate}
-                    onChange={(e) => { setStartDate(e.target.value); setWindow("custom"); }}
-                    className="h-8 text-xs"
+                    onChange={(value) => { setStartDate(value); setWindow("custom"); }}
+                    className="h-8 px-3 text-xs"
                   />
                 </div>
                 <div>
                   <Label className="text-[10px] text-muted-foreground">End date</Label>
-                  <Input
-                    type="date"
+                  <DateInput
+                    aria-label="End date"
                     value={endDate}
-                    onChange={(e) => { setEndDate(e.target.value); setWindow("custom"); }}
-                    className="h-8 text-xs"
+                    onChange={(value) => { setEndDate(value); setWindow("custom"); }}
+                    className="h-8 px-3 text-xs"
                   />
                 </div>
               </div>

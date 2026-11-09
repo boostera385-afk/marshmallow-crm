@@ -68,6 +68,7 @@ import {
 import { updateLeadById } from "@/lib/lead-updates";
 import { dispatchLeadStatusNotification } from "@/lib/lead-notifications";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
+import { DateInput } from "@/components/ui/date-input";
 
 interface Props {
   leadId: string;
@@ -1213,10 +1214,10 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <Label className={labelClass}>Date</Label>
-                <Input
-                  type="date"
+                <DateInput
+                  aria-label="Date"
                   value={form.scheduled_date ?? ""}
-                  onChange={(e) => update("scheduled_date", e.target.value)}
+                  onChange={(value) => update("scheduled_date", value)}
                   className={fieldClass}
                 />
               </div>
@@ -1262,10 +1263,10 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                     </span>
                   )}
                 </div>
-                <Input
-                  type="date"
+                <DateInput
+                  aria-label="Expected Job Completion Date"
                   value={form.expected_completion_date ?? ""}
-                  onChange={(e) => update("expected_completion_date", e.target.value)}
+                  onChange={(value) => update("expected_completion_date", value)}
                   className={fieldClass}
                 />
                 {(role === "admin" || role === "processor") && (jobCompletionState === "overdue" || jobCompletionState === "due_today") && (

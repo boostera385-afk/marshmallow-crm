@@ -75,6 +75,7 @@ import {
 import NumberNameCombobox from "@/components/leads/NumberNameCombobox";
 import UrgentAICheckDialog from "@/components/leads/UrgentAICheckDialog";
 import { showsUrgentCheck } from "@/lib/urgent-verification";
+import { DateInput } from "@/components/ui/date-input";
 
 const PHOTO_PREVIEW_LIMIT = 1;
 
@@ -1840,10 +1841,10 @@ export default function LeadDetailPage() {
 
               <div className="space-y-1.5">
                 <Label className={labelClass}>Job Scheduled For</Label>
-                <Input
-                  type="date"
+                <DateInput
+                  aria-label="Job Scheduled For"
                   value={form.scheduled_date}
-                  onChange={(e) => update("scheduled_date", e.target.value)}
+                  onChange={(value) => update("scheduled_date", value)}
                   className={fieldClass}
                 />
               </div>
@@ -1875,10 +1876,10 @@ export default function LeadDetailPage() {
                       </span>
                     )}
                   </div>
-                  <Input
-                    type="date"
+                  <DateInput
+                    aria-label="Expected Job Completion Date"
                     value={form.expected_completion_date}
-                    onChange={(e) => update("expected_completion_date", e.target.value)}
+                    onChange={(value) => update("expected_completion_date", value)}
                     className={fieldClass}
                   />
                   {(isAdmin || isProcessor) && (jobCompletionState === "overdue" || jobCompletionState === "due_today") && (

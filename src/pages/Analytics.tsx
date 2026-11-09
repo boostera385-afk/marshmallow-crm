@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DateInput } from "@/components/ui/date-input";
 
 interface AnalyticsLeadRow {
   id: string;
@@ -593,26 +594,24 @@ const Analytics = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <input
-                type="date"
+              <DateInput
                 aria-label="Analytics start date"
                 value={customStart}
-                onChange={(e) => {
-                  setCustomStart(e.target.value);
+                onChange={(value) => {
+                  setCustomStart(value);
                   setDateFilter("custom");
                 }}
-                className="h-9 w-[130px] rounded-xl border border-border bg-muted px-3 text-[11px] text-foreground"
+                className="h-9 w-[140px] rounded-xl border-border bg-muted px-3 text-[11px]"
               />
               <span className="text-[10px] text-muted-foreground/70">to</span>
-              <input
-                type="date"
+              <DateInput
                 aria-label="Analytics end date"
                 value={customEnd}
-                onChange={(e) => {
-                  setCustomEnd(e.target.value);
+                onChange={(value) => {
+                  setCustomEnd(value);
                   setDateFilter("custom");
                 }}
-                className="h-9 w-[130px] rounded-xl border border-border bg-muted px-3 text-[11px] text-foreground"
+                className="h-9 w-[140px] rounded-xl border-border bg-muted px-3 text-[11px]"
               />
             </div>
           </div>
