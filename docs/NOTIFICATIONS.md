@@ -228,3 +228,17 @@ Verification: isolated `node scripts/test-notifications-db.mjs <pglite dir>` (al
 three notification migrations applied twice, harnesses 153 + 154: 39 checks) and
 `node scripts/test-workflow-inbox-db.mjs <pglite dir>` (136 checks). Production
 read-only checks after each step are recorded above.
+
+## Operators: no Quote Updated or cancellation alerts (applied 2026-11-09)
+
+Decision (2026-11-09): Operators (`opr`, `opr_admin`) never receive Quote Updated or
+cancellation-request alerts. Migration
+`supabase/migrations/20261209000000_operators_no_quote_cancellation_alerts.sql`
+(applied) blocks those two kinds for Operator-only accounts inside
+`marshmallow_private.notify_lead`, the single function that writes lead alerts, so
+no recipient list can send them. The server sender already excluded Operators;
+the 445 such rows Operators hold (16 Oct – 5 Nov, all read) came from the old
+browser sender, show nowhere (older than 3 days, no Notifications page for
+Operators) and are removed by the 30-day retention by 5 Dec. Operators still get
+Urgent Job / Need Tech, Lead Assigned and their hold alerts. Isolated harness 153:
+42/42 with the migration applied twice.

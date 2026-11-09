@@ -64,6 +64,18 @@ SELECT pg_temp.check('Expected completion change refreshes the reminder instead 
 UPDATE public.leads SET quote_requested_by = '15300000-0000-4000-8000-000000000004', status = 'quote_updated' WHERE job_id = 'S-B';
 SELECT pg_temp.check('Quote Updated: the requester and CS Admin', pg_temp.who('S-B', 'quote_updated') = '4,5');
 
+-- Operators never get Quote Updated or cancellation alerts, even when named.
+INSERT INTO public.leads(id, job_id, customer_name, status, created_by, quote_requested_by) VALUES
+  ('15300000-0000-4000-8000-000000000103', 'S-C', 'Customer C', 'pending_to_send', '15300000-0000-4000-8000-000000000003', '15300000-0000-4000-8000-000000000006');
+UPDATE public.leads SET status = 'quote_updated' WHERE job_id = 'S-C';
+SELECT pg_temp.check('Quote Updated: an Operator who requested the quote is not told', pg_temp.who('S-C', 'quote_updated') = '5');
+SELECT pg_temp.check('Cancellation alert is never sent to an Operator, even if named',
+  marshmallow_private.notify_lead(ARRAY['15300000-0000-4000-8000-000000000006'::uuid], '15300000-0000-4000-8000-000000000103',
+    'cancellation_request', 'Lead cancellation request', 'x', NULL) = 0
+  AND pg_temp.who('S-C', 'cancellation_request') = '');
+SELECT pg_temp.check('Operators still get Urgent Job and assignment alerts', pg_temp.who('S-A', 'urgent_job') LIKE '%6%'
+  AND pg_temp.who('S-A', 'lead_assigned') = '6');
+
 -- Incomplete details tag.
 UPDATE public.leads SET cs_tag = 'incomplete_details' WHERE job_id = 'S-B';
 SELECT pg_temp.check('Incomplete Details: creator and CS Admin', pg_temp.who('S-B', 'incomplete_details') = '3,5');

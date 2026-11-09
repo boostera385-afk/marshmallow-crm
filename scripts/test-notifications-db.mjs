@@ -18,6 +18,7 @@ try {
     "supabase/migrations/20261206000000_notification_access_on_read.sql",
     "supabase/migrations/20261207000000_notification_server_sender.sql",
     "supabase/migrations/20261208000000_notification_lifecycle_retention.sql",
+    "supabase/migrations/20261209000000_operators_no_quote_cancellation_alerts.sql",
   ]) {
     await db.exec(await sql(file));
     await db.exec(await sql(file)); // Idempotent.
