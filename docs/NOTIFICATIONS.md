@@ -168,10 +168,8 @@ Before the first run, rows older than 30 days were copied to
 `marshmallow_private.notifications_backup_20261109` (13,241 rows, 2026-03-25 to
 2026-10-09) and `marshmallow_private.notification_events_backup_20261109` (0 rows).
 Both are server-only (RLS on, no browser grants). The first run deleted exactly those
-rows: 17,503 → 4,262 notifications. Drop the backup tables once the result is
-confirmed. To restore: `INSERT INTO public.notifications SELECT id, user_id, title,
-message, lead_id, read, created_at, NULL, NULL, NULL FROM
-marshmallow_private.notifications_backup_20261109;` (columns in table order).
+rows: 17,503 → 4,262 notifications. **Both backup tables were dropped on
+2026-11-09 at the owner's request**, so the deleted rows can no longer be restored.
 
 Previous `raise_sheets_sync_stale_alert` (production before 2026-11-09), for rollback:
 
@@ -242,3 +240,17 @@ browser sender, show nowhere (older than 3 days, no Notifications page for
 Operators) and are removed by the 30-day retention by 5 Dec. Operators still get
 Urgent Job / Need Tech, Lead Assigned and their hold alerts. Isolated harness 153:
 42/42 with the migration applied twice.
+
+## Operators and the full lead page (2026-11-09)
+
+Report: an Operator opened a notification's "Open lead" button and saw the complete
+lead. Operators (`opr`, `opr_admin`) have no "Edit Lead" button on their cards and
+were never meant to open `/leads/:id`, but notification buttons, the bell, map links
+and Donut links still pointed there. `src/pages/LeadRoute.tsx` now serves that route:
+Operators are sent to their Leads view filtered to the job (`/leads?search=<job id>`),
+reading only the job ID; every other role gets the full page unchanged. Tests:
+`src/pages/LeadRoute.test.tsx`.
+
+Known limit (unchanged, see `20261203000000_opr_location_only.sql`): lead RLS still
+lets Operators read lead rows directly through the API; the CRM hides fields at the
+screen boundary. Server-side enforcement needs an Operator-only read path.

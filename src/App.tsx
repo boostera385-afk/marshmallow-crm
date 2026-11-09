@@ -10,7 +10,7 @@ import Login from "@/pages/Login";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useCrossTabQuerySync } from "@/hooks/useCrossTab";
 import LeadsPage from "@/pages/LeadsPage";
-import LeadDetailPage from "@/pages/LeadDetailPage";
+import LeadRoute from "@/pages/LeadRoute";
 import SchedulePage from "@/pages/SchedulePage";
 import Analytics from "@/pages/Analytics";
 import AreasPage from "@/pages/AreasPage";
@@ -136,7 +136,7 @@ const App = () => (
             <Route path="/" element={<ProtectedRoutes />}>
               <Route index element={<Navigate to="/leads" replace />} />
               <Route path="leads" element={<PageRoute navItem="leads"><LeadsPage /></PageRoute>} />
-              <Route path="leads/:id" element={<PageRoute navItem="leads"><LeadDetailPage /></PageRoute>} />
+              <Route path="leads/:id" element={<PageRoute navItem="leads"><LeadRoute /></PageRoute>} />
               <Route path="schedule" element={<PageRoute navItem="schedule"><SchedulePage /></PageRoute>} />
               <Route path="processor-board" element={<PageRoute navItem="processor_board"><Suspense fallback={<PageFallback />}><ProcessorBoardPage /></Suspense></PageRoute>} />
               <Route path="analytics" element={<PageRoute navItem={["analytics", "cs_team_performance"]}><Analytics /></PageRoute>} />
