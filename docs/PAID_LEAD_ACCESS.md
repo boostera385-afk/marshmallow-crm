@@ -53,7 +53,14 @@ Operator) also see only their range once one is set.
   migrations twice and runs `supabase/tests/170_paid_lead_access.sql` (37 checks,
   2026-11-09: backfill, trigger, paid-date ranges incl. leads created in one month
   and paid in another, `my_paid_lead_ids`, no browser access to paid dates).
-- Paid-date migration on production: **not applied yet** (manual). Before and after
+- Paid-date migration on production: **applied 2026-11-09** (manual). After-run of
+  the baseline below matched cell for cell. Read-only checks: `lead_paid_dates` has
+  RLS on, 396 rows (371 payment logs, 25 approved requests), 56 paid leads undated;
+  browsers cannot read it; trigger `leads_record_paid_at` and the new policy are
+  present; `my_paid_lead_ids` is not callable anonymously. The one existing grant
+  (a Processor, Nov 1–30): `my_paid_lead_ids` returns 18 leads (became paid in
+  November) vs 2 created in November; the CRM list shows those 18 once published.
+  Originally (manual). Before and after
   applying, run `supabase/tests/40_leads_rls_baseline.sql` read-only; users without
   a paid grant must keep an identical matrix. Before-run, 2026-11-09 (production,
   read-only, rolled back):
