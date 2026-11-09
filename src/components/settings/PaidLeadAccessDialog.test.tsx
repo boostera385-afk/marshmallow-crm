@@ -7,6 +7,7 @@ it("defaults to All time", () => {
   const onConfirm = vi.fn();
   render(<PaidLeadAccessDialog open userName="Sam CS" onCancel={vi.fn()} onConfirm={onConfirm} />);
   expect(screen.getByText("Share paid leads with Sam CS")).toBeInTheDocument();
+  expect(screen.getByText(/date each lead became paid/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Share paid leads" }));
   expect(onConfirm).toHaveBeenCalledWith({ mode: "all" });
 });

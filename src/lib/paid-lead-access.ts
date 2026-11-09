@@ -2,13 +2,14 @@ import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Paid-lead grants (migration 20261204000000_paid_lead_access). An Admin switches
- * Paid on for a user and picks All time or a date range of the lead's created
- * date. The database enforces it (lead RLS "Granted paid leads"); the CRM uses the
- * same window so its lists and counts match what the database returns.
+ * Paid-lead grants (migrations 20261204000000_paid_lead_access and
+ * 20261205000000_paid_lead_access_by_paid_date). An Admin switches Paid on for a
+ * user and picks All time or a date range of the date each lead BECAME PAID (not
+ * its created date). The database enforces it (lead RLS "Granted paid leads") and
+ * returns the caller's in-window ids (my_paid_lead_ids), so the CRM's lists and
+ * counts match what the database returns without exposing paid dates.
  */
-export const PAID_ACCESS_TIMEZONE = "America/New_York";
-
+// Grant dates are New York calendar days; the database applies them.
 export const paidLeadAccessSchema = z.object({
   user_id: z.string().uuid(),
   start_date: z.string().nullable(),
@@ -38,20 +39,26 @@ export async function setPaidLeadAccess(userId: string, choice: PaidAccessChoice
   if (error) throw error;
 }
 
-/** Calendar date (YYYY-MM-DD) of a timestamp in the company time zone. */
-export function companyDate(iso: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: PAID_ACCESS_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(iso));
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}`;
+/** The caller's paid lead ids inside their grant window (empty without a grant). */
+export async function fetchMyPaidLeadIds(): Promise<string[]> {
+  const { data, error } = await supabase.rpc("my_paid_lead_ids" as never);
+  if (error) throw error;
+  return z.array(z.string().uuid()).parse(data ?? []);
 }
 
-/** True when a lead created at createdAt falls in the grant (no dates = all time). */
-export function isInPaidWindow(createdAt: string | null | undefined, access: Pick<PaidLeadAccess, "start_date" | "end_date"> | null | undefined): boolean {
+/**
+ * True when a paid lead is in the user's grant: all time covers every paid lead;
+ * a range covers the ids the database reports for it. Until those ids load (or if
+ * they cannot be read) a ranged grant shows no paid leads rather than guessing.
+ */
+export function isInPaidGrant(
+  leadId: string,
+  access: Pick<PaidLeadAccess, "start_date" | "end_date"> | null | undefined,
+  idsInWindow: ReadonlySet<string> | null | undefined,
+): boolean {
   if (!access) return false;
   if (!access.start_date || !access.end_date) return true;
-  if (!createdAt) return false;
-  const day = companyDate(createdAt);
-  return day >= access.start_date && day <= access.end_date;
+  return idsInWindow?.has(leadId) ?? false;
 }
 
 const formatDay = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });

@@ -12,6 +12,7 @@ import { extractCity, extractState } from "@/lib/address-utils";
 import { buildNearbyUrgentMap, isUrgentLead } from "@/lib/lead-proximity";
 import { preloadZipDataset } from "@/lib/zipCentroids";
 import { useAllowedStatuses } from "@/hooks/useAllowedStatuses";
+import { useVisiblePoll } from "@/hooks/useVisiblePoll";
 import { normalizePhoneE164 } from "@/lib/phone";
 import { openLeadFromClick } from "@/lib/lead-navigation";
 import { Button } from "@/components/ui/button";
@@ -85,9 +86,12 @@ const LEAD_LIST_COLUMNS =
 // the "Urgent in area" proximity count) — kept tiny so its frequent live refresh
 // stays a featherweight, filtered (status=urgent_job) indexed read.
 const URGENT_TABLE_COLUMNS = "id, customer_name, customer_phone, service_type, city, state, address, zip_code, urgent_at, created_at, customer_schedule_requirements, terms";
-// How often to refresh the urgent overview while the page is visible. Small,
-// because it only reads the tiny urgent subset, not the whole leads table.
-const URGENT_TABLE_POLL_MS = 5000;
+// How often to refresh the urgent overview (and its "needs CX reply" check)
+// while the page is visible. New urgent leads still land instantly through the
+// leads realtime channel; this poll catches leads leaving urgent, AI status and
+// customer replies. 15s (was 5s) cuts this page's steady database load by about
+// two thirds on the shared Micro instance.
+const URGENT_TABLE_POLL_MS = 15000;
 
 type UrgentRow = Pick<Lead, "id" | "customer_name" | "customer_phone" | "service_type" | "city" | "state" | "address" | "zip_code" | "urgent_at" | "created_at" | "customer_schedule_requirements" | "terms" | "location_label"> & { lead_ai_statuses?: { status: string; checked_at?: string } | null };
 
@@ -896,23 +900,7 @@ export default function LeadsPage() {
     return latest ? new Date(latest) : null;
   }, [urgentTableLeads]);
 
-  useEffect(() => {
-    if (!user || !role) return;
-    void refreshUrgentTable();
-    const tick = () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      void refreshUrgentTable();
-    };
-    const id = setInterval(tick, URGENT_TABLE_POLL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void refreshUrgentTable();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [user, role, refreshUrgentTable]);
+  useVisiblePoll(refreshUrgentTable, URGENT_TABLE_POLL_MS, { enabled: Boolean(user && role) });
 
   // "Urgent in area" counts, computed from the fresh urgent subset (all rows are
   // urgent, so tag them for the proximity helper). Recomputes once ZIP centroids
@@ -974,22 +962,8 @@ export default function LeadsPage() {
     setUrgentNeedsCxReply(urgentTableLeads.filter(l => needsReplyIds.has(l.id)));
   }, [urgentTableLeads]);
 
-  useEffect(() => {
-    void checkCxReplies();
-    const tick = () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      void checkCxReplies();
-    };
-    const id = setInterval(tick, 5000);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void checkCxReplies();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [checkCxReplies]);
+  // Re-checked at once whenever the urgent list changes, then on the same cadence.
+  useVisiblePoll(checkCxReplies, URGENT_TABLE_POLL_MS);
 
 
   const hasActiveFilters = Boolean(search) || safeStatusFilter !== "all" || Boolean(scheduleDateRange?.from);

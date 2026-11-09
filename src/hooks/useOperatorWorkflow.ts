@@ -1,11 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSharedQuery } from "@/hooks/useCrossTab";
 import { useAuth } from "@/contexts/AuthContext";
 import { isOperatorRole } from "@/lib/access";
 import { fetchHoldInbox, fetchLeadCopyAccess } from "@/lib/operator-workflow";
 
 export function useLeadCopyAccess() {
   const { user, role } = useAuth();
-  const query = useQuery({
+  const query = useSharedQuery({
     queryKey: ["lead-copy-access", user?.id, role], queryFn: fetchLeadCopyAccess,
     enabled: Boolean(user && role && role !== "admin"),
     staleTime: 5000, retry: false, refetchOnWindowFocus: true, refetchOnReconnect: true,
@@ -19,7 +19,7 @@ export function useLeadCopyAccess() {
 
 export function useHoldInbox() {
   const { user, role } = useAuth();
-  return useQuery({
+  return useSharedQuery({
     queryKey: ["operator-hold-alerts", user?.id, role], queryFn: fetchHoldInbox,
     enabled: Boolean(user && isOperatorRole(role)), staleTime: 5000, retry: false,
     refetchOnWindowFocus: true, refetchOnReconnect: true,

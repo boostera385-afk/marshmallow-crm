@@ -1317,6 +1317,7 @@ export default function LeadDetailPage() {
                     <QuoPhoneTrigger
                       contactName={originalLead.customer_name || "Lead"}
                       phone={originalLead.customer_phone}
+                      showLastMessageTime
                       chatType="customer"
                       className="inline-flex items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary no-underline shadow-sm transition-all hover:bg-primary/20"
                     >
@@ -1328,6 +1329,7 @@ export default function LeadDetailPage() {
                     <QuoPhoneTrigger
                       contactName={originalLead.tech_name || "Technician"}
                       phone={originalLead.tech_number}
+                      showLastMessageTime
                       chatType="tech"
                       className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/12 px-2.5 py-1 text-[11px] font-semibold text-amber-700 no-underline shadow-sm transition-all hover:bg-amber-500/22 dark:text-amber-300"
                     >

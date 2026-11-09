@@ -6,7 +6,20 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Clock, X, ArrowUpRight, Wrench, MapPin, AlertCircle, Calendar } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
-import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
+import { useSharedRefresh } from "@/hooks/useCrossTab";
+
+interface JobInProgressRead {
+  notifications: { id: string; title: string; message: string; lead_id: string | null; created_at: string; read: boolean }[];
+  leads: {
+    id: string;
+    customer_name: string;
+    expected_completion_date: string | null;
+    tech_name: string | null;
+    service_type: string | null;
+    city: string | null;
+    state: string | null;
+  }[];
+}
 
 interface JobInProgressItem {
   notificationIds: string[];
@@ -39,99 +52,84 @@ export default function JobInProgressPopup() {
   // Only Admins and Processors receive Job in Progress popups
   const isEligible = (role === "admin" || role === "processor") && Boolean(user) && fullyAuthenticated;
 
-  const loadReminders = useCallback(async (isCurrent: () => boolean) => {
-    if (!user || !isEligible) return;
+  // One tab per browser reads (and polls); other tabs receive the same rows and
+  // lead details. Each tab still hides the cards it dismissed itself.
+  const sharedKey = user && isEligible ? `notifications:job-in-progress:${user.id}` : null;
+  const readReminders = useCallback(async (): Promise<JobInProgressRead> => {
+    if (!user) return { notifications: [], leads: [] };
+    // 1. Fetch unread Job in Progress notifications for this user
+    const { data: notifications, error } = await supabase
+      .from("notifications")
+      .select("id, title, message, lead_id, created_at, read")
+      .eq("user_id", user.id)
+      .eq("read", false)
+      .ilike("title", "%Job in Progress%")
+      .order("created_at", { ascending: false })
+      .limit(FETCH_LIMIT);
+    if (error || !notifications || notifications.length === 0) return { notifications: [], leads: [] };
 
-    try {
-      // 1. Fetch unread Job in Progress notifications for this user
-      const { data: notifications, error } = await supabase
-        .from("notifications")
-        .select("id, title, message, lead_id, created_at, read")
-        .eq("user_id", user.id)
-        .eq("read", false)
-        .ilike("title", "%Job in Progress%")
-        .order("created_at", { ascending: false })
-        .limit(FETCH_LIMIT);
-      if (!isCurrent()) return;
+    // 2. Extract lead IDs to get up-to-date expected details
+    const leadIds = notifications
+      .map((n) => n.lead_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (leadIds.length === 0) return { notifications, leads: [] };
+    const { data: leads } = await supabase
+      .from("leads")
+      .select("id, customer_name, expected_completion_date, tech_name, service_type, city, state")
+      .in("id", [...new Set(leadIds)]);
+    return { notifications, leads: leads ?? [] };
+  }, [user]);
 
-      if (error || !notifications) {
-        setItems([]);
-        return;
-      }
-
-      const visible = notifications.filter((n) => !dismissedIds.current.has(n.id));
-      if (visible.length === 0) {
-        setItems([]);
-        return;
-      }
-
-      // 2. Extract lead IDs to get up-to-date expected details
-      const leadIds = visible
-        .map((n) => n.lead_id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0);
-
-      const leadDetailsMap = new Map<string, {
-        customer_name: string;
-        expected_completion_date: string | null;
-        tech_name: string | null;
-        service_type: string | null;
-        city: string | null;
-        state: string | null;
-      }>();
-
-      if (leadIds.length > 0) {
-        const { data: leads } = await supabase
-          .from("leads")
-          .select("id, customer_name, expected_completion_date, tech_name, service_type, city, state")
-          .in("id", [...new Set(leadIds)]);
-        if (!isCurrent()) return;
-
-        if (leads) {
-          leads.forEach((l) => leadDetailsMap.set(l.id, l));
-        }
-      }
-
-      // 3. One entry per lead — the same job reminded twice is still one job.
-      const byLead = new Map<string, JobInProgressItem>();
-
-      for (const n of visible) {
-        const key = n.lead_id ?? `notification:${n.id}`;
-        const existing = byLead.get(key);
-
-        if (existing) {
-          existing.notificationIds.push(n.id);
-          continue;
-        }
-
-        const details = n.lead_id ? leadDetailsMap.get(n.lead_id) : undefined;
-        byLead.set(key, {
-          notificationIds: [n.id],
-          leadId: n.lead_id,
-          title: n.title,
-          message: n.message,
-          createdAt: n.created_at,
-          customerName: details?.customer_name || "Lead",
-          expectedCompletionDate: details?.expected_completion_date || null,
-          techName: details?.tech_name || null,
-          serviceType: details?.service_type || null,
-          city: details?.city || null,
-          state: details?.state || null,
-        });
-      }
-
-      setItems([...byLead.values()]);
-    } catch (err) {
-      console.warn("Failed to fetch Job in Progress reminders", err);
+  const applyReminders = useCallback(({ notifications, leads }: JobInProgressRead) => {
+    const visible = notifications.filter((n) => !dismissedIds.current.has(n.id));
+    if (visible.length === 0) {
+      setItems([]);
+      return;
     }
-  }, [user, isEligible]);
-  const fetchReminders = useCoalescedRefresh(loadReminders);
+    const leadDetailsMap = new Map(leads.map((l) => [l.id, l]));
+
+    // 3. One entry per lead — the same job reminded twice is still one job.
+    const byLead = new Map<string, JobInProgressItem>();
+
+    for (const n of visible) {
+      const key = n.lead_id ?? `notification:${n.id}`;
+      const existing = byLead.get(key);
+
+      if (existing) {
+        existing.notificationIds.push(n.id);
+        continue;
+      }
+
+      const details = n.lead_id ? leadDetailsMap.get(n.lead_id) : undefined;
+      byLead.set(key, {
+        notificationIds: [n.id],
+        leadId: n.lead_id,
+        title: n.title,
+        message: n.message,
+        createdAt: n.created_at,
+        customerName: details?.customer_name || "Lead",
+        expectedCompletionDate: details?.expected_completion_date || null,
+        techName: details?.tech_name || null,
+        serviceType: details?.service_type || null,
+        city: details?.city || null,
+        state: details?.state || null,
+      });
+    }
+
+    setItems([...byLead.values()]);
+  }, []);
+  const { refresh: fetchReminders, isOwner } = useSharedRefresh(sharedKey, readReminders, applyReminders);
 
   useEffect(() => {
     if (!isEligible) return;
     void fetchReminders();
+  }, [fetchReminders, isEligible]);
+
+  useEffect(() => {
+    if (!isEligible || !isOwner) return;
     const interval = setInterval(fetchReminders, POLL_MS);
     return () => clearInterval(interval);
-  }, [fetchReminders, isEligible]);
+  }, [fetchReminders, isEligible, isOwner]);
 
   // Realtime subscription for instant pop-up when notification is inserted
   useEffect(() => {

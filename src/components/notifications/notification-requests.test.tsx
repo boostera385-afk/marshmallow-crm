@@ -10,6 +10,9 @@ import QuoteUpdatedPopup from "./QuoteUpdatedPopup";
 import IncompleteDetailsPopup from "./IncompleteDetailsPopup";
 import { NotificationPopupProvider } from "./popup-slot";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { CrossTabProvider } from "@/hooks/useCrossTab";
+import { createFakeTab, FakeChannelHub, FakeLocks } from "@/test/cross-tab-fakes";
+import type { CrossTabCoordinator } from "@/lib/cross-tab";
 
 type Read = { table: string; columns: string; head: boolean; title: string; filters: Record<string, unknown>; limit?: number; since?: string };
 type Result = { data: unknown[] | null; count?: number; error?: { message: string } | null };
@@ -74,6 +77,13 @@ function mountAll() {
   return render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><NotificationBell /><NotificationPopupProvider>
     <UrgentLeadPopup /><JobInProgressPopup /><QuoteUpdatedPopup /><IncompleteDetailsPopup />
   </NotificationPopupProvider></MemoryRouter></QueryClientProvider>);
+}
+function mountTab(coordinator: CrossTabCoordinator) {
+  return render(<CrossTabProvider coordinator={coordinator}><QueryClientProvider client={new QueryClient()}><MemoryRouter>
+    <NotificationBell /><NotificationPopupProvider>
+      <UrgentLeadPopup /><JobInProgressPopup /><QuoteUpdatedPopup /><IncompleteDetailsPopup />
+    </NotificationPopupProvider>
+  </MemoryRouter></QueryClientProvider></CrossTabProvider>);
 }
 async function flush() { await act(async () => { await vi.advanceTimersByTimeAsync(1); }); }
 function emit(title: string, eventType: "INSERT" | "UPDATE" = "INSERT") {
@@ -261,5 +271,72 @@ describe("notification request optimization", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(notificationReads()).toHaveLength(reads);
     expect(state.remove).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("several tabs of one browser", () => {
+  const titled = (title: string) => notificationReads().filter((read) => read.title === title);
+  const bellLists = () => notificationReads().filter((read) => !read.title && !read.head);
+
+  it("polls once per browser, not once per tab, and every tab still shows the alert", async () => {
+    const locks = new FakeLocks();
+    const hub = new FakeChannelHub();
+    const first = createFakeTab(locks, hub, true);
+    const second = createFakeTab(locks, hub, false);
+    mountTab(first.coordinator);
+    await flush();
+    mountTab(second.coordinator);
+    await flush();
+    state.reads = [];
+
+    state.respond = (read) => Promise.resolve(read.title === "%Urgent Job%"
+      ? { data: [notification("Urgent Job")] }
+      : { data: [], count: read.head ? 0 : undefined });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+    // One tab's cadence: urgent every 20s, job-in-progress every 25s, bell every 15s.
+    expect(titled("%Urgent Job%")).toHaveLength(3);
+    expect(titled("%Job in Progress%")).toHaveLength(2);
+    expect(bellLists()).toHaveLength(4);
+    expect(screen.getAllByText(/Synthetic Customer/)).toHaveLength(2);
+  });
+
+  it("hands polling to the remaining tab when the polling tab closes", async () => {
+    const locks = new FakeLocks();
+    const hub = new FakeChannelHub();
+    const first = createFakeTab(locks, hub, true);
+    const second = createFakeTab(locks, hub, false);
+    const firstView = mountTab(first.coordinator);
+    await flush();
+    mountTab(second.coordinator);
+    await flush();
+    firstView.unmount();
+    await flush();
+    state.reads = [];
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(titled("%Urgent Job%")).toHaveLength(1);
+    expect(bellLists()).toHaveLength(1);
+  });
+
+  it("answers another tab's refresh (its own realtime event or action) with one shared read", async () => {
+    const locks = new FakeLocks();
+    const hub = new FakeChannelHub();
+    const first = createFakeTab(locks, hub, true);
+    const second = createFakeTab(locks, hub, false);
+    mountTab(first.coordinator);
+    await flush();
+    mountTab(second.coordinator);
+    await flush();
+    state.reads = [];
+    state.respond = (read) => Promise.resolve(read.title === "%Urgent Job%"
+      ? { data: [notification("Urgent Job")] }
+      : { data: [], count: read.head ? 0 : undefined });
+
+    // Only the second tab's realtime transport delivers this event.
+    await act(async () => { emit("Urgent Job"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(titled("%Urgent Job%")).toHaveLength(1);
+    expect(screen.getAllByText(/Synthetic Customer/)).toHaveLength(2);
   });
 });

@@ -811,6 +811,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                   <QuoPhoneTrigger
                     contactName={lead.customer_name}
                     phone={lead.customer_phone}
+                    showLastMessageTime
                     chatType="customer"
                     className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-all no-underline shadow-sm"
                   >
@@ -822,6 +823,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                   <QuoPhoneTrigger
                     contactName={lead.tech_name || "Technician"}
                     phone={lead.tech_number}
+                    showLastMessageTime
                     chatType="tech"
                     className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-all no-underline shadow-sm"
                   >

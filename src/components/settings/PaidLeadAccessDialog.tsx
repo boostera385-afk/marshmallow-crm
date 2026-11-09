@@ -45,7 +45,7 @@ export default function PaidLeadAccessDialog({ open, userName, current, saving =
         <DialogHeader>
           <DialogTitle className="text-base">Share paid leads with {userName}</DialogTitle>
           <DialogDescription className="text-xs">
-            Choose which paid leads {userName} can see. The range uses the date each lead was created (New York time).
+            Choose which paid leads {userName} can see. The range uses the date each lead became paid (New York time), not when it was created.
           </DialogDescription>
         </DialogHeader>
 

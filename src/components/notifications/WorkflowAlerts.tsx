@@ -8,6 +8,7 @@ import { claimWorkflowAlert, claimWorkflowChime, loadAlertCursor, pollAlertDelay
 import { playAssignmentSound } from "@/lib/notification-sound";
 import { subscribeToNotifications, realtimeBus } from "@/lib/realtime";
 import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
+import { useCrossTabOwner } from "@/hooks/useCrossTab";
 import { customerSaidFromAlert, isNewScheduleAlert, requestScheduleRequirementPrompt } from "@/lib/schedule-requirement";
 import WorkflowToast from "./WorkflowToast";
 
@@ -61,8 +62,13 @@ export default function WorkflowAlerts() {
       throw error;
     }
   }, [user, role, navigate]));
+  // The alert cursor and per-event claims are shared through localStorage, so a
+  // single tab per browser (the one the user is looking at, when possible) reads
+  // alerts for all of them; it keeps polling while hidden so alerts still arrive.
+  const eligible = Boolean(user) && canAccessNotifications(role);
+  const readsHere = useCrossTabOwner(eligible && user ? `workflow-alerts:${user.id}:${role}` : null);
   useEffect(() => {
-    if (!user || !canAccessNotifications(role)) return;
+    if (!user || !canAccessNotifications(role) || !readsHere) return;
     void refresh();
     const unsubscribe = subscribeToNotifications(user.id, () => { void refresh(); });
     let timer = 0;
@@ -70,8 +76,13 @@ export default function WorkflowAlerts() {
       timer = window.setTimeout(() => { void refresh().then(poll); }, pollAlertDelay(failedPolls.current));
     };
     poll();
+    return () => { unsubscribe(); window.clearTimeout(timer); };
+  }, [user, role, refresh, readsHere]);
+  // Shown toasts stay up when another tab takes over reading (they were claimed
+  // here and are not shown again); they close when the user or role changes.
+  useEffect(() => {
     const activeToasts = displayed.current;
-    return () => { unsubscribe(); window.clearTimeout(timer); activeToasts.forEach((id) => toast.dismiss(id)); activeToasts.clear(); };
-  }, [user, role, refresh]);
+    return () => { activeToasts.forEach((id) => toast.dismiss(id)); activeToasts.clear(); };
+  }, [user, role]);
   return null;
 }

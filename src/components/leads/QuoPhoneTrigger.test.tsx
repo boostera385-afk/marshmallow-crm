@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import QuoPhoneTrigger from "@/components/leads/QuoPhoneTrigger";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchQuoChatThread, sendQuoChatMessage } from "@/lib/quo-chat";
-import { prepareQuoChatViaExtension, sendQuoMessageViaExtension } from "@/lib/quo-dashboard";
+import { formatLocalRelativeTime, prepareQuoChatViaExtension, sendQuoMessageViaExtension } from "@/lib/quo-dashboard";
 import { supabase } from "@/integrations/supabase/client";
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -197,5 +197,47 @@ describe("QuoPhoneTrigger", () => {
     expect(await screen.findByText("Synthetic CRM chat unavailable")).toBeInTheDocument();
     expect(screen.queryByText("No messages in this chat yet.")).not.toBeInTheDocument();
     expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it("shows the last message time on the CX and Tech Quick Chat buttons only", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      role: "admin",
+      canAccess: vi.fn(() => true),
+    } as unknown as ReturnType<typeof useAuth>);
+    const reads: string[] = [];
+    vi.spyOn(supabase, "from").mockImplementation(((table: string) => {
+      reads.push(table);
+      const builder = {
+        select: () => builder,
+        in: () => builder,
+        order: () => Promise.resolve({
+          data: [
+            { customer_number: "+15551234567", last_customer_message_at: "2026-11-08T14:00:00Z", last_agent_message_at: "2026-11-08T15:30:00Z", last_message_at: "2026-11-08T15:30:00Z", quo_phone_numbers: { number: "+15551230000", display_number: null, name: "Main Line" } },
+          ],
+          error: null,
+        }),
+      };
+      return builder;
+    }) as never);
+
+    render(
+      <>
+        <QuoPhoneTrigger contactName="Jane Doe" phone="(555) 123-4567" chatType="customer" showLastMessageTime>
+          <span>CX Quick Chat</span>
+        </QuoPhoneTrigger>
+        <QuoPhoneTrigger contactName="Jane Doe" phone="(555) 123-4567" chatType="customer">
+          (555) 123-4567
+        </QuoPhoneTrigger>
+      </>,
+    );
+
+    const expected = formatLocalRelativeTime("2026-11-08T15:30:00Z", true);
+    const time = await screen.findByText(expected);
+    expect(time.tagName).toBe("TIME");
+    expect(time).toHaveAttribute("dateTime", "2026-11-08T15:30:00.000Z");
+    expect(screen.getByRole("button", { name: /CX Quick Chat/ })).toContainElement(time);
+    expect(screen.getAllByText(expected)).toHaveLength(1);
+    // Both buttons share one batched read; no per-button request.
+    expect(reads.filter((table) => table === "quo_conversations")).toHaveLength(1);
   });
 });
