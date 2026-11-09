@@ -26,6 +26,7 @@ import {
 } from "@/lib/quo-dashboard";
 import ImageLightbox from "@/components/leads/ImageLightbox";
 import { cn } from "@/lib/utils";
+import { latestChatTime, quickChatStatus, type QuickChatStatus } from "@/lib/quick-chat-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +56,8 @@ interface QuoPhoneTriggerProps {
   readOnly?: boolean;
   defaultOpen?: boolean;
   hideTrigger?: boolean;
+  /** CX / Tech Quick Chat buttons: show the last message time (whoever sent it). */
+  showLastMessageTime?: boolean;
   onClose?: () => void;
 }
 
@@ -70,7 +73,7 @@ const QUICK_CHAT_UNREAD_REFRESH_DELAY = 200;
 const QUICK_CHAT_UNREAD_CHUNK_SIZE = 50;
 const quickChatUnreadWatchers = new Map<
   string,
-  { phone: string; chatType?: "customer" | "tech"; setState: (value: boolean) => void }
+  { phone: string; chatType?: "customer" | "tech"; setState: (value: QuickChatStatus) => void }
 >();
 let quickChatUnreadRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 // Unread status is polled rather than driven by a realtime subscription on the
@@ -142,19 +145,10 @@ async function refreshQuickChatUnreadStatuses() {
   watchers.forEach((watcher) => {
     const normalized = normalizePhoneE164(watcher.phone) ?? getPhoneKey(watcher.phone);
     const rows = normalized ? rowsByPhone.get(normalized) ?? [] : [];
-    let match: UnreadConversation | null = null;
-    if (rows.length > 0) {
-      match =
-        rows.find((row) => {
-          const numRow = row.quo_phone_numbers;
-          const isTech = isTechLineNumber(numRow?.number || numRow?.display_number || numRow?.name);
-          return watcher.chatType === "tech" ? isTech : !isTech;
-        }) ?? rows[0];
-    }
-
-    const customerAt = match?.last_customer_message_at ? new Date(match.last_customer_message_at).getTime() : 0;
-    const agentAt = match?.last_agent_message_at ? new Date(match.last_agent_message_at).getTime() : 0;
-    watcher.setState(customerAt > 0 && customerAt > agentAt);
+    watcher.setState(quickChatStatus(rows.map((row) => {
+      const numRow = row.quo_phone_numbers;
+      return { ...row, isTechLine: isTechLineNumber(numRow?.number || numRow?.display_number || numRow?.name) };
+    }), watcher.chatType));
   });
 }
 
@@ -182,6 +176,7 @@ export default function QuoPhoneTrigger({
   readOnly = false,
   defaultOpen = false,
   hideTrigger = false,
+  showLastMessageTime = false,
   onClose,
 }: QuoPhoneTriggerProps) {
   const auth = useAuth();
@@ -235,7 +230,8 @@ export default function QuoPhoneTrigger({
   const requiredAccessKey = chatType === "tech" ? "tech_quick_chat" : "quick_chat";
   // Quick Chat is available to admins and to any user an admin granted access to.
   const canUseQuickChat = isAdmin || auth.canAccess?.(requiredAccessKey) === true;
-  const [lastFromCustomer, setLastFromCustomer] = useState(false);
+  const [chatStatus, setChatStatus] = useState<QuickChatStatus>({ fromContact: false, lastMessageAt: null });
+  const lastFromCustomer = chatStatus.fromContact;
   const closeChat = () => { setOpen(false); onCloseRef.current?.(); };
 
   useEffect(() => {
@@ -261,7 +257,7 @@ export default function QuoPhoneTrigger({
     quickChatUnreadWatchers.set(watcherKey, {
       phone: normalizedPhone,
       chatType,
-      setState: setLastFromCustomer,
+      setState: setChatStatus,
     });
 
     ensureQuickChatUnreadPolling();
@@ -557,6 +553,8 @@ export default function QuoPhoneTrigger({
 
   const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
   const showCustomerDot = latestMessage ? latestMessage.direction === "incoming" : lastFromCustomer;
+  // Last message in this chat, whoever sent it (the open thread can be newer than the batched read).
+  const lastMessageAt = latestChatTime(chatStatus.lastMessageAt, latestMessage?.createdAt);
 
   const currentStatusKey = normalizeQuoLeadStatus(conversationMeta?.status);
   const statusCfg = QUO_LEAD_STATUS_CONFIG[currentStatusKey];
@@ -576,6 +574,15 @@ export default function QuoPhoneTrigger({
       >
         <Phone className="h-3.5 w-3.5 shrink-0" />
         <span>{triggerLabel}</span>
+        {showLastMessageTime && lastMessageAt && (
+          <time
+            dateTime={lastMessageAt}
+            title="Last message in this chat"
+            className="whitespace-nowrap text-[10px] font-normal opacity-80"
+          >
+            {formatLocalRelativeTime(lastMessageAt, true)}
+          </time>
+        )}
         {showCustomerDot && (
           <span
             className="relative ml-0.5 flex h-2 w-2 shrink-0"

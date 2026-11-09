@@ -1566,6 +1566,7 @@ function LeadCard({
                 <QuoPhoneTrigger
                   contactName={lead.customer_name}
                   phone={lead.customer_phone}
+                  showLastMessageTime
                   chatType="customer"
                   className="inline-flex items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20 transition-all no-underline shadow-sm"
                 >
@@ -1583,6 +1584,7 @@ function LeadCard({
                 <QuoPhoneTrigger
                   contactName={lead.tech_name || "Technician"}
                   phone={lead.tech_number}
+                  showLastMessageTime
                   chatType="tech"
                   className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/12 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/22 transition-all no-underline shadow-sm"
                 >
