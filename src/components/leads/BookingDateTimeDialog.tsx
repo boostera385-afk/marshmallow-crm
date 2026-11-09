@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { TimeInput } from "@/components/ui/time-input";
 
 interface BookingDateTimeDialogProps {
   open: boolean;
@@ -109,11 +110,10 @@ export default function BookingDateTimeDialog({
             <Label htmlFor="booking-time" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Booking Time
             </Label>
-            <Input
+            <TimeInput
               id="booking-time"
-              type="time"
               value={time}
-              onChange={(e) => setTime(e.target.value)}
+              onChange={setTime}
               className="w-full"
             />
           </div>

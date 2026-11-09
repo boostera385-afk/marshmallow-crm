@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DateInput, parseIsoDay, toIsoDay } from "./date-input";
+import { DateInput } from "./date-input";
+import { parseIsoDay, toIsoDay } from "@/lib/date-value";
 afterEach(cleanup);
 
 function Harness(props: { initial?: string; min?: string; max?: string; required?: boolean; onChange?: (value: string) => void }) {

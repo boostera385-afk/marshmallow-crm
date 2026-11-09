@@ -69,6 +69,7 @@ import { updateLeadById } from "@/lib/lead-updates";
 import { dispatchLeadStatusNotification } from "@/lib/lead-notifications";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import { DateInput } from "@/components/ui/date-input";
+import { TimeInput } from "@/components/ui/time-input";
 
 interface Props {
   leadId: string;
@@ -1224,20 +1225,20 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
 
               <div className="space-y-1.5">
                 <Label className={labelClass}>Start Time</Label>
-                <Input
-                  type="time"
+                <TimeInput
+                  aria-label="Start Time"
                   value={form.scheduled_time_start ?? ""}
-                  onChange={(e) => update("scheduled_time_start", e.target.value)}
+                  onChange={(value) => update("scheduled_time_start", value)}
                   className={fieldClass}
                 />
               </div>
 
               <div className="space-y-1.5">
                 <Label className={labelClass}>End Time</Label>
-                <Input
-                  type="time"
+                <TimeInput
+                  aria-label="End Time"
                   value={form.scheduled_time_end ?? ""}
-                  onChange={(e) => update("scheduled_time_end", e.target.value)}
+                  onChange={(value) => update("scheduled_time_end", value)}
                   className={fieldClass}
                 />
               </div>

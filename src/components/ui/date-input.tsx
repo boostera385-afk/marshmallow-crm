@@ -1,22 +1,12 @@
 import * as React from "react";
-import { format, isValid, parse } from "date-fns";
+import { format } from "date-fns";
 import { CalendarDays } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-
-const ISO_DAY = "yyyy-MM-dd";
-
-/** "2026-11-01" -> local Date (no time-zone shift), or undefined. */
-export function parseIsoDay(value: string | null | undefined): Date | undefined {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
-  const date = parse(value, ISO_DAY, new Date());
-  return isValid(date) ? date : undefined;
-}
-
-export const toIsoDay = (date: Date) => format(date, ISO_DAY);
+import { parseIsoDay, toIsoDay } from "@/lib/date-value";
 
 export interface DateInputProps {
   /** YYYY-MM-DD, or "" for no date (same value a native date input uses). */
