@@ -54,12 +54,14 @@ export default function CrmUpdatePopup() {
     if (!user || !role || !fullyAuthenticated || refreshInFlight.current) return;
     refreshInFlight.current = true;
     try {
-      const { data: updates, error } = await supabase
+      // New users see nothing published before their account existed.
+      let query = supabase
         .from("crm_updates" as never)
         .select("id, title, description, affected_section, target_roles, priority, is_active, published_at")
         .eq("is_active", true)
-        .contains("target_roles", [role])
-        .order("published_at", { ascending: true });
+        .contains("target_roles", [role]);
+      if (user.created_at) query = query.gte("published_at", user.created_at);
+      const { data: updates, error } = await query.order("published_at", { ascending: true });
 
       if (error || !updates) return;
 

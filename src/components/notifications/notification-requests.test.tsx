@@ -14,10 +14,10 @@ import { CrossTabProvider } from "@/hooks/useCrossTab";
 import { createFakeTab, FakeChannelHub, FakeLocks } from "@/test/cross-tab-fakes";
 import type { CrossTabCoordinator } from "@/lib/cross-tab";
 
-type Read = { table: string; columns: string; head: boolean; title: string; filters: Record<string, unknown>; limit?: number; since?: string };
+type Read = { table: string; columns: string; head: boolean; title: string; filters: Record<string, unknown>; limit?: number; since?: string; from?: string };
 type Result = { data: unknown[] | null; count?: number; error?: { message: string } | null };
 const state = vi.hoisted(() => ({
-  user: { id: "synthetic-user" },
+  user: { id: "synthetic-user" } as { id: string; created_at?: string },
   role: "admin" as AppRole,
   authenticated: true,
   reads: [] as Read[],
@@ -50,6 +50,7 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
       or: (value: string) => { read.filters.or = value; return query; },
       ilike: (_key: string, value: string) => { read.title = value; return query; },
       gt: (_key: string, value: string) => { read.since = value; return query; },
+      gte: (_key: string, value: string) => { read.from = value; return query; },
       order: () => query,
       limit: (value: number) => { read.limit = value; return query; },
       in: (key: string, value: string[]) => { read.filters[key] = value; return query; },
@@ -338,5 +339,29 @@ describe("several tabs of one browser", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(100); });
     expect(titled("%Urgent Job%")).toHaveLength(1);
     expect(screen.getAllByText(/Synthetic Customer/)).toHaveLength(2);
+  });
+});
+
+describe("how long notifications are shown", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  it("bell, unread count and every pop-up read only the last 3 days", async () => {
+    state.role = "cs_admin";
+    const now = Date.now();
+    mountAll();
+    await flush();
+    const reads = notificationReads();
+    expect(reads.length).toBeGreaterThan(0);
+    for (const read of reads) {
+      expect(read.from, `${read.title || (read.head ? "bell count" : "bell list")} has a lower bound`).toBeDefined();
+      expect(Math.abs(Date.parse(read.from!) - (now - 3 * DAY))).toBeLessThan(60_000);
+    }
+  });
+
+  it("a new user sees nothing created before their account", async () => {
+    const createdAt = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(); // joined 6 hours ago
+    state.user = { id: "synthetic-user", created_at: createdAt };
+    mountAll();
+    await flush();
+    expect(notificationReads().every((read) => read.from === createdAt)).toBe(true);
   });
 });

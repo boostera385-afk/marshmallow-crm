@@ -7,6 +7,7 @@ import { Clock, X, ArrowUpRight, Wrench, MapPin, AlertCircle, Calendar } from "l
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
+import { activeNotificationSince } from "@/lib/notification-window";
 
 interface JobInProgressRead {
   notifications: { id: string; title: string; message: string; lead_id: string | null; created_at: string; read: boolean }[];
@@ -64,6 +65,7 @@ export default function JobInProgressPopup() {
       .eq("user_id", user.id)
       .eq("read", false)
       .ilike("title", "%Job in Progress%")
+      .gte("created_at", activeNotificationSince(user.created_at))
       .order("created_at", { ascending: false })
       .limit(FETCH_LIMIT);
     if (error || !notifications || notifications.length === 0) return { notifications: [], leads: [] };

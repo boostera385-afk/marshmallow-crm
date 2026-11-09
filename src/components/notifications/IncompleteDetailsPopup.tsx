@@ -7,6 +7,7 @@ import { ClipboardList, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
+import { activeNotificationSince } from "@/lib/notification-window";
 
 interface IncompleteDetailsNotification {
   id: string;
@@ -60,6 +61,7 @@ export default function IncompleteDetailsPopup() {
       .eq("user_id", user.id)
       .eq("read", false)
       .ilike("title", "%Incomplete Details%")
+      .gte("created_at", activeNotificationSince(user.created_at))
       .order("created_at", { ascending: false })
       .limit(FETCH_LIMIT);
     if (error) throw new Error(error.message);

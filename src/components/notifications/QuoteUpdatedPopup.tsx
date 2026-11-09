@@ -7,6 +7,7 @@ import { FileCheck, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
+import { activeNotificationSince } from "@/lib/notification-window";
 
 interface QuoteUpdatedNotification {
   id: string;
@@ -83,6 +84,7 @@ export default function QuoteUpdatedPopup() {
       .eq("read", false)
       .ilike("title", "%Quote Updated%")
       .gt("created_at", baseline)
+      .gte("created_at", activeNotificationSince(user.created_at))
       .order("created_at", { ascending: false })
       .limit(FETCH_LIMIT);
     if (error) throw new Error(error.message);
