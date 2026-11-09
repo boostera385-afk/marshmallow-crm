@@ -78,3 +78,17 @@ it("does not prompt CS for other alerts", async () => {
   mount(); await waitFor(() => expect(state.custom).toHaveBeenCalledOnce());
   expect(prompt).not.toHaveBeenCalled();
 });
+it("never asks for alerts older than 3 days, even with an old saved cursor", async () => {
+  localStorage.setItem(`workflow-alerts:${state.user.id}:cursor`, "2026-01-01T00:00:00.000Z");
+  const now = Date.now();
+  mount(); await waitFor(() => expect(state.fetch).toHaveBeenCalledOnce());
+  const after = Date.parse(state.fetch.mock.calls[0][0]);
+  expect(Math.abs(after - (now - 3 * 24 * 60 * 60 * 1000))).toBeLessThan(60_000);
+});
+it("never asks a new user for alerts from before their account", async () => {
+  const createdAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  (state.user as { id: string; created_at?: string }).created_at = createdAt;
+  localStorage.setItem(`workflow-alerts:${state.user.id}:cursor`, "2026-01-01T00:00:00.000Z");
+  mount(); await waitFor(() => expect(state.fetch).toHaveBeenCalledOnce());
+  expect(state.fetch.mock.calls[0][0]).toBe(createdAt);
+});

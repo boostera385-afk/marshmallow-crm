@@ -7,6 +7,7 @@ import { AlertTriangle, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
+import { isAlertOfKind, readActiveAlerts } from "@/lib/active-alerts";
 
 interface UrgentNotification {
   id: string;
@@ -53,19 +54,9 @@ export default function UrgentLeadPopup() {
 
   // One tab per browser reads (and polls); other tabs receive the same rows.
   const sharedKey = user && eligible ? `notifications:urgent:${user.id}` : null;
-  const readUrgent = useCallback(async () => {
-    if (!user) return [];
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("id, title, message, lead_id, created_at, read")
-      .eq("user_id", user.id)
-      .eq("read", false)
-      .ilike("title", "%Urgent Job%")
-      .order("created_at", { ascending: false })
-      .limit(FETCH_LIMIT);
-    if (error) throw new Error(error.message);
-    return (data ?? []) as UrgentNotification[];
-  }, [user]);
+  const readUrgent = useCallback(async () => (
+    user ? (await readActiveAlerts(user.id, user.created_at, "urgent_job")) as UrgentNotification[] : []
+  ), [user]);
 
   const applyUrgent = useCallback((data: UrgentNotification[], isCurrent: () => boolean) => {
     const rows = data.filter((n) => !dismissedIds.current.has(n.id));
@@ -99,8 +90,7 @@ export default function UrgentLeadPopup() {
     if (!user || !eligible) return;
 
     return subscribeToNotifications(user.id, (payload) => {
-      const row = payload.new as { title?: string };
-      if (payload.eventType === "UPDATE" || row.title?.toLowerCase().includes("urgent job")) {
+      if (payload.eventType === "UPDATE" || isAlertOfKind(payload.new as { kind?: string; title?: string }, "urgent_job")) {
         void fetchUrgent();
       }
     });

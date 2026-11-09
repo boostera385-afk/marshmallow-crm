@@ -66,7 +66,6 @@ import {
   reviewCancellationRequest,
 } from "@/lib/cancellation-requests";
 import { updateLeadById } from "@/lib/lead-updates";
-import { dispatchLeadStatusNotification } from "@/lib/lead-notifications";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
@@ -649,26 +648,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
         await requestQuoteApproval({ lead, requesterId: user.id });
       }
 
-      if (
-        (lead?.status !== savedStatus && (savedStatus === "urgent_job" || savedStatus === "need_tech" || savedStatus === "job_in_progress")) ||
-        (savedStatus === "job_in_progress" && lead?.expected_completion_date !== form.expected_completion_date && form.expected_completion_date)
-      ) {
-        await dispatchLeadStatusNotification({
-          leadId,
-          leadName: form.customer_name,
-          status: savedStatus,
-          expectedCompletionDate: form.expected_completion_date,
-        });
-      }
-
-      if (lead?.status !== savedStatus && savedStatus === "quote_updated") {
-        await dispatchLeadStatusNotification({
-          leadId,
-          leadName: form.customer_name,
-          status: savedStatus,
-          quoteRequestedBy: lead?.quote_requested_by,
-        });
-      }
+      // Status alerts (Urgent Job, Need Tech, Job in Progress, Quote Updated) are
+      // sent by the database when the lead is saved (leads_notify_change).
 
       if (Object.keys(changes).length > 0) {
         await logActivity(user.id, "updated", "lead", leadId, {

@@ -11,6 +11,7 @@ import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
 import { useCrossTabOwner } from "@/hooks/useCrossTab";
 import { customerSaidFromAlert, isNewScheduleAlert, requestScheduleRequirementPrompt } from "@/lib/schedule-requirement";
 import WorkflowToast from "./WorkflowToast";
+import { activeNotificationSince, laterOf } from "@/lib/notification-window";
 
 export default function WorkflowAlerts() {
   const { user, role } = useAuth();
@@ -21,7 +22,8 @@ export default function WorkflowAlerts() {
   const refresh = useCoalescedRefresh(useCallback(async (isCurrent: () => boolean) => {
     if (!user || !canAccessNotifications(role)) return;
     try {
-      const after = loadAlertCursor(user.id, baseline.current);
+      // Never toast anything older than the 3-day window or the account itself.
+      const after = laterOf(loadAlertCursor(user.id, baseline.current), activeNotificationSince(user.created_at));
       const until = new Date().toISOString();
       let offset = 0;
       let more = true;

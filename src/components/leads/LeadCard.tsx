@@ -84,7 +84,6 @@ import type { LeadCancellationRequest } from "@/types";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { getAssignableLeadTags, isQuotationMaster } from "@/lib/lead-tags";
 import { countTechs } from "@/lib/lead-techs";
-import { dispatchLeadStatusNotification } from "@/lib/lead-notifications";
 import { saveLeadTag } from "@/lib/lead-tag-actions";
 import AiTagBadge from "@/components/leads/AiTagBadge";
 import { canSeeTechDetails, isOperatorRole } from "@/lib/access";
@@ -1124,15 +1123,7 @@ function LeadCard({
 
     onRefresh();
     
-    // Job in Progress reminders stay owned by the detail views, same as before.
-    if (newStatus === "urgent_job" || newStatus === "need_tech" || newStatus === "quote_updated") {
-      await dispatchLeadStatusNotification({
-        leadId: lead.id,
-        leadName: lead.customer_name,
-        status: newStatus,
-        quoteRequestedBy: lead.quote_requested_by,
-      });
-    }
+    // Status alerts are sent by the database when the status changes (leads_notify_change).
 
     onRefresh();
   };

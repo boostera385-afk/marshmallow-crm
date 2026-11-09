@@ -33,7 +33,6 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 vi.mock("@/lib/activity", () => ({ logActivity: vi.fn(() => Promise.resolve()) }));
 vi.mock("@/lib/lead-updates", () => ({ updateLeadById: vi.fn(() => Promise.resolve()) }));
-vi.mock("@/lib/lead-notifications", () => ({ deliverLeadNotification: vi.fn(() => Promise.resolve()) }));
 vi.mock("@/lib/image-upload", () => ({ optimizeImageForUpload: vi.fn((f: File) => Promise.resolve(f)) }));
 
 import {

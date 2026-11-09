@@ -7,6 +7,7 @@ import { Clock, X, ArrowUpRight, Wrench, MapPin, AlertCircle, Calendar } from "l
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
+import { isAlertOfKind, readActiveAlerts } from "@/lib/active-alerts";
 
 interface JobInProgressRead {
   notifications: { id: string; title: string; message: string; lead_id: string | null; created_at: string; read: boolean }[];
@@ -35,7 +36,8 @@ interface JobInProgressItem {
   state?: string | null;
 }
 
-const POLL_MS = 25000;
+// Same cadence as the other pop-ups so their reads share one query.
+const POLL_MS = 20000;
 /** Enough headroom to count a full backlog after the user has been away. */
 const FETCH_LIMIT = 100;
 /** How many jobs the summary lists before collapsing the rest into "+N more". */
@@ -57,16 +59,9 @@ export default function JobInProgressPopup() {
   const sharedKey = user && isEligible ? `notifications:job-in-progress:${user.id}` : null;
   const readReminders = useCallback(async (): Promise<JobInProgressRead> => {
     if (!user) return { notifications: [], leads: [] };
-    // 1. Fetch unread Job in Progress notifications for this user
-    const { data: notifications, error } = await supabase
-      .from("notifications")
-      .select("id, title, message, lead_id, created_at, read")
-      .eq("user_id", user.id)
-      .eq("read", false)
-      .ilike("title", "%Job in Progress%")
-      .order("created_at", { ascending: false })
-      .limit(FETCH_LIMIT);
-    if (error || !notifications || notifications.length === 0) return { notifications: [], leads: [] };
+    // 1. Unread Job in Progress alerts (shared read with the other pop-ups)
+    const notifications = await readActiveAlerts(user.id, user.created_at, "job_in_progress");
+    if (notifications.length === 0) return { notifications: [], leads: [] };
 
     // 2. Extract lead IDs to get up-to-date expected details
     const leadIds = notifications
@@ -136,8 +131,7 @@ export default function JobInProgressPopup() {
     if (!user || !isEligible) return;
 
     return subscribeToNotifications(user.id, (payload) => {
-      const row = payload.new as { title?: string };
-      if (payload.eventType === "INSERT" && row.title?.toLowerCase().includes("job in progress")) {
+      if (payload.eventType === "INSERT" && isAlertOfKind(payload.new as { kind?: string; title?: string }, "job_in_progress")) {
         void fetchReminders();
       }
     });

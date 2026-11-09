@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { cxNotificationHref } from "@/lib/cx-update-requests";
 
 export const notificationSchema = z.object({
@@ -44,6 +45,17 @@ async function invokeOnce(area: "notifications" | "schedule", input: object): Pr
   return { data: null, status, code, message };
 }
 
+/** Notifications call the database function directly (no Edge hop or extra login
+ * check per poll). The function itself checks the caller, role and input; the
+ * same app-authored errors are surfaced and the same transient retry applies. */
+const APP_ERROR_CODES = new Set(["42501", "22023", "40001"]);
+async function rpcOnce(input: object): Promise<InvokeOutcome> {
+  const { data, error, status } = await supabase.rpc("workflow_notifications", { p_input: input as Json });
+  if (!error) return { data, status: 200, code: "", message: null };
+  const code = error.code ?? "";
+  return { data: null, status: status || 0, code, message: APP_ERROR_CODES.has(code) ? error.message : null };
+}
+
 function inboxError(outcome: InvokeOutcome) {
   if (TRANSIENT_CODES.has(outcome.code)) return new Error("Notification service briefly restarted. It was retried automatically — please try again if it persists.");
   if (outcome.message) return new Error(outcome.message);
@@ -52,13 +64,14 @@ function inboxError(outcome: InvokeOutcome) {
 
 export async function workflowCall(area: "notifications" | "schedule", input: object): Promise<unknown> {
   const isTransient = (outcome: InvokeOutcome) => TRANSIENT_STATUS.has(outcome.status) || TRANSIENT_CODES.has(outcome.code);
-  const first = await invokeOnce(area, input);
+  const once = (body: object) => (area === "notifications" ? rpcOnce(body) : invokeOnce(area, body));
+  const first = await once(input);
   if (!isTransient(first)) {
     if (first.status === 200) return first.data;
     throw inboxError(first);
   }
   await sleep(INBOX_RETRY_DELAY_MS);
-  const second = await invokeOnce(area, input);
+  const second = await once(input);
   if (second.status === 200) return second.data;
   throw inboxError(second);
 }

@@ -19,6 +19,7 @@ import { cxNotificationHref } from '@/lib/cx-update-requests';
 import { openInboxNotification } from '@/lib/workflow-inbox';
 import { useQueryClient } from '@tanstack/react-query';
 import { notificationUnreadKey } from '@/hooks/useNotificationInbox';
+import { activeNotificationSince } from '@/lib/notification-window';
 
 const NOTIFICATION_POLL_INTERVAL_MS = 15 * 1000;
 const MAX_REMEMBERED_CANCELLATION_POPUPS = 200;
@@ -129,6 +130,8 @@ export default function NotificationBell() {
   // One tab per browser reads (and polls); other tabs receive the same page and count.
   const readNotifications = useCallback(async (): Promise<BellRead> => {
     if (!user) return { rows: [], count: null };
+    // Bell and badge show the last 3 days (never before the account existed).
+    const since = activeNotificationSince(user.created_at);
     const assignedLeadIdList = await operatorLeadScope();
 
     const listQuery = applyOperatorScope(
@@ -136,6 +139,7 @@ export default function NotificationBell() {
         .from('notifications')
         .select('id, title, message, lead_id, read, created_at')
         .eq('user_id', user.id)
+        .gte('created_at', since)
         .order('created_at', { ascending: false })
         .limit(NOTIFICATION_LIMIT),
       assignedLeadIdList,
@@ -147,7 +151,8 @@ export default function NotificationBell() {
         .from('notifications')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .eq('read', false),
+        .eq('read', false)
+        .gte('created_at', since),
       assignedLeadIdList,
     );
 

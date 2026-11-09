@@ -18,11 +18,13 @@ try {
   for (const file of ["supabase/migrations/20261020065810_workflow_resolution_notifications.sql", "supabase/migrations/20261020070343_schedule_confirmation_monitor.sql",
     "supabase/migrations/20261130000000_ai_schedule_confirmation.sql",
     "supabase/migrations/20261201000000_ai_schedule_confirmation_calls.sql", "supabase/migrations/20261202000000_ai_schedule_new_schedule_tag.sql",
-    "supabase/migrations/20261202010000_schedule_new_alert_compat.sql"]) {
+    "supabase/migrations/20261202010000_schedule_new_alert_compat.sql",
+    "supabase/migrations/20261206000000_notification_access_on_read.sql"]) {
     await db.exec(await sql(file));
     await db.exec(await sql(file));
   }
-  for (const file of ["supabase/tests/150_workflow_inbox.sql", "supabase/tests/160_schedule_confirmation_monitor.sql", "supabase/tests/151_workflow_inbox_readonly.sql"]) {
+  for (const file of ["supabase/tests/150_workflow_inbox.sql", "supabase/tests/160_schedule_confirmation_monitor.sql", "supabase/tests/151_workflow_inbox_readonly.sql",
+    "supabase/tests/152_notification_access.sql"]) {
     const results = await db.exec(await sql(file));
     const checks = results.flatMap((result) => result.rows).filter((row) => typeof row.name === "string" && typeof row.result === "string");
     console.table(checks);
