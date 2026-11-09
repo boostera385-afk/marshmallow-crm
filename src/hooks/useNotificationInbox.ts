@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSharedQuery } from "@/hooks/useCrossTab";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessNotifications } from "@/lib/access";
 import { fetchInbox, type InboxFilters } from "@/lib/workflow-inbox";
@@ -27,8 +28,9 @@ export function useNotificationInbox(filters: InboxFilters, offset: number) {
     realtimeBus.addEventListener("workflow-inbox-read", listener);
     return () => { unsubscribe(); realtimeBus.removeEventListener("workflow-inbox-read", listener); };
   }, [user, enabled, refresh]);
-  return useQuery({ queryKey: [...INBOX_QUERY_KEY, user?.id, role, filters, offset],
-    queryFn: () => fetchInbox(filters, offset), enabled, refetchInterval: 15000,
+  return useSharedQuery({ queryKey: [...INBOX_QUERY_KEY, user?.id, role, filters, offset],
+    queryFn: () => fetchInbox(filters, offset), enabled, sharedPoll: { intervalMs: 15000 },
     // workflowCall already retries transient edge-runtime failures once; the 15s interval refetches anyway.
+    // One tab per browser polls; other tabs read through it.
     retry: false });
 }

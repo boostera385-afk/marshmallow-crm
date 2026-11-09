@@ -14,7 +14,7 @@ import { acknowledgeHoldAlert, acknowledgeHoldInbox, HOLD_REASON_LABELS, type Ho
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import HoldJobCard from './HoldJobCard';
 import { subscribeToNotifications, realtimeBus } from '@/lib/realtime';
-import { useCoalescedRefresh } from '@/hooks/useCoalescedRefresh';
+import { useSharedRefresh } from '@/hooks/useCrossTab';
 import { cxNotificationHref } from '@/lib/cx-update-requests';
 import { openInboxNotification } from '@/lib/workflow-inbox';
 import { useQueryClient } from '@tanstack/react-query';
@@ -47,6 +47,11 @@ const saveShownPopupIds = (kind: string, userId: string, ids: Set<string>) => {
 
 const isCancellationRequestNotification = (notification: Notification) =>
   notification.title.toLowerCase().includes('cancellation request');
+
+interface BellRead {
+  rows: Notification[] | null;
+  count: number | null;
+}
 
 interface Notification {
   id: string;
@@ -121,11 +126,10 @@ export default function NotificationBell() {
       : query.is('lead_id', null);
   };
 
-  const loadNotifications = useCallback(async (isCurrent: () => boolean) => {
-    if (!user) return;
-
+  // One tab per browser reads (and polls); other tabs receive the same page and count.
+  const readNotifications = useCallback(async (): Promise<BellRead> => {
+    if (!user) return { rows: [], count: null };
     const assignedLeadIdList = await operatorLeadScope();
-    if (!isCurrent()) return;
 
     const listQuery = applyOperatorScope(
       supabase
@@ -148,15 +152,24 @@ export default function NotificationBell() {
     );
 
     const [listResult, countResult] = await Promise.all([listQuery, countQuery]);
-    if (!isCurrent()) return;
+    return {
+      rows: listResult.data ? (listResult.data as Notification[]) : null,
+      count: typeof countResult.count === 'number' ? countResult.count : null,
+    };
+  }, [operatorLeadScope, user]);
 
-    if (listResult.data) setNotificationState({ scope, rows: listResult.data as Notification[] });
-    if (typeof countResult.count === 'number') {
-      setUnreadCount(countResult.count); setCountScope(scope);
-      queryClient.setQueryData(notificationUnreadKey(user.id, role), countResult.count);
+  const applyNotifications = useCallback(({ rows, count }: BellRead) => {
+    if (rows) setNotificationState({ scope, rows });
+    if (typeof count === 'number' && user) {
+      setUnreadCount(count); setCountScope(scope);
+      queryClient.setQueryData(notificationUnreadKey(user.id, role), count);
     }
-  }, [operatorLeadScope, user, scope, role, queryClient]);
-  const fetchNotifications = useCoalescedRefresh(loadNotifications);
+  }, [user, scope, role, queryClient]);
+  const { refresh: fetchNotifications, isOwner: pollsHere } = useSharedRefresh(
+    user ? `notifications:bell:${scope}` : null,
+    readNotifications,
+    applyNotifications,
+  );
 
   useEffect(() => {
     shownCancellationPopups.current = user ? loadShownPopupIds('cancellation', user.id) : new Set<string>();
@@ -177,11 +190,12 @@ export default function NotificationBell() {
   }, [fetchNotifications, open, role, refetchHoldInbox]);
 
   useEffect(() => {
+    if (!pollsHere) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void fetchNotifications();
     }, NOTIFICATION_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, pollsHere]);
 
   useEffect(() => {
     // Processors approve cancellations alongside admins (getCancellationApproverRoles), so they

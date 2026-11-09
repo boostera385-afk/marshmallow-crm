@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
-import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
+import { useSharedRefresh } from "@/hooks/useCrossTab";
 
 interface UrgentNotification {
   id: string;
@@ -51,10 +51,11 @@ export default function UrgentLeadPopup() {
   // Every role gets urgent popups
   const eligible = Boolean(role);
 
-  const loadUrgent = useCallback(async (isCurrent: () => boolean) => {
-    if (!user || !eligible) return;
-
-    const { data } = await supabase
+  // One tab per browser reads (and polls); other tabs receive the same rows.
+  const sharedKey = user && eligible ? `notifications:urgent:${user.id}` : null;
+  const readUrgent = useCallback(async () => {
+    if (!user) return [];
+    const { data, error } = await supabase
       .from("notifications")
       .select("id, title, message, lead_id, created_at, read")
       .eq("user_id", user.id)
@@ -62,10 +63,12 @@ export default function UrgentLeadPopup() {
       .ilike("title", "%Urgent Job%")
       .order("created_at", { ascending: false })
       .limit(FETCH_LIMIT);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as UrgentNotification[];
+  }, [user]);
 
-    if (!data || !isCurrent()) return;
-
-    const rows = (data as UrgentNotification[]).filter((n) => !dismissedIds.current.has(n.id));
+  const applyUrgent = useCallback((data: UrgentNotification[], isCurrent: () => boolean) => {
+    const rows = data.filter((n) => !dismissedIds.current.has(n.id));
     const hasNew = rows.some((n) => !seenIds.current.has(n.id));
     rows.forEach((n) => seenIds.current.add(n.id));
 
@@ -76,15 +79,19 @@ export default function UrgentLeadPopup() {
     }
 
     setItems(rows);
-  }, [user, eligible]);
-  const fetchUrgent = useCoalescedRefresh(loadUrgent);
+  }, []);
+  const { refresh: fetchUrgent, isOwner } = useSharedRefresh(sharedKey, readUrgent, applyUrgent);
 
   useEffect(() => {
     if (!eligible) return;
     void fetchUrgent();
+  }, [fetchUrgent, eligible]);
+
+  useEffect(() => {
+    if (!eligible || !isOwner) return;
     const interval = setInterval(fetchUrgent, POLL_MS);
     return () => clearInterval(interval);
-  }, [fetchUrgent, eligible]);
+  }, [fetchUrgent, eligible, isOwner]);
 
   // Realtime - surface the alert as it lands instead of up to POLL_MS later. Scoped to this
   // user's own notification rows, matching the Job in Progress and Quote Updated popups.

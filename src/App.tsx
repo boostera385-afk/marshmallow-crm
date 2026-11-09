@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useCrossTabQuerySync } from "@/hooks/useCrossTab";
 import LeadsPage from "@/pages/LeadsPage";
 import LeadDetailPage from "@/pages/LeadDetailPage";
 import SchedulePage from "@/pages/SchedulePage";
@@ -117,8 +118,15 @@ function PageRoute({ navItem, children }: { navItem: string | string[]; children
   );
 }
 
+/** Results polled by another tab of this browser land in this tab's cache. */
+function CrossTabQuerySync() {
+  useCrossTabQuerySync();
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <CrossTabQuerySync />
     <TooltipProvider>
       <Toaster />
       <Sonner />

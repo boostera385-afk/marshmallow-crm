@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ClipboardList, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
-import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
+import { useSharedRefresh } from "@/hooks/useCrossTab";
 
 interface IncompleteDetailsNotification {
   id: string;
@@ -50,10 +50,11 @@ export default function IncompleteDetailsPopup() {
   const isEligible =
     (role === "customer_service" || role === "cs_admin") && Boolean(user) && fullyAuthenticated;
 
-  const loadIncomplete = useCallback(async (isCurrent: () => boolean) => {
-    if (!user || !isEligible) return;
-
-    const { data } = await supabase
+  // One tab per browser reads (and polls); other tabs receive the same rows.
+  const sharedKey = user && isEligible ? `notifications:incomplete:${user.id}` : null;
+  const readIncomplete = useCallback(async () => {
+    if (!user) return [];
+    const { data, error } = await supabase
       .from("notifications")
       .select("id, title, message, lead_id, created_at")
       .eq("user_id", user.id)
@@ -61,10 +62,12 @@ export default function IncompleteDetailsPopup() {
       .ilike("title", "%Incomplete Details%")
       .order("created_at", { ascending: false })
       .limit(FETCH_LIMIT);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as IncompleteDetailsNotification[];
+  }, [user]);
 
-    if (!data || !isCurrent()) return;
-
-    const rows = (data as IncompleteDetailsNotification[]).filter(
+  const applyIncomplete = useCallback((data: IncompleteDetailsNotification[], isCurrent: () => boolean) => {
+    const rows = data.filter(
       (n) => !dismissedIds.current.has(n.id),
     );
     const hasNew = rows.some((n) => !seenIds.current.has(n.id));
@@ -77,15 +80,19 @@ export default function IncompleteDetailsPopup() {
     }
 
     setItems(rows);
-  }, [user, isEligible]);
-  const fetchIncomplete = useCoalescedRefresh(loadIncomplete);
+  }, []);
+  const { refresh: fetchIncomplete, isOwner } = useSharedRefresh(sharedKey, readIncomplete, applyIncomplete);
 
   useEffect(() => {
     if (!isEligible) return;
     void fetchIncomplete();
+  }, [fetchIncomplete, isEligible]);
+
+  useEffect(() => {
+    if (!isEligible || !isOwner) return;
     const interval = setInterval(fetchIncomplete, POLL_MS);
     return () => clearInterval(interval);
-  }, [fetchIncomplete, isEligible]);
+  }, [fetchIncomplete, isEligible, isOwner]);
 
   // Realtime so the popup lands the moment the tag is applied.
   useEffect(() => {

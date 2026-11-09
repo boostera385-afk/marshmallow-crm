@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FileCheck, X, ArrowUpRight } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
-import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
+import { useSharedRefresh } from "@/hooks/useCrossTab";
 
 interface QuoteUpdatedNotification {
   id: string;
@@ -58,7 +58,6 @@ export default function QuoteUpdatedPopup() {
   const { user, role, fullyAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [items, setItems] = useState<QuoteUpdatedNotification[]>([]);
-  const baselineRef = useRef<string | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
   // Ids dismissed locally but whose `read` write may not have landed yet — without this a poll
   // in that window refetches them as unread and the card the user just dismissed comes back.
@@ -70,24 +69,28 @@ export default function QuoteUpdatedPopup() {
     Boolean(user) &&
     fullyAuthenticated;
 
-  const loadUpdated = useCallback(async (isCurrent: () => boolean) => {
-    if (!user || !isEligible) return;
-
-    if (!baselineRef.current) baselineRef.current = getOrInitBaseline(user.id);
-
-    const { data } = await supabase
+  // The cutoff lives in this tab's session, so it is part of the shared key:
+  // only tabs with the same cutoff share one read (and one polling timer).
+  const userId = user?.id;
+  const baseline = useMemo(() => (userId && isEligible ? getOrInitBaseline(userId) : null), [userId, isEligible]);
+  const sharedKey = userId && baseline ? `notifications:quote-updated:${userId}:${baseline}` : null;
+  const readUpdated = useCallback(async () => {
+    if (!user || !baseline) return [];
+    const { data, error } = await supabase
       .from("notifications")
       .select("id, title, message, lead_id, created_at")
       .eq("user_id", user.id)
       .eq("read", false)
       .ilike("title", "%Quote Updated%")
-      .gt("created_at", baselineRef.current)
+      .gt("created_at", baseline)
       .order("created_at", { ascending: false })
       .limit(FETCH_LIMIT);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as QuoteUpdatedNotification[];
+  }, [user, baseline]);
 
-    if (!data || !isCurrent()) return;
-
-    const rows = (data as QuoteUpdatedNotification[]).filter((n) => !dismissedIds.current.has(n.id));
+  const applyUpdated = useCallback((data: QuoteUpdatedNotification[], isCurrent: () => boolean) => {
+    const rows = data.filter((n) => !dismissedIds.current.has(n.id));
     const hasNew = rows.some((n) => !seenIds.current.has(n.id));
     rows.forEach((n) => seenIds.current.add(n.id));
 
@@ -98,16 +101,20 @@ export default function QuoteUpdatedPopup() {
     }
 
     setItems(rows);
-  }, [user, isEligible]);
-  const fetchUpdated = useCoalescedRefresh(loadUpdated);
+  }, []);
+  const { refresh: fetchUpdated, isOwner } = useSharedRefresh(sharedKey, readUpdated, applyUpdated);
 
-  // Polling
+  // Polling: one tab per browser runs the timer.
   useEffect(() => {
     if (!isEligible) return;
     void fetchUpdated();
+  }, [fetchUpdated, isEligible]);
+
+  useEffect(() => {
+    if (!isEligible || !isOwner) return;
     const interval = setInterval(fetchUpdated, POLL_MS);
     return () => clearInterval(interval);
-  }, [fetchUpdated, isEligible]);
+  }, [fetchUpdated, isEligible, isOwner]);
 
   // Realtime — fire immediately when notification is inserted
   useEffect(() => {

@@ -54,7 +54,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion } from "framer-motion";
 import { useEffect, useState, useRef } from "react";
 import { isQuotationMaster } from "@/lib/lead-tags";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useSharedQuery } from "@/hooks/useCrossTab";
 import { supabase } from "@/integrations/supabase/client";
 import marshmallowLogo from "@/assets/marshmallow-logo.png.asset.json";
 import ChangePasswordDialog from "@/components/auth/ChangePasswordDialog";
@@ -132,7 +133,7 @@ export default function AppSidebar() {
 
   // Fetch pending cancellation requests count for the sidebar badge
   const canSeeCancellations = canAccess("cancellation_requests");
-  const { data: pendingCancellationCount = 0 } = useQuery({
+  const { data: pendingCancellationCount = 0 } = useSharedQuery({
     queryKey: ["pending-cancellations-count"],
     enabled: canSeeCancellations,
     queryFn: async () => {
@@ -147,11 +148,11 @@ export default function AppSidebar() {
       }
       return count || 0;
     },
-    refetchInterval: 15000,
+    sharedPoll: { intervalMs: 15000 },
   });
 
   // Hidden badges do not need a query or a polling timer.
-  const { data: pendingPaymentCount = 0 } = useQuery({
+  const { data: pendingPaymentCount = 0 } = useSharedQuery({
     queryKey: ["pending-payment-requests-count"],
     enabled: canAccess("payment_requests"),
     queryFn: async () => {
@@ -164,11 +165,11 @@ export default function AppSidebar() {
       }
       return count || 0;
     },
-    refetchInterval: 30000,
+    sharedPoll: { intervalMs: 30000 },
   });
 
   const canSeeQuoteApproval = canAccess("quote_approval_requests");
-  const { data: pendingQuoteApprovalCount = 0 } = useQuery({
+  const { data: pendingQuoteApprovalCount = 0 } = useSharedQuery({
     queryKey: ["pending-quote-approval-count"],
     enabled: canSeeQuoteApproval,
     queryFn: async () => {
@@ -182,10 +183,10 @@ export default function AppSidebar() {
       }
       return count || 0;
     },
-    refetchInterval: 30000,
+    sharedPoll: { intervalMs: 30000 },
   });
 
-  const { data: pendingQuoteCount = 0 } = useQuery({
+  const { data: pendingQuoteCount = 0 } = useSharedQuery({
     queryKey: ["pending-quote-requests-count"],
     enabled: canAccess("quote_pending_requests"),
     queryFn: async () => {
@@ -199,7 +200,7 @@ export default function AppSidebar() {
       }
       return count || 0;
     },
-    refetchInterval: 30000,
+    sharedPoll: { intervalMs: 30000 },
   });
 
   // Pending urgent review requests. CS Admin and Admin only, matching the queue
@@ -207,7 +208,7 @@ export default function AppSidebar() {
   // rather than counting the table directly, so the badge cannot disagree with
   // what is actually reviewable.
   const canSeeUrgentReview = role === "admin" || role === "cs_admin";
-  const { data: pendingUrgentReviewCount = 0 } = useQuery({
+  const { data: pendingUrgentReviewCount = 0 } = useSharedQuery({
     queryKey: ["pending-urgent-review-count"],
     enabled: canSeeUrgentReview,
     queryFn: async () => {
@@ -220,14 +221,14 @@ export default function AppSidebar() {
       }
       return (data as unknown[] | null)?.length ?? 0;
     },
-    refetchInterval: 30000,
+    sharedPoll: { intervalMs: 30000 },
   });
 
   // AI Assistance missed-lead count (Admin + CS Admin only). Uses the same
   // SECURITY DEFINER function the page counts through, with the default 24h
   // window, so the badge matches the list a CS Admin opens at shift start.
   const canSeeAiAssistance = role === "admin" || role === "cs_admin" || role === "customer_service";
-  const { data: missedFollowupCount = 0 } = useQuery({
+  const { data: missedFollowupCount = 0 } = useSharedQuery({
     queryKey: ["cs-missed-followup-count"],
     enabled: canSeeAiAssistance,
     queryFn: async () => {
@@ -242,7 +243,7 @@ export default function AppSidebar() {
       }
       return typeof data === "number" ? data : 0;
     },
-    refetchInterval: 30000,
+    sharedPoll: { intervalMs: 30000 },
   });
 
   // "Need Attention" leads: urgent jobs whose schedule is due today or overdue.
@@ -250,7 +251,7 @@ export default function AppSidebar() {
   // client-side (same helper the lead card uses, so the count matches the tab).
   // Only Admin / CS / CS Admin see this tab; CS is scoped to its own leads.
   const canSeeNeedAttention = role === "admin" || role === "customer_service" || role === "cs_admin";
-  const { data: needAttentionCount = 0 } = useQuery({
+  const { data: needAttentionCount = 0 } = useSharedQuery({
     queryKey: ["need-attention-count", role, profile?.id],
     enabled: canSeeNeedAttention,
     queryFn: async () => {
@@ -273,7 +274,7 @@ export default function AppSidebar() {
         return 0;
       }
     },
-    refetchInterval: 30000,
+    sharedPoll: { intervalMs: 30000 },
   });
 
   // Realtime subscription for instant sidebar updates when a cancellation is requested/resolved
