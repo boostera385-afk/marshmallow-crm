@@ -10,7 +10,7 @@ import { Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Lead } from '@/types';
 import { cn } from '@/lib/utils';
-import { DEFAULT_MESSAGE_TEMPLATES, renderLeadTemplate, useMessageTemplate } from '@/lib/message-templates';
+import { DEFAULT_MESSAGE_TEMPLATES, renderLeadTemplate, useMessageTemplate, technicianMessageTemplate } from '@/lib/message-templates';
 
 interface Props {
   lead: Lead;
@@ -26,7 +26,7 @@ export default function CopyLeadButton({ lead, className }: Props) {
   const { data: template = DEFAULT_MESSAGE_TEMPLATES.technician_message } = useMessageTemplate('technician_message');
 
   const generateText = () =>
-    renderLeadTemplate(template, lead, {
+    renderLeadTemplate(technicianMessageTemplate(lead, template), lead, {
       customer_number: customerNumber,
       reference_name: referenceName,
     });
