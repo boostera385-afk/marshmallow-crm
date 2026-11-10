@@ -28,7 +28,7 @@ const lead = (over: Partial<Lead> = {}) =>
   }) as unknown as Lead;
 
 const message = (l: Lead, extras: Record<string, string> = {}) =>
-  renderLeadTemplate(technicianMessageTemplate(l, DEFAULT_MESSAGE_TEMPLATES.technician_message), l, {
+  renderLeadTemplate(technicianMessageTemplate(l), l, {
     customer_number: "12",
     reference_name: "",
     ...extras,
@@ -83,9 +83,8 @@ describe("technician message by terms (original wording restored)", () => {
     expect(text).toContain("For you: $0 labor including material\nFor us: $0 from total labor");
   });
 
-  it("keeps the editable template for leads with no terms", () => {
-    const saved = "Custom {customer_name}";
-    expect(technicianMessageTemplate(lead({ terms: null }), saved)).toBe(saved);
+  it("uses the built-in message for leads with no terms", () => {
+    expect(technicianMessageTemplate(lead({ terms: null }))).toBe(DEFAULT_MESSAGE_TEMPLATES.technician_message);
     expect(message(lead({ terms: null }))).toContain("Job Scheduled for: ");
   });
 

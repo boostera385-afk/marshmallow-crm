@@ -6,7 +6,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,7 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy, RefreshCw, KeyRound, Lock, FileText, BookOpen, Megaphone, FileSpreadsheet, Hash } from "lucide-react";
+import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy, RefreshCw, KeyRound, Lock, BookOpen, Megaphone, FileSpreadsheet, Hash } from "lucide-react";
 import { DocumentationTab } from "@/components/settings/DocumentationTab";
 import { GoogleSheetsTab } from "@/components/settings/GoogleSheetsTab";
 import LeadCopyAccessSettings from "@/components/settings/LeadCopyAccessSettings";
@@ -42,7 +41,6 @@ import type { AppRole, LeadStatus } from "@/types";
 import MFAEnroll from "@/components/auth/MFAEnroll";
 import { motion } from "framer-motion";
 import { heroTitle } from "@/lib/motion";
-import { DEFAULT_MESSAGE_TEMPLATES, MESSAGE_TEMPLATE_LABELS, type MessageTemplateKey } from "@/lib/message-templates";
 import { backgroundInterval } from "@/lib/overload-guard";
 
 const generateCode = () => {
@@ -127,55 +125,6 @@ interface StatusVisibilityRow {
   is_visible: boolean;
 }
 
-type MessageTemplateRow = {
-  key: MessageTemplateKey;
-  template: string;
-};
-
-type MessageTemplateUpsert = MessageTemplateRow & {
-  updated_by: string | null;
-};
-
-type MessageTemplateClient = {
-  from: (table: "message_templates") => {
-    select: (columns: string) => Promise<{ data: MessageTemplateRow[] | null; error: Error | null }>;
-    upsert: (row: MessageTemplateUpsert) => Promise<{ error: Error | null }>;
-  };
-};
-
-const messageTemplateDb = supabase as unknown as MessageTemplateClient;
-
-function TemplateEditor({
-  initialValue,
-  saving,
-  onSave,
-}: {
-  templateKey: MessageTemplateKey;
-  initialValue: string;
-  saving: boolean;
-  onSave: (value: string) => void;
-}) {
-  const [value, setValue] = useState(initialValue);
-
-  useEffect(() => {
-    setValue(initialValue);
-  }, [initialValue]);
-
-  return (
-    <div className="space-y-3">
-      <Textarea value={value} onChange={(event) => setValue(event.target.value)} rows={12} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11px] text-muted-foreground">
-          Available placeholders include {"{tech_name}"}, {"{schedule_time}"}, {"{customer_name}"}, {"{customer_phone}"}, {"{customer_address}"}, {"{service_details}"}, and {"{quote}"}. Copy Technician Message uses its built-in Quoted and Free Estimate wording for those leads.
-        </p>
-        <Button onClick={() => onSave(value)} disabled={saving || !value.trim()}>
-          {saving ? "Saving..." : "Save template"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 // OPR Admin always inherits the OPR role defaults, so it intentionally has no
 // separate role row that could drift out of sync.
 const MANAGED_ROLES: AppRole[] = ["customer_service", "processor", "opr", "cs_admin"];
@@ -191,7 +140,7 @@ const Settings = () => {
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState<AppRole>("customer_service");
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<"users" | "nav_permissions" | "status_permissions" | "templates" | "security" | "documentation" | "crm_updates" | "google_sheets">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "nav_permissions" | "status_permissions" | "security" | "documentation" | "crm_updates" | "google_sheets">("users");
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [passwordUserId, setPasswordUserId] = useState("");
   const [passwordUserName, setPasswordUserName] = useState("");
@@ -402,39 +351,6 @@ const Settings = () => {
 
       return data ?? [];
     },
-  });
-
-  const { data: messageTemplates = [] } = useQuery<Array<{ key: MessageTemplateKey; template: string }>>({
-    queryKey: ["settings-message-templates"],
-    enabled: isAdmin,
-    queryFn: async () => {
-      const { data, error } = await messageTemplateDb.from("message_templates").select("key, template");
-      if (error) throw error;
-
-      const rows = (data ?? []) as Array<{ key: MessageTemplateKey; template: string }>;
-      const byKey = new Map(rows.map((row) => [row.key, row.template]));
-      return (Object.keys(DEFAULT_MESSAGE_TEMPLATES) as MessageTemplateKey[]).map((key) => ({
-        key,
-        template: byKey.get(key) ?? DEFAULT_MESSAGE_TEMPLATES[key],
-      }));
-    },
-  });
-
-  const updateTemplate = useMutation({
-    mutationFn: async ({ key, template }: { key: MessageTemplateKey; template: string }) => {
-      const { error } = await messageTemplateDb.from("message_templates").upsert({
-        key,
-        template,
-        updated_by: user?.id ?? null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["settings-message-templates"] });
-      queryClient.invalidateQueries({ queryKey: ["message-template", variables.key] });
-      toast.success("Template saved");
-    },
-    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed to save template"),
   });
 
   const userById = useMemo(() => new Map(users.map((targetUser) => [targetUser.id, targetUser])), [users]);
@@ -1030,7 +946,6 @@ const Settings = () => {
             { key: "users", label: "Users", icon: Shield },
             ...(isAdmin ? [{ key: "nav_permissions" as const, label: "Feature Access", icon: Shield }] : []),
               ...(isAdmin ? [{ key: "status_permissions" as const, label: "Status Visibility", icon: Eye }] : []),
-              ...(isAdmin ? [{ key: "templates" as const, label: "Templates", icon: FileText }] : []),
             
             
             { key: "security", label: "Security", icon: ShieldCheck },
@@ -1502,30 +1417,6 @@ const Settings = () => {
             />
           </CardContent>
         </Card>
-      )}
-
-      {activeTab === "templates" && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {messageTemplates.map((templateRow) => (
-            <Card key={templateRow.key} className="border-border/60 bg-card/95">
-              <CardContent className="space-y-4 p-5">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{MESSAGE_TEMPLATE_LABELS[templateRow.key]}</p>
-                  <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                    Admin changes here sync to every role. Popup edits made while copying stay private to that popup.
-                  </p>
-                </div>
-
-                <TemplateEditor
-                  templateKey={templateRow.key}
-                  initialValue={templateRow.template}
-                  saving={updateTemplate.isPending}
-                  onSave={(value) => updateTemplate.mutate({ key: templateRow.key, template: value })}
-                />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       )}
 
       {activeTab === "security" && (

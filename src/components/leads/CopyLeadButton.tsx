@@ -10,7 +10,7 @@ import { Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Lead } from '@/types';
 import { cn } from '@/lib/utils';
-import { DEFAULT_MESSAGE_TEMPLATES, renderLeadTemplate, useMessageTemplate, technicianMessageTemplate } from '@/lib/message-templates';
+import { renderLeadTemplate, technicianMessageTemplate } from '@/lib/message-templates';
 
 interface Props {
   lead: Lead;
@@ -23,10 +23,9 @@ export default function CopyLeadButton({ lead, className }: Props) {
   const [referenceName, setReferenceName] = useState(lead.reference_name || '');
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
-  const { data: template = DEFAULT_MESSAGE_TEMPLATES.technician_message } = useMessageTemplate('technician_message');
 
   const generateText = () =>
-    renderLeadTemplate(technicianMessageTemplate(lead, template), lead, {
+    renderLeadTemplate(technicianMessageTemplate(lead), lead, {
       customer_number: customerNumber,
       reference_name: referenceName,
     });
@@ -34,7 +33,7 @@ export default function CopyLeadButton({ lead, className }: Props) {
   useEffect(() => {
     if (open) setMessage(generateText());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerNumber, referenceName, open, template, lead.id]);
+  }, [customerNumber, referenceName, open, lead.id]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message || generateText());

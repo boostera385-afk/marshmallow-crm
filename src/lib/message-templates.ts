@@ -1,5 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import type { Lead } from "@/types";
 import { formatLeadSchedule } from "@/lib/lead-copy";
 
@@ -90,11 +88,16 @@ FREE ESTIMATE VISIT Scheduled for: {technician_schedule}
 {reference_block}`,
 } as const;
 
-/** Picks the technician message for a lead: the same for every role, as before June 2026. */
-export const technicianMessageTemplate = (lead: Pick<Lead, "terms">, savedTemplate: string) => {
+/**
+ * Picks the technician message for a lead: the same for every role, as before
+ * June 2026. The messages are built in: the message_templates table they were
+ * once meant to be edited in was never created in production (every read was a
+ * 404), so nothing is read from the database.
+ */
+export const technicianMessageTemplate = (lead: Pick<Lead, "terms">) => {
   if (lead.terms === "free_estimate") return TECHNICIAN_MESSAGE_BY_TERMS.free_estimate;
   if (lead.terms === "quoted") return TECHNICIAN_MESSAGE_BY_TERMS.quoted;
-  return savedTemplate;
+  return DEFAULT_MESSAGE_TEMPLATES.technician_message;
 };
 
 export const renderLeadTemplate = (
@@ -140,28 +143,3 @@ export const renderLeadTemplate = (
 
   return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key: string) => values[key] ?? "");
 };
-
-export function useMessageTemplate(key: MessageTemplateKey) {
-  return useQuery({
-    queryKey: ["message-template", key],
-    queryFn: async () => {
-      const { data, error } = await (supabase as unknown as {
-        from(table: "message_templates"): {
-          select(columns: "template"): {
-            eq(column: "key", value: MessageTemplateKey): {
-              maybeSingle(): PromiseLike<{ data: { template: string } | null; error: unknown }>;
-            };
-          };
-        };
-      })
-        .from("message_templates")
-        .select("template")
-        .eq("key", key)
-        .maybeSingle();
-
-      if (error) return DEFAULT_MESSAGE_TEMPLATES[key];
-      return (data as { template?: string } | null)?.template || DEFAULT_MESSAGE_TEMPLATES[key];
-    },
-    staleTime: 20_000,
-  });
-}
