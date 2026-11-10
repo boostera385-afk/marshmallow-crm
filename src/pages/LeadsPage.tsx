@@ -41,6 +41,9 @@ import {
   laterCursor,
   leadsCursor,
   markFullLoad,
+  markVisibilityCheck,
+  needsVisibilityCheck,
+  removeHiddenLeads,
   mergeLeadChanges,
   needsFullReconcile,
 } from "@/lib/leads-sync";
@@ -354,6 +357,7 @@ export default function LeadsPage() {
       // The list was replaced wholesale, so its cursor is exactly this set's.
       leadsCursorRef.current = leadsCursor(full);
       markFullLoad(`${role}:${user.id}`, startedAt);
+      markVisibilityCheck(`${role}:${user.id}`, startedAt);
       // Persist the complete set so the next visit paints instantly from cache.
       void writeLeadsCache(`${role}:${user.id}`, full, startedAt);
     } catch (err) {
@@ -407,6 +411,38 @@ export default function LeadsPage() {
     }
     leadsCursorRef.current = laterCursor(leadsCursorRef.current, leadsCursor(rows));
     if (rows.length > 0) setLeads((prev) => mergeLeadChanges(prev, rows));
+
+    // A lead that left this user's view (e.g. marked Paid for a CS Admin) is not
+    // in a delta and realtime does not deliver it. Every few minutes read just
+    // the ids the user can still see (no customer data) and drop the rest.
+    const scope = `${role}:${user.id}`;
+    if (!needsVisibilityCheck(scope) || isServerLoadRaised()) return;
+    const checkStartedAt = Date.now();
+    markVisibilityCheck(scope, checkStartedAt); // one check at a time, even if this one fails
+    const PAGE = 1000;
+    const visible = new Set<string>();
+    for (let page = 0; ; page++) {
+      let idQuery = supabase
+        .from("leads")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(page * PAGE, page * PAGE + PAGE - 1);
+      if (role === "customer_service") {
+        idQuery = idQuery.eq("created_by", user.id);
+      }
+      const { data: idRows, error: idError } = await idQuery;
+      if (gen !== leadsLoadGenRef.current) return;
+      if (idError) {
+        // Never remove anything on a partial answer; the next check retries.
+        console.warn("Lead visibility check failed", idError.message);
+        return;
+      }
+      const batch = (idRows ?? []) as { id: string }[];
+      for (const r of batch) if (r?.id) visible.add(r.id);
+      if (batch.length < PAGE) break;
+    }
+    setLeads((prev) => removeHiddenLeads(prev, visible, checkStartedAt));
   }, [fetchLeads, role, user]);
 
   const fetchSharedLeads = useCallback(async () => {

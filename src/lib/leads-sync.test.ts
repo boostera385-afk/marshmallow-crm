@@ -3,13 +3,18 @@ import {
   LEADS_DELTA_OVERLAP_MS,
   LEADS_FULL_RECONCILE_MS,
   LEADS_RECONCILE_MAX_POSTPONE_MS,
+  LEADS_VISIBILITY_CHECK_MS,
+  LEADS_VISIBILITY_GRACE_MS,
   deltaSince,
   getLastFullLoad,
   laterCursor,
   leadsCursor,
   markFullLoad,
+  markVisibilityCheck,
   mergeLeadChanges,
   needsFullReconcile,
+  needsVisibilityCheck,
+  removeHiddenLeads,
   resetLeadsSyncState,
 } from "./leads-sync";
 
@@ -104,5 +109,38 @@ describe("mergeLeadChanges", () => {
   it("returns the same list when nothing changed, so React skips a render", () => {
     const current = [lead("a", "2026-11-10T03:00:00Z")];
     expect(mergeLeadChanges(current, [])).toBe(current);
+  });
+});
+
+describe("visibility check (leads that leave the caller's view)", () => {
+  const NOW = Date.parse("2026-11-10T12:00:00.000Z");
+  const row = (id: string, created: string) => ({ id, created_at: created });
+
+  it("is due 3 minutes after the last check or full load, per scope", () => {
+    resetLeadsSyncState();
+    expect(needsVisibilityCheck("admin:a", NOW)).toBe(true);
+    markFullLoad("admin:a", NOW);
+    expect(needsVisibilityCheck("admin:a", NOW + LEADS_VISIBILITY_CHECK_MS - 1)).toBe(false);
+    expect(needsVisibilityCheck("admin:a", NOW + LEADS_VISIBILITY_CHECK_MS)).toBe(true);
+    markVisibilityCheck("admin:a", NOW + LEADS_VISIBILITY_CHECK_MS);
+    expect(needsVisibilityCheck("admin:a", NOW + LEADS_VISIBILITY_CHECK_MS + 60_000)).toBe(false);
+    expect(needsVisibilityCheck("cs:b", NOW)).toBe(true);
+    resetLeadsSyncState();
+    expect(needsVisibilityCheck("admin:a", NOW)).toBe(true);
+  });
+
+  it("removes only rows missing from the visible ids", () => {
+    const list = [row("a", "2026-11-01T00:00:00Z"), row("b", "2026-11-02T00:00:00Z"), row("c", "2026-11-03T00:00:00Z")];
+    expect(removeHiddenLeads(list, new Set(["a", "c"]), NOW).map((r) => r.id)).toEqual(["a", "c"]);
+  });
+
+  it("keeps a lead created while the ids were being read", () => {
+    const list = [row("old", "2026-11-01T00:00:00Z"), row("brand-new", new Date(NOW - LEADS_VISIBILITY_GRACE_MS + 1_000).toISOString())];
+    expect(removeHiddenLeads(list, new Set<string>(), NOW).map((r) => r.id)).toEqual(["brand-new"]);
+  });
+
+  it("returns the same list when nothing is removed, so React skips a render", () => {
+    const list = [row("a", "2026-11-01T00:00:00Z")];
+    expect(removeHiddenLeads(list, new Set(["a"]), NOW)).toBe(list);
   });
 });
