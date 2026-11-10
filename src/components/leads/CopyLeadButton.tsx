@@ -11,7 +11,6 @@ import { toast } from 'sonner';
 import type { Lead } from '@/types';
 import { cn } from '@/lib/utils';
 import { DEFAULT_MESSAGE_TEMPLATES, renderLeadTemplate, useMessageTemplate, technicianMessageTemplate } from '@/lib/message-templates';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface Props {
   lead: Lead;
@@ -25,12 +24,9 @@ export default function CopyLeadButton({ lead, className }: Props) {
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
   const { data: template = DEFAULT_MESSAGE_TEMPLATES.technician_message } = useMessageTemplate('technician_message');
-  const { role } = useAuth();
-  // CS and CS Admin don't see the job's money fields in the drawer, so they aren't copied for them either.
-  const canSeeAmounts = role !== 'customer_service' && role !== 'cs_admin';
 
   const generateText = () =>
-    renderLeadTemplate(technicianMessageTemplate(lead, template, canSeeAmounts), lead, {
+    renderLeadTemplate(technicianMessageTemplate(lead, template), lead, {
       customer_number: customerNumber,
       reference_name: referenceName,
     });

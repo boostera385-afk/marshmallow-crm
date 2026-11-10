@@ -90,18 +90,10 @@ FREE ESTIMATE VISIT Scheduled for: {technician_schedule}
 {reference_block}`,
 } as const;
 
-/**
- * Picks the technician message for a lead. The quoted message carries the job's
- * money lines, so it is used only when the caller may see them (not CS / CS Admin);
- * otherwise the lead falls back to the editable template.
- */
-export const technicianMessageTemplate = (
-  lead: Pick<Lead, "terms">,
-  savedTemplate: string,
-  canSeeAmounts: boolean,
-) => {
+/** Picks the technician message for a lead: the same for every role, as before June 2026. */
+export const technicianMessageTemplate = (lead: Pick<Lead, "terms">, savedTemplate: string) => {
   if (lead.terms === "free_estimate") return TECHNICIAN_MESSAGE_BY_TERMS.free_estimate;
-  if (lead.terms === "quoted" && canSeeAmounts) return TECHNICIAN_MESSAGE_BY_TERMS.quoted;
+  if (lead.terms === "quoted") return TECHNICIAN_MESSAGE_BY_TERMS.quoted;
   return savedTemplate;
 };
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Lead } from "@/types";
 import CopyLeadButton from "./CopyLeadButton";
@@ -52,11 +52,13 @@ describe("CopyLeadButton original wording by terms", () => {
     expect(copied).toContain("Customer is agreed to pay ($300) total labor\n($100) FOR MATERIALS\n\nFor you: $250 labor including material\nFor us: $150 from total labor\n\nJob Scheduled for: TBD");
   });
 
-  it("does not copy the money lines for customer service", () => {
-    state.role = "customer_service";
-    const copied = openAndCopy(quotedLead);
-    expect(copied).toContain("Customer Name: Synthetic Customer");
-    expect(copied).not.toMatch(/agreed to pay|For you|For us/);
+  it.each(["customer_service", "cs_admin", "opr", "admin"])("gives %s the same quoted message", (role) => {
+    state.role = "processor";
+    const expected = openAndCopy(quotedLead);
+    cleanup();
+    state.role = role;
+    expect(openAndCopy(quotedLead)).toBe(expected);
+    expect(expected).toContain("For you: $250 labor including material");
   });
 
   it("copies the original free estimate wording", () => {

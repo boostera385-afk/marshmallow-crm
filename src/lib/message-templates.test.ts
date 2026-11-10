@@ -27,8 +27,8 @@ const lead = (over: Partial<Lead> = {}) =>
     ...over,
   }) as unknown as Lead;
 
-const message = (l: Lead, canSeeAmounts = true, extras: Record<string, string> = {}) =>
-  renderLeadTemplate(technicianMessageTemplate(l, DEFAULT_MESSAGE_TEMPLATES.technician_message, canSeeAmounts), l, {
+const message = (l: Lead, extras: Record<string, string> = {}) =>
+  renderLeadTemplate(technicianMessageTemplate(l, DEFAULT_MESSAGE_TEMPLATES.technician_message), l, {
     customer_number: "12",
     reference_name: "",
     ...extras,
@@ -58,7 +58,7 @@ describe("technician message by terms (original wording restored)", () => {
   });
 
   it("writes the free estimate message word for word as before June 2026", () => {
-    expect(message(lead({ terms: "free_estimate" }), true, { reference_name: "Ali" })).toBe(
+    expect(message(lead({ terms: "free_estimate" }), { reference_name: "Ali" })).toBe(
       [
         "*Customer # 12*",
         "",
@@ -83,19 +83,9 @@ describe("technician message by terms (original wording restored)", () => {
     expect(text).toContain("For you: $0 labor including material\nFor us: $0 from total labor");
   });
 
-  it("does not give the money lines to a role that cannot see them", () => {
-    const text = message(lead(), false);
-    expect(text).not.toMatch(/agreed to pay|For you|For us/);
-    expect(text).toContain("Job Scheduled for:");
-  });
-
-  it("free estimate has no money lines, so every role gets it", () => {
-    expect(message(lead({ terms: "free_estimate" }), false)).toContain("FREE ESTIMATE VISIT Scheduled for:");
-  });
-
   it("keeps the editable template for leads with no terms", () => {
     const saved = "Custom {customer_name}";
-    expect(technicianMessageTemplate(lead({ terms: null }), saved, true)).toBe(saved);
+    expect(technicianMessageTemplate(lead({ terms: null }), saved)).toBe(saved);
     expect(message(lead({ terms: null }))).toContain("Job Scheduled for: ");
   });
 
