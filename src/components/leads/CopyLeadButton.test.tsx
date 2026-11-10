@@ -40,16 +40,16 @@ function openAndCopy(lead: Lead) {
   return String(state.writeText.mock.calls.at(-1)?.[0] ?? "");
 }
 
-describe("CopyLeadButton quote lines", () => {
+describe("CopyLeadButton original wording by terms", () => {
   beforeEach(() => {
     state.writeText.mockReset();
     Object.assign(navigator, { clipboard: { writeText: state.writeText } });
   });
 
-  it("copies the agreed total, for you and for us for a quoted lead", () => {
+  it("copies the original quoted wording", () => {
     state.role = "processor";
     const copied = openAndCopy(quotedLead);
-    expect(copied).toContain("Customer is agreed to pay total : $400\n\nFor you : $250\nFor us : $150");
+    expect(copied).toContain("Customer is agreed to pay ($300) total labor\n($100) FOR MATERIALS\n\nFor you: $250 labor including material\nFor us: $150 from total labor\n\nJob Scheduled for: TBD");
   });
 
   it("does not copy the money lines for customer service", () => {
@@ -59,8 +59,10 @@ describe("CopyLeadButton quote lines", () => {
     expect(copied).not.toMatch(/agreed to pay|For you|For us/);
   });
 
-  it("does not add them to a free estimate", () => {
+  it("copies the original free estimate wording", () => {
     state.role = "admin";
-    expect(openAndCopy({ ...quotedLead, terms: "free_estimate" })).not.toContain("agreed to pay");
+    const copied = openAndCopy({ ...quotedLead, terms: "free_estimate" } as Lead);
+    expect(copied).toContain("FREE ESTIMATE VISIT\n\nFREE ESTIMATE VISIT Scheduled for: TBD");
+    expect(copied).not.toContain("agreed to pay");
   });
 });

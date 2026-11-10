@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { Lead } from "@/types";
 import {
   DEFAULT_MESSAGE_TEMPLATES,
-  buildQuoteLines,
+  formatTechnicianSchedule,
   renderLeadTemplate,
-  withQuotePlaceholder,
+  technicianMessageTemplate,
 } from "./message-templates";
 
 const lead = (over: Partial<Lead> = {}) =>
@@ -14,78 +14,97 @@ const lead = (over: Partial<Lead> = {}) =>
     customer_phone: "555-0100",
     address: "1 Test St",
     service_details: "Fix sink",
-    scheduled_date: null,
-    scheduled_time_start: null,
-    scheduled_time_end: null,
+    scheduled_date: "2024-12-12",
+    scheduled_time_start: "09:00",
+    scheduled_time_end: "11:30",
     reference_name: null,
     terms: "quoted",
-    labor_amount: 200,
-    material_amount: 50.5,
-    for_you_amount: 150,
-    for_us_amount: 100.5,
+    labor_amount: 300,
+    material_amount: 100,
+    for_you_amount: 250,
+    for_us_amount: 150,
     quote: null,
     ...over,
   }) as unknown as Lead;
 
-const render = (l: Lead, includeQuote = true, template = DEFAULT_MESSAGE_TEMPLATES.technician_message) =>
-  renderLeadTemplate(withQuotePlaceholder(template), l, {
+const message = (l: Lead, canSeeAmounts = true, extras: Record<string, string> = {}) =>
+  renderLeadTemplate(technicianMessageTemplate(l, DEFAULT_MESSAGE_TEMPLATES.technician_message, canSeeAmounts), l, {
     customer_number: "12",
     reference_name: "",
-    include_quote: includeQuote ? "true" : "false",
+    ...extras,
   });
 
-describe("technician message quote lines", () => {
-  it("adds total, for you and for us after the schedule for a quoted lead", () => {
-    expect(render(lead())).toBe(
+describe("technician message by terms (original wording restored)", () => {
+  it("writes the quoted message word for word as before June 2026", () => {
+    expect(message(lead())).toBe(
       [
-        "*Customer #12*",
+        "*Customer # 12*",
+        "",
+        "Customer Name: Synthetic Customer",
+        "Customer Number: 555-0100",
+        "Customer Address: 1 Test St",
+        "Service: Fix sink",
+        "",
+        "Customer is agreed to pay ($300) total labor",
+        "($100) FOR MATERIALS",
+        "",
+        "For you: $250 labor including material",
+        "For us: $150 from total labor",
+        "",
+        "Job Scheduled for: THURSDAY 12th December between 9:00am-11:30am",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("writes the free estimate message word for word as before June 2026", () => {
+    expect(message(lead({ terms: "free_estimate" }), true, { reference_name: "Ali" })).toBe(
+      [
+        "*Customer # 12*",
         "",
         "Customer Name: Synthetic Customer",
         "Customer Number: 555-0100",
         "Customer Address: 1 Test St",
         "Service Details: Fix sink",
         "",
-        "Job Scheduled for: Not scheduled",
+        "FREE ESTIMATE VISIT",
         "",
-        "Customer is agreed to pay total : $250.50",
+        "FREE ESTIMATE VISIT Scheduled for: THURSDAY 12th December between 9:00am-11:30am",
         "",
-        "For you : $150",
-        "For us : $100.50",
-        "",
-        "",
+        "-",
+        '(Give the reference of "Ali" if customer ask)',
       ].join("\n"),
     );
   });
 
-  it("leaves a free-estimate lead's message exactly as before", () => {
-    const text = render(lead({ terms: "free_estimate" }));
-    expect(text).not.toContain("agreed to pay");
-    expect(text.endsWith("Job Scheduled for: Not scheduled\n")).toBe(true);
+  it("shows $0 for amounts that are not filled in, as before", () => {
+    const text = message(lead({ labor_amount: null, material_amount: null, for_you_amount: null, for_us_amount: null }));
+    expect(text).toContain("Customer is agreed to pay ($0) total labor\n($0) FOR MATERIALS");
+    expect(text).toContain("For you: $0 labor including material\nFor us: $0 from total labor");
   });
 
-  it("omits the money lines when the caller may not see them", () => {
-    expect(render(lead(), false)).not.toMatch(/agreed to pay|For you|For us/);
+  it("does not give the money lines to a role that cannot see them", () => {
+    const text = message(lead(), false);
+    expect(text).not.toMatch(/agreed to pay|For you|For us/);
+    expect(text).toContain("Job Scheduled for:");
   });
 
-  it("keeps the labels when amounts are not filled in yet", () => {
-    expect(buildQuoteLines(lead({ labor_amount: null, material_amount: null, for_you_amount: null, for_us_amount: null })))
-      .toBe("Customer is agreed to pay total :\n\nFor you :\nFor us :");
+  it("free estimate has no money lines, so every role gets it", () => {
+    expect(message(lead({ terms: "free_estimate" }), false)).toContain("FREE ESTIMATE VISIT Scheduled for:");
   });
 
-  it("falls back to the free-text quote when labor and materials are empty", () => {
-    expect(buildQuoteLines(lead({ labor_amount: null, material_amount: null, quote: "$300 flat" })))
-      .toMatch(/^Customer is agreed to pay total : \$300 flat\n/);
+  it("keeps the editable template for leads with no terms", () => {
+    const saved = "Custom {customer_name}";
+    expect(technicianMessageTemplate(lead({ terms: null }), saved, true)).toBe(saved);
+    expect(message(lead({ terms: null }))).toContain("Job Scheduled for: ");
   });
 
-  it("counts a zero material amount and formats thousands", () => {
-    expect(buildQuoteLines(lead({ labor_amount: 1200, material_amount: 0 }))).toMatch(/total : \$1,200\n/);
-  });
-
-  it("adds the lines to a saved template that predates the placeholder", () => {
-    const old = "Name: {customer_name}\nJob Scheduled for: {schedule}\n{reference_line}";
-    expect(render(lead(), true, old)).toBe(
-      "Name: Synthetic Customer\nJob Scheduled for: Not scheduled\n\nCustomer is agreed to pay total : $250.50\n\nFor you : $150\nFor us : $100.50\n\n",
-    );
-    expect(withQuotePlaceholder("Hi {customer_name}")).toBe("Hi {customer_name}{quote_line}");
+  it("formats the schedule the original way", () => {
+    const now = new Date("2024-12-12T15:00:00");
+    expect(formatTechnicianSchedule(lead(), now)).toBe("Today THURSDAY 12th December between 9:00am-11:30am");
+    expect(formatTechnicianSchedule(lead({ scheduled_time_end: null }))).toBe("THURSDAY 12th December");
+    expect(formatTechnicianSchedule(lead({ scheduled_date: null }))).toBe("TBD");
+    expect(formatTechnicianSchedule(lead({ scheduled_date: "2024-12-01", scheduled_time_start: "13:05", scheduled_time_end: "00:00" })))
+      .toBe("SUNDAY 1st December between 1:05pm-12:00am");
   });
 });

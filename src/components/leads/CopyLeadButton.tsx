@@ -10,7 +10,7 @@ import { Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Lead } from '@/types';
 import { cn } from '@/lib/utils';
-import { DEFAULT_MESSAGE_TEMPLATES, renderLeadTemplate, useMessageTemplate, withQuotePlaceholder } from '@/lib/message-templates';
+import { DEFAULT_MESSAGE_TEMPLATES, renderLeadTemplate, useMessageTemplate, technicianMessageTemplate } from '@/lib/message-templates';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Props {
@@ -27,13 +27,12 @@ export default function CopyLeadButton({ lead, className }: Props) {
   const { data: template = DEFAULT_MESSAGE_TEMPLATES.technician_message } = useMessageTemplate('technician_message');
   const { role } = useAuth();
   // CS and CS Admin don't see the job's money fields in the drawer, so they aren't copied for them either.
-  const includeQuote = role !== 'customer_service' && role !== 'cs_admin';
+  const canSeeAmounts = role !== 'customer_service' && role !== 'cs_admin';
 
   const generateText = () =>
-    renderLeadTemplate(withQuotePlaceholder(template), lead, {
+    renderLeadTemplate(technicianMessageTemplate(lead, template, canSeeAmounts), lead, {
       customer_number: customerNumber,
       reference_name: referenceName,
-      include_quote: includeQuote ? 'true' : 'false',
     });
 
   useEffect(() => {

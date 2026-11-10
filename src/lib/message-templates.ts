@@ -13,7 +13,7 @@ Customer Number: {customer_phone}
 Customer Address: {customer_address}
 Service Details: {service_details}
 
-Job Scheduled for: {schedule}{quote_line}
+Job Scheduled for: {schedule}
 {reference_line}`,
   technician_reminder: `Hi {tech_name}, This is the Automated Reminder, You have to visit the following customer today between {schedule_time}, Please Text back by "Yes" so we can update our system that you will head over
 
@@ -29,43 +29,80 @@ export const MESSAGE_TEMPLATE_LABELS: Record<MessageTemplateKey, string> = {
 
 const normalize = (value: unknown) => String(value ?? "").trim();
 
-const isAmount = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-
-export const formatMessageAmount = (value: number | null | undefined) =>
-  isAmount(value)
-    ? `$${value.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 })}`
-    : "";
-
-type QuoteLead = Pick<Lead, "terms" | "labor_amount" | "material_amount" | "for_you_amount" | "for_us_amount" | "quote">;
-
-/**
- * The quoted-job lines of the technician message. Empty unless the lead's terms
- * are "quoted". The total is customer labor + materials; when neither is
- * filled, the lead's free-text quote is used. Empty amounts keep their label
- * so the processor can fill them in the preview.
- */
-export const buildQuoteLines = (lead: QuoteLead) => {
-  if (lead.terms !== "quoted") return "";
-  const parts = [lead.labor_amount, lead.material_amount].filter(isAmount);
-  const total = parts.length ? formatMessageAmount(parts.reduce((sum, n) => sum + n, 0)) : normalize(lead.quote);
-  const line = (label: string, value: string) => `${label} : ${value}`.trimEnd();
-  return [
-    line("Customer is agreed to pay total", total),
-    "",
-    line("For you", formatMessageAmount(lead.for_you_amount)),
-    line("For us", formatMessageAmount(lead.for_us_amount)),
-  ].join("\n");
+/** Schedule as the technician messages wrote it before June 2026, e.g. "Today MONDAY 9th November between 9:00am-11:00am". */
+export const formatTechnicianSchedule = (
+  lead: Pick<Lead, "scheduled_date" | "scheduled_time_start" | "scheduled_time_end">,
+  now: Date = new Date(),
+) => {
+  if (!lead.scheduled_date) return "TBD";
+  const date = new Date(`${lead.scheduled_date}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return lead.scheduled_date;
+  const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const day = date.getDate();
+  const suffix = day === 1 || day === 21 || day === 31 ? "st" : day === 2 || day === 22 ? "nd" : day === 3 || day === 23 ? "rd" : "th";
+  const time = (value: string | null) => {
+    if (!value) return "";
+    const [h, m] = value.split(":").map(Number);
+    if (Number.isNaN(h)) return value;
+    const hour = h % 12 || 12;
+    const ampm = h >= 12 ? "pm" : "am";
+    return `${hour}:${String(m || 0).padStart(2, "0")}${ampm}`;
+  };
+  const start = time(lead.scheduled_time_start);
+  const end = time(lead.scheduled_time_end);
+  const range = start && end ? ` between ${start}-${end}` : "";
+  const today = date.toDateString() === now.toDateString() ? "Today " : "";
+  return `${today}${days[date.getDay()]} ${day}${suffix} ${months[date.getMonth()]}${range}`;
 };
 
 /**
- * Saved templates written before {quote_line} existed get it placed right
- * after the schedule line (or at the end), so quoted leads always show it.
+ * The Quoted and Free Estimate technician messages, restored word for word from
+ * before the June 2026 template change removed them. Leads with no terms use the
+ * editable technician_message template.
  */
-export const withQuotePlaceholder = (template: string) => {
-  if (template.includes("{quote_line}")) return template;
-  return /\{schedule\}[^\n]*/.test(template)
-    ? template.replace(/(\{schedule\}[^\n]*)/, "$1{quote_line}")
-    : `${template}{quote_line}`;
+export const TECHNICIAN_MESSAGE_BY_TERMS = {
+  quoted: `*Customer #{customer_number_spaced}*
+
+Customer Name: {customer_name}
+Customer Number: {customer_phone}
+Customer Address: {customer_address}
+Service: {service_details}
+
+Customer is agreed to pay ($\{labor_amount_or_zero}) total labor
+($\{material_amount_or_zero}) FOR MATERIALS
+
+For you: $\{for_you_amount_or_zero} labor including material
+For us: $\{for_us_amount_or_zero} from total labor
+
+Job Scheduled for: {technician_schedule}
+{reference_block}`,
+  free_estimate: `*Customer #{customer_number_spaced}*
+
+Customer Name: {customer_name}
+Customer Number: {customer_phone}
+Customer Address: {customer_address}
+Service Details: {service_details}
+
+FREE ESTIMATE VISIT
+
+FREE ESTIMATE VISIT Scheduled for: {technician_schedule}
+{reference_block}`,
+} as const;
+
+/**
+ * Picks the technician message for a lead. The quoted message carries the job's
+ * money lines, so it is used only when the caller may see them (not CS / CS Admin);
+ * otherwise the lead falls back to the editable template.
+ */
+export const technicianMessageTemplate = (
+  lead: Pick<Lead, "terms">,
+  savedTemplate: string,
+  canSeeAmounts: boolean,
+) => {
+  if (lead.terms === "free_estimate") return TECHNICIAN_MESSAGE_BY_TERMS.free_estimate;
+  if (lead.terms === "quoted" && canSeeAmounts) return TECHNICIAN_MESSAGE_BY_TERMS.quoted;
+  return savedTemplate;
 };
 
 export const renderLeadTemplate = (
@@ -98,8 +135,15 @@ export const renderLeadTemplate = (
     material_amount: normalize(lead.material_amount),
     for_you_amount: normalize(lead.for_you_amount),
     for_us_amount: normalize(lead.for_us_amount),
-    // Only when the caller allows the job's money lines (hidden from CS roles).
-    quote_line: extras.include_quote === "true" && buildQuoteLines(lead) ? `\n\n${buildQuoteLines(lead)}\n` : "",
+    customer_number_spaced: normalize(extras.customer_number) ? ` ${normalize(extras.customer_number)}` : "",
+    reference_block: normalize(extras.reference_name || lead.reference_name)
+      ? `\n-\n(Give the reference of "${normalize(extras.reference_name || lead.reference_name)}" if customer ask)`
+      : "",
+    technician_schedule: formatTechnicianSchedule(lead),
+    labor_amount_or_zero: String(lead.labor_amount ?? 0),
+    material_amount_or_zero: String(lead.material_amount ?? 0),
+    for_you_amount_or_zero: String(lead.for_you_amount ?? 0),
+    for_us_amount_or_zero: String(lead.for_us_amount ?? 0),
   };
 
   return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key: string) => values[key] ?? "");
