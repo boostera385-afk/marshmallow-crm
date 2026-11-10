@@ -240,4 +240,86 @@ describe("QuoPhoneTrigger", () => {
     // Both buttons share one batched read; no per-button request.
     expect(reads.filter((table) => table === "quo_conversations")).toHaveLength(1);
   });
+  describe("unread badge polling in a hidden tab", () => {
+    const setVisibility = (state: DocumentVisibilityState) => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+
+    afterEach(() => {
+      setVisibility("visible");
+      vi.useRealTimers();
+    });
+
+    const renderBadgeTrigger = () => {
+      vi.mocked(useAuth).mockReturnValue({
+        role: "admin",
+        canAccess: vi.fn(() => true),
+      } as unknown as ReturnType<typeof useAuth>);
+      const reads: string[] = [];
+      vi.spyOn(supabase, "from").mockImplementation(((table: string) => {
+        reads.push(table);
+        const builder = {
+          select: () => builder,
+          in: () => builder,
+          order: () => Promise.resolve({ data: [], error: null }),
+        };
+        return builder;
+      }) as never);
+      render(
+        <QuoPhoneTrigger contactName="Jane Doe" phone="(555) 123-4567" chatType="customer" showLastMessageTime>
+          <span>CX Quick Chat</span>
+        </QuoPhoneTrigger>,
+      );
+      return () => reads.filter((table) => table === "quo_conversations").length;
+    };
+
+    it("skips the 60-second unread read while hidden and catches up once on return", async () => {
+      vi.useFakeTimers();
+      const unreadReads = renderBadgeTrigger();
+      await vi.advanceTimersByTimeAsync(250);
+      expect(unreadReads()).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(unreadReads()).toBe(2); // visible: normal 60 s poll
+
+      setVisibility("hidden");
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(unreadReads()).toBe(2); // three hidden ticks, no reads
+
+      setVisibility("visible");
+      await vi.advanceTimersByTimeAsync(250);
+      expect(unreadReads()).toBe(3); // one catch-up read, not three
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(unreadReads()).toBe(4); // polling resumes
+    });
+
+    it("does not add a read when the tab returns before any tick was skipped", async () => {
+      vi.useFakeTimers();
+      const unreadReads = renderBadgeTrigger();
+      await vi.advanceTimersByTimeAsync(250);
+      expect(unreadReads()).toBe(1);
+
+      setVisibility("hidden");
+      await vi.advanceTimersByTimeAsync(10_000);
+      setVisibility("visible");
+      await vi.advanceTimersByTimeAsync(250);
+      expect(unreadReads()).toBe(1);
+    });
+
+    it("stops listening once the last badge unmounts", async () => {
+      vi.useFakeTimers();
+      const removeSpy = vi.spyOn(document, "removeEventListener");
+      const unreadReads = renderBadgeTrigger();
+      await vi.advanceTimersByTimeAsync(250);
+      cleanup();
+      expect(removeSpy).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+      setVisibility("hidden");
+      await vi.advanceTimersByTimeAsync(120_000);
+      setVisibility("visible");
+      await vi.advanceTimersByTimeAsync(250);
+      expect(unreadReads()).toBe(1);
+    });
+  });
 });
