@@ -28,17 +28,65 @@ export type CxUpdateRequest = z.infer<typeof cxRequestSchema>;
 const queueSchema = z.object({ rows: z.array(cxRequestSchema), total: z.number().int().nonnegative() });
 const savedSchema = z.object({ saved: z.literal(true), id: z.string().uuid() });
 
-async function call(body: object): Promise<unknown> {
-  const { data, error } = await supabase.functions.invoke("cx-update-requests", { body });
-  if (error) {
-    const context: unknown = "context" in error ? error.context : null;
-    if (context instanceof Response) {
-      const payload: unknown = await context.clone().json().catch(() => null);
-      if (payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string") throw new Error(payload.error);
-    }
-    throw new Error("Update requests are unavailable. Ask Admin to check the migration and function deployment.");
+type UpdateRequestCall = {
+  kind: UpdateRequestKind; action: string; leadId?: string; requestId?: string; text?: string;
+  offset?: number; revision?: number; ownerId?: string;
+};
+const ACTIONS = new Set(["list_pending", "list_updated", "list_action", "list_resolved", "get", "count", "counts", "owners", "create", "complete", "resolve", "acknowledge", "question_more", "reassign"]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The exact input the cx-update-requests Edge Function used to forward, with the
+ * same field checks, so a malformed call fails here at once. The database
+ * function (public.workflow_requests -> marshmallow_private.workflow_requests)
+ * enforces the caller, role, scope, lengths and revisions itself; these checks
+ * are not the security boundary.
+ */
+export function toWorkflowRequestInput(call: UpdateRequestCall) {
+  const input = {
+    kind: call.kind, action: call.action, leadId: call.leadId ?? null, requestId: call.requestId ?? null,
+    text: call.text ?? null, offset: call.offset ?? 0, revision: call.revision ?? null, ownerId: call.ownerId ?? null,
+  };
+  const { action, leadId, requestId, text, offset, revision, ownerId } = input;
+  if ((input.kind !== "cx" && input.kind !== "tech") || !ACTIONS.has(action)) throw new Error("Invalid update request action");
+  if ((leadId !== null && !UUID.test(leadId)) || (requestId !== null && !UUID.test(requestId)) ||
+    (text !== null && text.length > 4000) || !Number.isInteger(offset) || offset < 0 ||
+    (revision !== null && (!Number.isSafeInteger(revision) || revision < 1)) || (ownerId !== null && !UUID.test(ownerId))) {
+    throw new Error("Invalid request fields");
   }
-  return data;
+  if ((action === "create" && (!leadId || !requestId || !text?.trim() || text.trim().length > 2000)) ||
+    (["complete", "question_more", "reassign"].includes(action) && (!requestId || !text?.trim())) ||
+    (["resolve", "acknowledge", "get"].includes(action) && !requestId) ||
+    (action === "reassign" && !ownerId) ||
+    (["complete", "question_more", "resolve", "acknowledge", "reassign"].includes(action) && revision === null)) {
+    throw new Error("Request ID, current revision and update details are required. Refresh the page.");
+  }
+  return input;
+}
+
+/** Messages the database function writes for the user (permission, validation, conflicts). */
+const APP_ERROR_CODES = new Set(["42501", "22023", "23505", "40001"]);
+/** The API answers with these while it is briefly unavailable; one retry lets it self-heal. */
+const TRANSIENT_STATUS = new Set([429, 502, 503, 504]);
+export const UPDATE_RETRY_DELAY_MS = 1500;
+const sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+
+/**
+ * Calls the database function directly (no Edge Function hop or second login
+ * check per call), as notifications already do. Same input, same messages.
+ */
+async function call(body: UpdateRequestCall): Promise<unknown> {
+  const p_input = toWorkflowRequestInput(body);
+  for (let attempt = 0; ; attempt++) {
+    const { data, error, status } = await supabase.rpc("workflow_requests", { p_input });
+    if (!error) return data;
+    if (error.code && APP_ERROR_CODES.has(error.code)) throw new Error(error.message);
+    if (attempt === 0 && TRANSIENT_STATUS.has(status)) {
+      await sleep(UPDATE_RETRY_DELAY_MS);
+      continue;
+    }
+    throw new Error(`Update requests are unavailable (code ${error.code || "unknown"}). Try again shortly.`);
+  }
 }
 
 export const fetchUpdateQueue = async (kind: UpdateRequestKind, view: UpdateRequestView, offset = 0) =>
