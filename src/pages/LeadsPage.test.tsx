@@ -2,7 +2,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LeadsPage from "./LeadsPage";
-import { LEADS_DELTA_LIMIT, LEADS_FULL_RECONCILE_MS, resetLeadsSyncState } from "@/lib/leads-sync";
+import { LEADS_DELTA_LIMIT, LEADS_FULL_RECONCILE_MS, LEADS_VISIBILITY_CHECK_MS, resetLeadsSyncState } from "@/lib/leads-sync";
 import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse, resetOverloadGuard, setServerLoadLevel } from "@/lib/overload-guard";
 
 /**
@@ -21,6 +21,8 @@ const state = vi.hoisted(() => ({
   totalLeads: 2500,
   deltaRows: [] as Record<string, unknown>[],
   deltaError: null as null | { message: string },
+  visibleIds: null as null | string[],
+  idError: null as null | { message: string },
   toastError: vi.fn(),
 }));
 
@@ -29,8 +31,16 @@ const has = (read: Read, method: string, first?: unknown) =>
 const isLeadsIndexRead = (read: Read) => read.table === "leads" && read.calls.some((c) => c.method === "select" && String(c.args[0]).includes("customer_schedule_requirements"));
 const fullReads = () => state.reads.filter((r) => isLeadsIndexRead(r) && has(r, "range"));
 const deltaReads = () => state.reads.filter((r) => isLeadsIndexRead(r) && has(r, "gt", "updated_at"));
+const isIdRead = (read: Read) => read.table === "leads" && read.calls.some((c) => c.method === "select" && c.args[0] === "id");
+const idReads = () => state.reads.filter(isIdRead);
 
 function respond(read: Read) {
+  if (isIdRead(read)) {
+    if (state.idError) return Promise.resolve({ data: null, error: state.idError });
+    const [from, to] = read.calls.find((c) => c.method === "range")!.args as [number, number];
+    const ids = state.visibleIds ?? Array.from({ length: state.totalLeads }, (_, i) => `lead-${i}`);
+    return Promise.resolve({ data: ids.slice(from, to + 1).map((id) => ({ id })), error: null });
+  }
   if (isLeadsIndexRead(read) && has(read, "range")) {
     const range = read.calls.find((c) => c.method === "range")!.args as [number, number];
     const [from, to] = range;
@@ -42,6 +52,11 @@ function respond(read: Read) {
   }
   if (isLeadsIndexRead(read) && has(read, "gt", "updated_at")) {
     return Promise.resolve(state.deltaError ? { data: null, error: state.deltaError } : { data: state.deltaRows, error: null });
+  }
+  // Card hydration: the full row for each lead on screen.
+  const byIds = read.calls.find((c) => c.method === "in" && c.args[0] === "id");
+  if (read.table === "leads" && byIds) {
+    return Promise.resolve({ data: (byIds.args[1] as string[]).map((id) => ({ id, status: "new", created_at: "2026-11-01T00:00:00.000Z" })), error: null });
   }
   return Promise.resolve({ data: [], error: null, count: 0 });
 }
@@ -93,7 +108,7 @@ vi.mock("@/lib/leadsCache", () => ({
 }));
 vi.mock("@/lib/zipCentroids", () => ({ preloadZipDataset: () => Promise.resolve() }));
 vi.mock("sonner", () => ({ toast: { error: state.toastError, success: vi.fn(), info: vi.fn() } }));
-vi.mock("@/components/leads/LeadCard", () => ({ default: () => null }));
+vi.mock("@/components/leads/LeadCard", () => ({ default: ({ lead }: { lead: { id: string } }) => <div data-testid="lead-card">{lead.id}</div> }));
 vi.mock("@/components/leads/OprLeadCard", () => ({ default: () => null }));
 vi.mock("@/components/leads/LeadTable", () => ({ default: () => null }));
 vi.mock("@/components/leads/AddLeadDialog", () => ({ default: () => null }));
@@ -120,6 +135,8 @@ beforeEach(() => {
   state.totalLeads = 2500;
   state.deltaRows = [];
   state.deltaError = null;
+  state.visibleIds = null;
+  state.idError = null;
   state.toastError.mockReset();
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 });
@@ -266,5 +283,71 @@ describe("Leads page background refresh", () => {
     }
     expect(fullReads()).toHaveLength(0);
     expect(deltaReads().length).toBeGreaterThanOrEqual(34);
+  });
+});
+
+describe("Leads page: leads that leave the user's view", () => {
+  const shownIds = () => Array.from(document.querySelectorAll('[data-testid="lead-card"]')).map((n) => n.textContent);
+
+  it("removes a lead the user can no longer see within 3 minutes, using an id-only read", async () => {
+    state.cache = freshCache();
+    await mount();
+    expect(shownIds().sort()).toEqual(["lead-1", "lead-2"]);
+    state.visibleIds = ["lead-1"]; // e.g. lead-2 was marked Paid and left a CS Admin's view
+    state.reads = [];
+    await advance(LEADS_VISIBILITY_CHECK_MS);
+    expect(idReads()).toHaveLength(1);
+    expect(idReads()[0].calls.find((c) => c.method === "select")!.args[0]).toBe("id"); // no customer data
+    expect(fullReads()).toHaveLength(0);
+    expect(shownIds()).toEqual(["lead-1"]);
+  });
+
+  it("costs one id read every 3 minutes, and none while the tab is hidden", async () => {
+    state.cache = freshCache();
+    await mount();
+    state.reads = [];
+    await advance(9 * 60_000);
+    expect(idReads()).toHaveLength(3 * 3); // 3 checks x 3 pages of ids for 2,500 leads
+    expect(fullReads()).toHaveLength(0);
+    state.reads = [];
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    await advance(9 * 60_000);
+    expect(idReads()).toHaveLength(0);
+  });
+
+  it("removes nothing when the id read fails, and retries at the next check", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    state.cache = freshCache();
+    await mount();
+    state.visibleIds = ["lead-1"];
+    state.idError = { message: "upstream timeout" };
+    await advance(LEADS_VISIBILITY_CHECK_MS);
+    expect(shownIds().sort()).toEqual(["lead-1", "lead-2"]);
+    expect(state.toastError).not.toHaveBeenCalled();
+    state.idError = null;
+    await advance(LEADS_VISIBILITY_CHECK_MS);
+    expect(shownIds()).toEqual(["lead-1"]);
+    warn.mockRestore();
+  });
+
+  it("keeps CS users' id check scoped to their own leads", async () => {
+    state.role = "customer_service";
+    state.cache = freshCache();
+    await mount();
+    await advance(LEADS_VISIBILITY_CHECK_MS);
+    expect(idReads().length).toBeGreaterThan(0);
+    expect(idReads().every((r) => r.calls.some((c) => c.method === "eq" && c.args[0] === "created_by" && c.args[1] === "user-1"))).toBe(true);
+  });
+
+  it("skips the id check while the server reports raised load", async () => {
+    state.cache = freshCache();
+    await mount();
+    state.reads = [];
+    for (let minute = 0; minute < 6; minute++) {
+      setServerLoadLevel("elevated");
+      await advance(60_000);
+    }
+    expect(idReads()).toHaveLength(0);
+    expect(deltaReads().length).toBeGreaterThanOrEqual(5);
   });
 });
