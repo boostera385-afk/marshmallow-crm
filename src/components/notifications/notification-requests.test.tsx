@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CrossTabProvider } from "@/hooks/useCrossTab";
 import { createFakeTab, FakeChannelHub, FakeLocks } from "@/test/cross-tab-fakes";
 import type { CrossTabCoordinator } from "@/lib/cross-tab";
+import { REALTIME_SAFETY_POLL_MS, reportRealtimeStatus, resetRealtimeHealth } from "@/lib/realtime-health";
 
 type Read = { table: string; columns: string; head: boolean; title: string; filters: Record<string, unknown>; limit?: number; since?: string; from?: string };
 type Result = { data: unknown[] | null; count?: number; error?: { message: string } | null };
@@ -125,7 +126,7 @@ beforeEach(() => {
   sessionStorage.clear();
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); resetRealtimeHealth(); });
 
 describe("notification request optimization", () => {
   it.each(["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin"] as AppRole[])(
@@ -168,6 +169,47 @@ describe("notification request optimization", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
     expect(bellReads()).toHaveLength(bells);
     expect(popupReads()).toHaveLength(3);
+  });
+
+  it("polls rarely while realtime is healthy, returns to the fast cadence the moment it drops, and catches up once when it recovers", async () => {
+    mountAll();
+    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
+    const bells = bellReads().length; const popups = popupReads().length;
+    // Realtime healthy: nothing in the first minute (was 4 bell + 3 pop-up reads).
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(bellReads()).toHaveLength(bells);
+    expect(popupReads()).toHaveLength(popups);
+    // ...but the safety net still runs (pop-up reads are batched 25 ms after the tick).
+    await act(async () => { await vi.advanceTimersByTimeAsync(REALTIME_SAFETY_POLL_MS - 60_000 + 30); });
+    expect(bellReads()).toHaveLength(bells + 2);
+    expect(popupReads()).toHaveLength(popups + 1);
+    // Realtime drops: back to every 15s / 20s immediately.
+    act(() => { reportRealtimeStatus("global", "CHANNEL_ERROR"); });
+    const droppedBells = bellReads().length; const droppedPopups = popupReads().length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_030); });
+    expect(bellReads()).toHaveLength(droppedBells + 2);
+    expect(popupReads()).toHaveLength(droppedPopups + 1);
+    // Realtime recovers: one catch-up read for anything missed, then rare again.
+    const beforeRecover = popupReads().length; const bellsBeforeRecover = bellReads().length;
+    act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    expect(popupReads()).toHaveLength(beforeRecover + 1);
+    expect(bellReads()).toHaveLength(bellsBeforeRecover + 2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(popupReads()).toHaveLength(beforeRecover + 1);
+  });
+
+  it("still shows an alert the moment realtime delivers it while polling is rare", async () => {
+    mountAll();
+    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
+    respondWith([notification("Urgent Job")]);
+    act(() => { emit("Urgent Job"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(screen.getByText(/Synthetic Customer/)).toBeInTheDocument();
   });
 
   it("coalesces a 50-event burst into one read of only the affected pop-up type", async () => {

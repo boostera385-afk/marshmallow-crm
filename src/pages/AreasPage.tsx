@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { subscribeToLeadChanges } from "@/lib/realtime";
 import { Lead, LeadStatus } from "@/lib/constants";
 import { extractCity } from "@/lib/address-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,11 +72,8 @@ export default function AreasPage() {
   useEffect(() => { fetchLeads(); }, [dateRange]);
 
   useEffect(() => {
-    const channel = supabase
-      .channel("areas-page-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "leads" },
+    // Shared per-tab leads channel (src/lib/realtime.ts): same events, instantly.
+    const unsubscribe = subscribeToLeadChanges(
         (payload) => {
           const newRow = payload.new as Lead | undefined;
           const oldRow = payload.old as Lead | undefined;
@@ -103,11 +101,9 @@ export default function AreasPage() {
             setLeads(prev => prev.filter(l => l.id !== oldRow.id));
           }
         }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+      );
+
+    return unsubscribe;
   }, [dateRange]);
 
   const fetchLeads = async () => {

@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-query";
 import { crossTab, type CrossTabCoordinator } from "@/lib/cross-tab";
 import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
+import { realtimeAwareInterval, useRealtimeHealthy, useRealtimeReconnect } from "@/lib/realtime-health";
 
 const CrossTabContext = createContext<CrossTabCoordinator | null>(null);
 
@@ -52,6 +53,12 @@ export interface SharedPoll {
   intervalMs: number;
   /** Keep polling while the owner tab is hidden (alerts); default: visible only. */
   inBackground?: boolean;
+  /**
+   * The same data also arrives by realtime, so this poll is only a safety net:
+   * it runs every REALTIME_SAFETY_POLL_MS while realtime is healthy, at
+   * `intervalMs` while it is not, and once immediately when realtime recovers.
+   */
+  realtimeBacked?: boolean;
 }
 
 type SharedQueryOptions<TQueryFnData, TError, TData, TQueryKey extends QueryKey> = Omit<
@@ -86,10 +93,17 @@ export function useSharedQuery<TQueryFnData = unknown, TError = Error, TData = T
     void client.refetchQueries({ queryKey: queryKeyRef.current, exact: true }, { cancelRefetch: false });
   }, [client]);
   const owner = useCrossTabOwner(enabled ? key : null, onRemoteRequest);
+  const realtimeHealthy = useRealtimeHealthy();
+  const realtimeBacked = Boolean(sharedPoll?.realtimeBacked);
+  // Events may have been missed while realtime was down: the owner reads once.
+  useRealtimeReconnect(onRemoteRequest, owner && enabled && realtimeBacked);
+  const intervalMs = sharedPoll
+    ? (realtimeBacked ? realtimeAwareInterval(sharedPoll.intervalMs, realtimeHealthy) : sharedPoll.intervalMs)
+    : 0;
   return useQuery({
     ...rest,
     queryFn: (context) => coordinator.fetch(key, () => Promise.resolve(queryFn(context))),
-    refetchInterval: owner && sharedPoll ? sharedPoll.intervalMs : false,
+    refetchInterval: owner && sharedPoll ? intervalMs : false,
     refetchIntervalInBackground: sharedPoll?.inBackground ?? false,
   });
 }

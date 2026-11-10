@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { subscribeToLeadChanges } from "@/lib/realtime";
 import { useAuth } from "@/contexts/AuthContext";
 import { FileWarning, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -9,11 +10,15 @@ import type { Lead } from "@/types";
 import { motion } from "framer-motion";
 import { cardGridContainer, cardGridItem, premiumEase } from "@/lib/motion";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
 
 export default function QuotePendingRequests() {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
+  // Lead changes arrive by realtime, so this read is a safety net: rare while
+  // realtime is healthy, every 15s when not, and once when it recovers.
+  const pendingPollMs = useRealtimeAwareInterval(15000);
 
   const {
     data: leads = [],
@@ -34,8 +39,9 @@ export default function QuotePendingRequests() {
       }
       return data as Lead[];
     },
-    refetchInterval: 15000,
+    refetchInterval: pendingPollMs,
   });
+  useRealtimeReconnect(() => { void refetch(); });
 
   const {
     data: profiles = {},
@@ -52,11 +58,8 @@ export default function QuotePendingRequests() {
   });
 
   useEffect(() => {
-    const channel = supabase
-      .channel("quote-pending-page-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "leads" },
+    // Shared per-tab leads channel (src/lib/realtime.ts): same events, instantly.
+    const unsubscribe = subscribeToLeadChanges(
         (payload) => {
           const newRow = payload.new as Lead | undefined;
           const oldRow = payload.old as Lead | undefined;
@@ -81,12 +84,9 @@ export default function QuotePendingRequests() {
             return oldData;
           });
         }
-      )
-      .subscribe();
+      );
 
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return unsubscribe;
   }, [queryClient]);
 
   const filteredLeads = useMemo(() => {

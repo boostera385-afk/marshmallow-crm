@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CrossTabCoordinator } from "@/lib/cross-tab";
 import { CrossTabProvider, useCrossTabQuerySync, useSharedQuery } from "@/hooks/useCrossTab";
 import { createFakeTab, FakeChannelHub, FakeLocks } from "@/test/cross-tab-fakes";
+import { REALTIME_SAFETY_POLL_MS, reportRealtimeStatus, resetRealtimeHealth } from "@/lib/realtime-health";
 
 function Badge({ read, enabled = true }: { read: () => Promise<number>; enabled?: boolean }) {
   useCrossTabQuerySync();
@@ -79,5 +80,64 @@ describe("useSharedQuery across tabs", () => {
     );
     await advance(60_000);
     expect(read).not.toHaveBeenCalled();
+  });
+});
+
+function RealtimeBadge({ read, realtimeBacked }: { read: () => Promise<number>; realtimeBacked: boolean }) {
+  const { data } = useSharedQuery({
+    queryKey: ["realtime-count", "user-1", realtimeBacked],
+    queryFn: read,
+    sharedPoll: { intervalMs: 15_000, realtimeBacked },
+  });
+  return <span data-testid="badge">{data ?? "-"}</span>;
+}
+
+describe("realtime-backed shared polls", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  });
+  afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); resetRealtimeHealth(); });
+
+  const mountRealtime = (read: () => Promise<number>, realtimeBacked: boolean) => {
+    const hub = new FakeChannelHub(); const locks = new FakeLocks();
+    return render(
+      <CrossTabProvider coordinator={createFakeTab(locks, hub, true).coordinator}>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <RealtimeBadge read={read} realtimeBacked={realtimeBacked} />
+        </QueryClientProvider>
+      </CrossTabProvider>,
+    );
+  };
+
+  it("polls rarely while realtime is healthy, fast when it is not, and once on recovery", async () => {
+    const read = vi.fn(async () => 1);
+    mountRealtime(read, true);
+    await advance(10);
+    expect(read).toHaveBeenCalledTimes(1);
+    act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
+    await advance(60_000);
+    expect(read).toHaveBeenCalledTimes(1);
+    await advance(REALTIME_SAFETY_POLL_MS);
+    expect(read).toHaveBeenCalledTimes(2);
+    act(() => { reportRealtimeStatus("global", "CHANNEL_ERROR"); });
+    await advance(15_000);
+    expect(read).toHaveBeenCalledTimes(3);
+    await advance(15_000);
+    expect(read).toHaveBeenCalledTimes(4);
+    act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
+    await advance(10);
+    expect(read).toHaveBeenCalledTimes(5); // catch-up read on reconnect
+    await advance(60_000);
+    expect(read).toHaveBeenCalledTimes(5);
+  });
+
+  it("leaves polls without a realtime source at their normal interval", async () => {
+    const read = vi.fn(async () => 1);
+    mountRealtime(read, false);
+    await advance(10);
+    act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
+    await advance(60_000);
+    expect(read).toHaveBeenCalledTimes(5);
   });
 });

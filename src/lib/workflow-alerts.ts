@@ -1,3 +1,4 @@
+import { realtimeAwareInterval } from "@/lib/realtime-health";
 import type { InboxNotification } from "@/lib/workflow-inbox";
 
 const key = (userId: string) => `workflow-alerts:${userId}`;
@@ -54,7 +55,10 @@ export function saveAlertCursor(userId: string, cursor: string) {
 export const ALERT_POLL_MS = 15000;
 export const ALERT_POLL_MAX_MS = 120000;
 /** Double the gap after each failed cycle so a degraded backend is not hammered
- * every 15 seconds; reset to the normal cadence on the first success. */
-export function pollAlertDelay(failures: number) {
-  return Math.min(ALERT_POLL_MS * 2 ** Math.max(0, failures), ALERT_POLL_MAX_MS);
+ * every 15 seconds; reset to the normal cadence on the first success. While
+ * realtime is healthy alerts arrive by realtime, so a successful cycle waits the
+ * safety-net interval instead. */
+export function pollAlertDelay(failures: number, realtimeHealthy: boolean = false) {
+  if (failures > 0) return Math.min(ALERT_POLL_MS * 2 ** failures, ALERT_POLL_MAX_MS);
+  return realtimeAwareInterval(ALERT_POLL_MS, realtimeHealthy);
 }

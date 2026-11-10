@@ -30,7 +30,19 @@ import { Calendar } from "@/components/ui/calendar";
 import { type DateRange } from "react-day-picker";
 import { ScheduleDateFilter } from "@/components/leads/ScheduleDateFilter";
 import { doesLeadMatchScheduleDateRange, leadNeedsAttention } from "@/lib/schedule-date-filter";
-import { readLeadsCache, writeLeadsCache } from "@/lib/leadsCache";
+import { readLeadsCacheEntry, writeLeadsCache } from "@/lib/leadsCache";
+import { subscribeToLeadChanges } from "@/lib/realtime";
+import { useRealtimeReconnect } from "@/lib/realtime-health";
+import {
+  LEADS_DELTA_LIMIT,
+  deltaSince,
+  getLastFullLoad,
+  laterCursor,
+  leadsCursor,
+  markFullLoad,
+  mergeLeadChanges,
+  needsFullReconcile,
+} from "@/lib/leads-sync";
 import { LEADS_INDEX_COLUMNS } from "@/lib/leads-index-columns";
 import { Plus, Search, Download, Share2, X, SlidersHorizontal, BarChart3, Puzzle, FileText, Calendar as CalendarIcon, LayoutGrid, List, MapPin, Copy, RefreshCw } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -297,11 +309,14 @@ export default function LeadsPage() {
   // Guards against stale/overlapping loads: each call bumps this, and a load
   // abandons its remaining work if a newer load has started since.
   const leadsLoadGenRef = useRef(0);
+  // Newest updated_at in the list: the "changed since" point for delta reads.
+  const leadsCursorRef = useRef<string | null>(null);
 
   const fetchLeads = useCallback(async (isBackground = false) => {
     if (!user || !role) return;
 
     const gen = ++leadsLoadGenRef.current;
+    const startedAt = Date.now();
     if (!isBackground) setLoading(true);
 
     // Page through the WHOLE table — PostgREST caps a single response at 1000
@@ -335,8 +350,11 @@ export default function LeadsPage() {
       const full = Array.from(acc.values());
       setLeads(full);
       if (!isBackground) setLoading(false);
+      // The list was replaced wholesale, so its cursor is exactly this set's.
+      leadsCursorRef.current = leadsCursor(full);
+      markFullLoad(`${role}:${user.id}`, startedAt);
       // Persist the complete set so the next visit paints instantly from cache.
-      void writeLeadsCache(`${role}:${user.id}`, full);
+      void writeLeadsCache(`${role}:${user.id}`, full, startedAt);
     } catch (err) {
       if (gen !== leadsLoadGenRef.current) return;
       toast.error(err instanceof Error ? err.message : "Failed to load leads");
@@ -344,6 +362,51 @@ export default function LeadsPage() {
       if (!isBackground) setLoading(false);
     }
   }, [role, user]);
+
+  /**
+   * Bring the list up to date by reading only the leads that changed since the
+   * cursor (~2 ms) instead of every lead (6 × 1,000-row pages). Falls back to a
+   * complete load when there is no cursor yet, when the last complete load is
+   * older than LEADS_FULL_RECONCILE_MS, or when too much changed at once.
+   * See src/lib/leads-sync.ts.
+   */
+  const fetchLeadChanges = useCallback(async () => {
+    if (!user || !role) return;
+    const cursor = leadsCursorRef.current;
+    if (!cursor || needsFullReconcile(getLastFullLoad(`${role}:${user.id}`))) {
+      await fetchLeads(true);
+      return;
+    }
+
+    // A complete load started after this one supersedes it (it does not bump the
+    // generation itself, so overlapping deltas are harmless merges).
+    const gen = leadsLoadGenRef.current;
+    let query = supabase
+      .from("leads")
+      .select(LEADS_INDEX_COLUMNS)
+      .gt("updated_at", deltaSince(cursor))
+      .order("updated_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(LEADS_DELTA_LIMIT);
+    // CS can see only own created leads, exactly as in the complete load.
+    if (role === "customer_service") {
+      query = query.eq("created_by", user.id);
+    }
+    const { data, error } = await query;
+    if (gen !== leadsLoadGenRef.current) return;
+    if (error) {
+      // Keep the list the user is looking at; the next refresh retries.
+      console.warn("Lead changes could not be loaded", error.message);
+      return;
+    }
+    const rows = (data ?? []) as unknown as Lead[];
+    if (rows.length >= LEADS_DELTA_LIMIT) {
+      await fetchLeads(true);
+      return;
+    }
+    leadsCursorRef.current = laterCursor(leadsCursorRef.current, leadsCursor(rows));
+    if (rows.length > 0) setLeads((prev) => mergeLeadChanges(prev, rows));
+  }, [fetchLeads, role, user]);
 
   const fetchSharedLeads = useCallback(async () => {
     if (!user || role !== "customer_service") return;
@@ -390,13 +453,19 @@ export default function LeadsPage() {
     // first load (empty cache) shows the loading state. The cache always holds
     // the whole list, so counts from it are complete — never capped.
     void (async () => {
-      const cached = await readLeadsCache(`${role}:${user.id}`);
+      const scope = `${role}:${user.id}`;
+      const cached = await readLeadsCacheEntry(scope);
       if (cancelled) return;
-      if (cached && cached.length > 0) {
-        setLeads(cached);
+      if (cached && cached.leads.length > 0) {
+        setLeads(cached.leads);
         setLoading(false);
-        void fetchLeads(true); // refresh quietly in the background
+        // Continue from the cached set: only what changed since it was saved is
+        // read, unless it is too old (or predates the cursor), which reloads all.
+        leadsCursorRef.current = leadsCursor(cached.leads);
+        markFullLoad(scope, cached.savedAt);
+        void fetchLeadChanges();
       } else {
+        leadsCursorRef.current = null;
         void fetchLeads(false); // first load — show the loading state
       }
     })();
@@ -412,20 +481,19 @@ export default function LeadsPage() {
     return () => {
       cancelled = true;
     };
-  }, [fetchLeads, fetchProfiles, fetchSharedLeads, role, user]);
+  }, [fetchLeadChanges, fetchLeads, fetchProfiles, fetchSharedLeads, role, user]);
 
   // Safety-net polling. The realtime subscription above already merges every
-  // INSERT/UPDATE/DELETE surgically, so a full refetch is only a fallback for
-  // missed events (e.g. RLS-blocked realtime). Instead of re-downloading every
-  // lead every 15s in every open tab — including hidden ones — poll only while
-  // the tab is visible, and far less often, plus refresh once when the user
-  // returns to the tab so it's immediately up to date.
+  // INSERT/UPDATE/DELETE surgically, so this is only a fallback for missed
+  // events (e.g. RLS-blocked realtime). It reads just the leads changed since
+  // the last read (fetchLeadChanges), only while the tab is visible, plus once
+  // when the user returns to the tab so it's immediately up to date.
   useEffect(() => {
     if (!user || !role) return;
 
     const refresh = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      void fetchLeads(true);
+      void fetchLeadChanges();
       if (role === "customer_service") {
         void fetchSharedLeads();
       }
@@ -441,10 +509,14 @@ export default function LeadsPage() {
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [fetchLeads, fetchSharedLeads, user, role]);
+  }, [fetchLeadChanges, fetchSharedLeads, user, role]);
 
 
 
+
+  // Realtime recovered after a failure: events may have been missed, including
+  // leads that left this user's view, so re-read the complete list once.
+  useRealtimeReconnect(() => { void fetchLeads(true); }, Boolean(user && role));
 
   // Bridge so a realtime urgent change refreshes the overview table instantly.
   // A ref keeps the channel subscription stable (no re-subscribe on identity change).
@@ -454,15 +526,8 @@ export default function LeadsPage() {
   useEffect(() => {
     if (!user || !role) return;
 
-    const channel = supabase
-      .channel("leads-realtime-page")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "leads",
-        },
+    // Shared per-tab leads channel (src/lib/realtime.ts): same events, instantly.
+    const unsubscribe = subscribeToLeadChanges(
         (payload) => {
           const newRow = payload.new as Lead | undefined;
           const oldRow = payload.old as Lead | undefined;
@@ -511,12 +576,9 @@ export default function LeadsPage() {
               refreshUrgentRef.current?.();
             }
         }
-      )
-      .subscribe();
+      );
 
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return unsubscribe;
   }, [role, user]);
 
   // Quote approval decisions do not always touch the lead row (a decline leaves
@@ -1202,12 +1264,14 @@ export default function LeadsPage() {
     setSharedLeads((prev) => prev.filter((l) => l.id !== leadId));
   }, []);
 
+  // After a save, read just what changed: the edited or new lead appears at once,
+  // without a loading state or re-reading every lead.
   const handleRefresh = useCallback(async () => {
-    await fetchLeads();
+    await fetchLeadChanges();
     if (role === "customer_service") {
       await fetchSharedLeads();
     }
-  }, [fetchLeads, fetchSharedLeads, role]);
+  }, [fetchLeadChanges, fetchSharedLeads, role]);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-3">
@@ -1326,10 +1390,7 @@ export default function LeadsPage() {
               open={showAddDialog}
               onOpenChange={setShowAddDialog}
               onSuccess={() => {
-                fetchLeads();
-                if (role === "customer_service") {
-                  fetchSharedLeads();
-                }
+                void handleRefresh();
               }}
               onUrgentCheckCreated={setUrgentCheckFor}
             />
@@ -1339,10 +1400,7 @@ export default function LeadsPage() {
               onOpenChange={(next) => { if (!next) setUrgentCheckFor(null); }}
               leadId={urgentCheckFor?.leadId ?? ""}
             onProceed={() => {
-                fetchLeads();
-                if (role === "customer_service") {
-                  fetchSharedLeads();
-                }
+                void handleRefresh();
               }}
             />
 

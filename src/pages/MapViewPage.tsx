@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { subscribeToLeadChanges } from "@/lib/realtime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import MapFilterControls from "@/components/map/MapFilterControls";
@@ -814,11 +815,8 @@ export default function MapViewPage() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const channel = supabase
-      .channel("map-page-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "leads" },
+    // Shared per-tab leads channel (src/lib/realtime.ts): same events, instantly.
+    const unsubscribe = subscribeToLeadChanges(
         (payload) => {
           const newRow = payload.new as UrgentLead | undefined;
           const oldRow = payload.old as UrgentLead | undefined;
@@ -845,11 +843,9 @@ export default function MapViewPage() {
             return old;
           });
         }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+      );
+
+    return unsubscribe;
   }, [queryClient]);
 
   const techniciansQuery = useQuery({

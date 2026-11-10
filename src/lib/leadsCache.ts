@@ -28,17 +28,29 @@ function openDb(): Promise<IDBDatabase | null> {
   });
 }
 
+export interface LeadsCacheEntry {
+  leads: Lead[];
+  /** When this complete list was saved (ms since epoch), or null for old entries. */
+  savedAt: number | null;
+}
+
 /** Read the cached full leads list for a cache key, or null if none/unavailable. */
 export async function readLeadsCache(key: string): Promise<Lead[] | null> {
+  return (await readLeadsCacheEntry(key))?.leads ?? null;
+}
+
+/** Read the cached list together with the time it was saved. */
+export async function readLeadsCacheEntry(key: string): Promise<LeadsCacheEntry | null> {
   try {
     const db = await openDb();
     if (!db) return null;
-    return await new Promise<Lead[] | null>((resolve) => {
+    return await new Promise<LeadsCacheEntry | null>((resolve) => {
       const tx = db.transaction(STORE, "readonly");
       const req = tx.objectStore(STORE).get(key);
       req.onsuccess = () => {
-        const val = req.result as { leads?: unknown } | undefined;
-        resolve(val && Array.isArray(val.leads) ? (val.leads as Lead[]) : null);
+        const val = req.result as { leads?: unknown; savedAt?: unknown } | undefined;
+        if (!val || !Array.isArray(val.leads)) return resolve(null);
+        resolve({ leads: val.leads as Lead[], savedAt: typeof val.savedAt === "number" ? val.savedAt : null });
       };
       req.onerror = () => resolve(null);
       tx.oncomplete = () => db.close();
@@ -49,13 +61,13 @@ export async function readLeadsCache(key: string): Promise<Lead[] | null> {
 }
 
 /** Persist the full leads list for a cache key. Best-effort; ignores errors. */
-export async function writeLeadsCache(key: string, leads: Lead[]): Promise<void> {
+export async function writeLeadsCache(key: string, leads: Lead[], savedAt: number = Date.now()): Promise<void> {
   try {
     const db = await openDb();
     if (!db) return;
     await new Promise<void>((resolve) => {
       const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put({ leads, savedAt: Date.now() }, key);
+      tx.objectStore(STORE).put({ leads, savedAt }, key);
       const done = () => {
         try { db.close(); } catch { /* ignore */ }
         resolve();
