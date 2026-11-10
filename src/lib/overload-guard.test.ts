@@ -6,8 +6,13 @@ import {
   OVERLOAD_RESUME_JITTER_MS,
   OVERLOAD_TRIP_COUNT,
   OVERLOAD_WINDOW_MS,
+  SERVER_LEVEL_STEP_DOWN_JITTER_MS,
+  SERVER_LEVEL_TTL_MS,
   backgroundDelay,
+  getServerLoadLevel,
   installOverloadGuard,
+  isServerLoadRaised,
+  setServerLoadLevel,
   isBackgroundPollPaused,
   msUntilBackgroundResume,
   recordOverloadResponse,
@@ -147,5 +152,86 @@ describe("recovering", () => {
     trip();
     expect(backgroundDelay(15_000)).toBe(OVERLOAD_BASE_COOLDOWN_MS);
     expect(backgroundDelay(10 * 60_000)).toBe(10 * 60_000);
+  });
+});
+
+describe("acting on the server's announced load level (before any timeouts)", () => {
+  it("pauses background polling the moment the server says critical, with no failed request needed", () => {
+    expect(isBackgroundPollPaused()).toBe(false);
+    setServerLoadLevel("critical");
+    expect(isBackgroundPollPaused()).toBe(true);
+    expect(getServerLoadLevel()).toBe("critical");
+  });
+
+  it("does not pause for elevated; it only marks the load as raised", () => {
+    setServerLoadLevel("elevated");
+    expect(isBackgroundPollPaused()).toBe(false);
+    expect(isServerLoadRaised()).toBe(true);
+  });
+
+  it("steps down after a short random delay so tabs do not all resume at once", () => {
+    vi.mocked(Math.random).mockReturnValue(0.5);
+    setServerLoadLevel("critical");
+    setServerLoadLevel("normal");
+    expect(isBackgroundPollPaused()).toBe(true);
+    vi.advanceTimersByTime(SERVER_LEVEL_STEP_DOWN_JITTER_MS / 2 - 1);
+    expect(isBackgroundPollPaused()).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(isBackgroundPollPaused()).toBe(false);
+    expect(getServerLoadLevel()).toBe("normal");
+  });
+
+  it("escalates immediately even while a step-down is pending", () => {
+    setServerLoadLevel("elevated");
+    setServerLoadLevel("normal");
+    setServerLoadLevel("critical");
+    expect(isBackgroundPollPaused()).toBe(true);
+    vi.advanceTimersByTime(SERVER_LEVEL_STEP_DOWN_JITTER_MS);
+    expect(getServerLoadLevel()).toBe("critical");
+  });
+
+  it("expires a raised level when the server stops re-announcing it, so a tab is never stuck paused", () => {
+    setServerLoadLevel("critical");
+    vi.advanceTimersByTime(SERVER_LEVEL_TTL_MS - 1);
+    expect(isBackgroundPollPaused()).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(isBackgroundPollPaused()).toBe(false);
+    expect(getServerLoadLevel()).toBe("normal");
+  });
+
+  it("stays raised while the server keeps re-announcing every minute", () => {
+    setServerLoadLevel("critical");
+    for (let minute = 0; minute < 10; minute++) {
+      vi.advanceTimersByTime(60_000);
+      setServerLoadLevel("critical");
+    }
+    expect(isBackgroundPollPaused()).toBe(true);
+  });
+
+  it("treats unknown or missing levels as normal", () => {
+    setServerLoadLevel("critical");
+    setServerLoadLevel({ level: "critical" });
+    vi.advanceTimersByTime(SERVER_LEVEL_STEP_DOWN_JITTER_MS);
+    expect(getServerLoadLevel()).toBe("normal");
+    setServerLoadLevel(undefined);
+    expect(getServerLoadLevel()).toBe("normal");
+  });
+
+  it("tells listeners when the level changes", () => {
+    const listener = vi.fn();
+    const stop = subscribeOverload(listener);
+    setServerLoadLevel("elevated");
+    expect(listener).toHaveBeenCalledTimes(1);
+    setServerLoadLevel("critical");
+    expect(listener).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  it("still sends every user request while the server says critical", async () => {
+    const { target, calls } = guarded(() => json(200, [{ id: "lead-1" }]));
+    setServerLoadLevel("critical");
+    const save = await target.fetch(`${API}/rest/v1/leads?id=eq.lead-1`, { method: "PATCH", body: "{}" });
+    expect(save.status).toBe(200);
+    expect(calls).toHaveLength(1);
   });
 });

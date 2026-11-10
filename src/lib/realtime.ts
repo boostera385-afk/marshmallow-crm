@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { forgetRealtimeChannel, reportRealtimeStatus } from "@/lib/realtime-health";
+import { setServerLoadLevel } from "@/lib/overload-guard";
 
 /**
  * A lightweight global event bus for distributing Supabase Realtime events locally
@@ -189,6 +190,11 @@ export function setupGlobalRealtime() {
   // Single global channel for row-level components
   globalChannel = supabase
     .channel("global-app-events")
+    // Load level from the database's governor (20261210010000_load_governor.sql):
+    // a public broadcast on this same channel, so no extra channel or RLS check.
+    .on("broadcast", { event: "system_load" }, (message: { payload?: { level?: unknown } }) => {
+      setServerLoadLevel(message?.payload?.level);
+    })
     // Lead Notes
     .on(
       "postgres_changes",

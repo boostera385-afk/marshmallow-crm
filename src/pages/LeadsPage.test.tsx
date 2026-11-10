@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LeadsPage from "./LeadsPage";
 import { LEADS_DELTA_LIMIT, LEADS_FULL_RECONCILE_MS, resetLeadsSyncState } from "@/lib/leads-sync";
-import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse, resetOverloadGuard } from "@/lib/overload-guard";
+import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse, resetOverloadGuard, setServerLoadLevel } from "@/lib/overload-guard";
 
 /**
  * Request behaviour of the Leads page against a recording Supabase fake.
@@ -254,5 +254,17 @@ describe("Leads page background refresh", () => {
     // After the pause the timed refresh resumes.
     await advance(60_000);
     expect(deltaReads()).toHaveLength(2);
+  });
+
+  it("keeps reading only changes, and postpones the 30-minute complete reload, while the server reports elevated load", async () => {
+    state.cache = freshCache();
+    await mount();
+    state.reads = [];
+    for (let minute = 0; minute < 35; minute++) {
+      setServerLoadLevel("elevated"); // the governor re-announces every minute
+      await advance(60_000);
+    }
+    expect(fullReads()).toHaveLength(0);
+    expect(deltaReads().length).toBeGreaterThanOrEqual(34);
   });
 });

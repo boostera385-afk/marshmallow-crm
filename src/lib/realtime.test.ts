@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { subscribeToLeadChanges, subscribeToNotifications, subscribeToProcessorActivity, subscribeToProcessorBoard, type LeadChange, type NotificationChange } from "./realtime";
+import { setupGlobalRealtime, subscribeToLeadChanges, subscribeToNotifications, subscribeToProcessorActivity, subscribeToProcessorBoard, type LeadChange, type NotificationChange } from "./realtime";
+import { getServerLoadLevel, isBackgroundPollPaused, resetOverloadGuard } from "./overload-guard";
 
 const state = vi.hoisted(() => ({
   channels: [] as {
@@ -165,5 +166,20 @@ describe("shared leads channel", () => {
     expect(replacement).not.toHaveBeenCalled();
     state.channels[1].handlers[0].callback(change as unknown as NotificationChange);
     expect(replacement).toHaveBeenCalledOnce();
+  });
+});
+
+describe("server load level broadcast", () => {
+  afterEach(resetOverloadGuard);
+
+  it("listens on the existing global channel and pauses background polling when the server says critical", () => {
+    setupGlobalRealtime();
+    const global = state.channels.find((channel) => channel.name === "global-app-events")!;
+    const broadcast = global.handlers.find((handler) => handler.event === "system_load")!;
+    expect(broadcast).toBeDefined();
+    expect(state.channels.filter((channel) => channel.name === "global-app-events")).toHaveLength(1);
+    (broadcast.callback as unknown as (message: unknown) => void)({ event: "system_load", payload: { level: "critical", busy_pct: 91 } });
+    expect(getServerLoadLevel()).toBe("critical");
+    expect(isBackgroundPollPaused()).toBe(true);
   });
 });

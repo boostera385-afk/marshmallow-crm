@@ -14,7 +14,7 @@ import { CrossTabProvider } from "@/hooks/useCrossTab";
 import { createFakeTab, FakeChannelHub, FakeLocks } from "@/test/cross-tab-fakes";
 import type { CrossTabCoordinator } from "@/lib/cross-tab";
 import { RECONNECT_JITTER_MS, REALTIME_SAFETY_POLL_MS, reportRealtimeStatus, resetRealtimeHealth } from "@/lib/realtime-health";
-import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, isBackgroundPollPaused, recordOverloadResponse, resetOverloadGuard } from "@/lib/overload-guard";
+import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, isBackgroundPollPaused, recordOverloadResponse, resetOverloadGuard, setServerLoadLevel } from "@/lib/overload-guard";
 
 type Read = { table: string; columns: string; head: boolean; title: string; filters: Record<string, unknown>; limit?: number; since?: string; from?: string };
 type Result = { data: unknown[] | null; count?: number; error?: { message: string } | null };
@@ -241,6 +241,23 @@ describe("notification request optimization", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(21_000); });
     expect(bellReads().length).toBeGreaterThan(bellsAtPause);
     expect(popupReads().length).toBeGreaterThanOrEqual(popups + 2);
+  });
+
+  it("keeps the slow safety-net cadence while the server reports elevated load, even if realtime looks unhealthy", async () => {
+    mountAll();
+    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    act(() => { setServerLoadLevel("elevated"); });
+    const bells = bellReads().length; const popups = popupReads().length;
+    // Realtime has not reported healthy here, which normally means 15 s / 20 s polling.
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(bellReads()).toHaveLength(bells);
+    expect(popupReads()).toHaveLength(popups);
+    // A realtime alert still shows at once.
+    respondWith([notification("Urgent Job")]);
+    act(() => { emit("Urgent Job"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(screen.getByText(/Synthetic Customer/)).toBeInTheDocument();
   });
 
   it("coalesces a 50-event burst into one read of only the affected pop-up type", async () => {

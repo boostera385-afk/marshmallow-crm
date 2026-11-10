@@ -37,6 +37,26 @@ const OVERLOAD_STATUSES = new Set([503, 504, 520, 521, 522, 523, 524, 525, 544])
 const OVERLOAD_CODES = new Set(["57014", "PGRST003"]);
 const SUPABASE_PATH = /^\/(rest|functions|auth)\/v1\//;
 
+/**
+ * Level announced by the database's load governor (migration
+ * 20261210010000_load_governor.sql) over the "global-app-events" channel.
+ *  - elevated: background safety nets keep their slow cadence;
+ *  - critical: background polling pauses at once, before any timeouts.
+ * The server re-announces a raised level every minute; if it goes quiet the
+ * level expires after SERVER_LEVEL_TTL_MS, so a lost connection never leaves a
+ * tab paused.
+ */
+export type ServerLoadLevel = "normal" | "elevated" | "critical";
+export const SERVER_LEVEL_TTL_MS = 3 * 60_000;
+/** Tabs step DOWN from a raised level after a random delay up to this, so they do not all resume at once. */
+export const SERVER_LEVEL_STEP_DOWN_JITTER_MS = 5_000;
+const LEVEL_RANK: Record<ServerLoadLevel, number> = { normal: 0, elevated: 1, critical: 2 };
+let serverLevel: ServerLoadLevel = "normal";
+let serverLevelExpiresAt = 0;
+let serverLevelTimer: ReturnType<typeof setTimeout> | null = null;
+let serverStepDownTimer: ReturnType<typeof setTimeout> | null = null;
+let serverLevelSnapshot: ServerLoadLevel = "normal";
+
 let failures: number[] = [];
 let pausedUntil = 0;
 let lastPauseEnded = -Infinity;
@@ -47,8 +67,13 @@ const listeners = new Set<() => void>();
 let pausedSnapshot = false;
 
 function emit() {
-  const next = Date.now() < pausedUntil;
-  if (next === pausedSnapshot) return;
+  const next = isBackgroundPollPaused();
+  const levelChanged = serverLevel !== serverLevelSnapshot;
+  serverLevelSnapshot = serverLevel;
+  if (next === pausedSnapshot) {
+    if (levelChanged) listeners.forEach((listener) => listener());
+    return;
+  }
   pausedSnapshot = next;
   // TanStack runs a query's refetchInterval tick only while the page counts as
   // focused (unless refetchIntervalInBackground). Reporting "not focused" while
@@ -82,12 +107,62 @@ export function recordOverloadResponse(now: number = Date.now()) {
 
 /** True while background polls should skip their turn. */
 export function isBackgroundPollPaused(now: number = Date.now()) {
-  return now < pausedUntil;
+  return now < pausedUntil || currentServerLevel(now) === "critical";
 }
 
 /** Milliseconds until background polling resumes (0 when not paused). */
 export function msUntilBackgroundResume(now: number = Date.now()) {
-  return Math.max(0, pausedUntil - now);
+  const serverPause = currentServerLevel(now) === "critical" ? serverLevelExpiresAt - now : 0;
+  return Math.max(0, pausedUntil - now, serverPause);
+}
+
+function currentServerLevel(now: number = Date.now()): ServerLoadLevel {
+  return serverLevel !== "normal" && now >= serverLevelExpiresAt ? "normal" : serverLevel;
+}
+
+/** The governor's level as this tab currently applies it. */
+export function getServerLoadLevel(now: number = Date.now()): ServerLoadLevel {
+  return currentServerLevel(now);
+}
+
+/** True while the server reports elevated or critical load. */
+export function isServerLoadRaised(now: number = Date.now()) {
+  return currentServerLevel(now) !== "normal";
+}
+
+function applyServerLevel(next: ServerLoadLevel) {
+  if (serverStepDownTimer) { clearTimeout(serverStepDownTimer); serverStepDownTimer = null; }
+  serverLevel = next;
+  if (serverLevelTimer) { clearTimeout(serverLevelTimer); serverLevelTimer = null; }
+  if (next !== "normal") {
+    serverLevelExpiresAt = Date.now() + SERVER_LEVEL_TTL_MS;
+    // Heard nothing for the TTL: the governor (or our connection) stopped; drop to normal.
+    serverLevelTimer = setTimeout(() => { serverLevelTimer = null; serverLevel = "normal"; emit(); }, SERVER_LEVEL_TTL_MS);
+  }
+  emit();
+}
+
+/**
+ * Apply a level announced by the server. Raising applies at once; lowering
+ * waits a random 0-5 s so tabs that hear the same announcement do not all
+ * resume background work in the same instant. Unknown values count as normal.
+ */
+export function setServerLoadLevel(level: unknown) {
+  const next: ServerLoadLevel = level === "elevated" || level === "critical" ? level : "normal";
+  const current = currentServerLevel();
+  if (LEVEL_RANK[next] >= LEVEL_RANK[current]) {
+    applyServerLevel(next);
+    return;
+  }
+  if (serverStepDownTimer) return; // a step-down is already on its way
+  serverStepDownTimer = setTimeout(() => {
+    serverStepDownTimer = null;
+    applyServerLevel(next);
+  }, Math.floor(Math.random() * SERVER_LEVEL_STEP_DOWN_JITTER_MS));
+}
+
+export function useServerLoadLevel() {
+  return useSyncExternalStore(subscribeOverload, () => serverLevelSnapshot, () => serverLevelSnapshot);
 }
 
 /**
@@ -162,5 +237,12 @@ export function resetOverloadGuard() {
   resumeTimer = null;
   installed = false;
   pausedSnapshot = false;
+  serverLevel = "normal";
+  serverLevelSnapshot = "normal";
+  serverLevelExpiresAt = 0;
+  if (serverLevelTimer) clearTimeout(serverLevelTimer);
+  if (serverStepDownTimer) clearTimeout(serverStepDownTimer);
+  serverLevelTimer = null;
+  serverStepDownTimer = null;
   listeners.forEach((listener) => listener());
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { OVERLOAD_MAX_COOLDOWN_MS, msUntilBackgroundResume, useBackgroundPollPaused } from "@/lib/overload-guard";
+import { OVERLOAD_MAX_COOLDOWN_MS, msUntilBackgroundResume, useBackgroundPollPaused, useServerLoadLevel } from "@/lib/overload-guard";
 
 /**
  * Is realtime delivering changes right now?
@@ -101,7 +101,11 @@ export function useRealtimeHealthy() {
  * the interval is recreated (without an extra read) when the pause ends.
  */
 export function useRealtimeAwareInterval(fastMs: number) {
-  const interval = realtimeAwareInterval(fastMs, useRealtimeHealthy());
+  const healthy = useRealtimeHealthy();
+  // While the server reports elevated load, safety nets keep their slow cadence
+  // even if realtime looks unhealthy: realtime still delivers the changes.
+  const serverRaised = useServerLoadLevel() !== "normal";
+  const interval = realtimeAwareInterval(fastMs, healthy || serverRaised);
   return useBackgroundPollPaused() ? Math.max(interval, OVERLOAD_MAX_COOLDOWN_MS) : interval;
 }
 

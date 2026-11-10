@@ -57,9 +57,20 @@ export function deltaSince(cursor: string): string {
   return new Date(Date.parse(cursor) - LEADS_DELTA_OVERLAP_MS).toISOString();
 }
 
-/** True when the last complete load is too old to keep trusting deltas alone. */
-export function needsFullReconcile(lastFullAt: number | null, now: number = Date.now()): boolean {
-  return lastFullAt === null || now - lastFullAt >= LEADS_FULL_RECONCILE_MS;
+/** While the server reports raised load, the periodic complete reload may wait, but never longer than this. */
+export const LEADS_RECONCILE_MAX_POSTPONE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * True when the last complete load is too old to keep trusting deltas alone.
+ * While the server reports raised load (`serverLoadRaised`) the periodic
+ * reload is postponed - changed leads keep arriving by delta and realtime -
+ * until it is LEADS_RECONCILE_MAX_POSTPONE_MS old. With no complete load at
+ * all, one is always needed.
+ */
+export function needsFullReconcile(lastFullAt: number | null, now: number = Date.now(), serverLoadRaised = false): boolean {
+  if (lastFullAt === null) return true;
+  const age = now - lastFullAt;
+  return serverLoadRaised ? age >= LEADS_RECONCILE_MAX_POSTPONE_MS : age >= LEADS_FULL_RECONCILE_MS;
 }
 
 /**

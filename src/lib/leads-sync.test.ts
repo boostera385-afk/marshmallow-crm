@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   LEADS_DELTA_OVERLAP_MS,
   LEADS_FULL_RECONCILE_MS,
+  LEADS_RECONCILE_MAX_POSTPONE_MS,
   deltaSince,
   getLastFullLoad,
   laterCursor,
@@ -54,6 +55,14 @@ describe("needsFullReconcile", () => {
     expect(needsFullReconcile(null, now)).toBe(true);
     expect(needsFullReconcile(now - LEADS_FULL_RECONCILE_MS, now)).toBe(true);
     expect(needsFullReconcile(now - LEADS_FULL_RECONCILE_MS + 1, now)).toBe(false);
+  });
+
+  it("postpones the periodic reload while the server reports raised load, up to a cap", () => {
+    const now = Date.parse("2026-11-10T12:00:00Z");
+    expect(needsFullReconcile(now - LEADS_FULL_RECONCILE_MS, now, true)).toBe(false);
+    expect(needsFullReconcile(now - LEADS_RECONCILE_MAX_POSTPONE_MS + 1, now, true)).toBe(false);
+    expect(needsFullReconcile(now - LEADS_RECONCILE_MAX_POSTPONE_MS, now, true)).toBe(true);
+    expect(needsFullReconcile(null, now, true)).toBe(true);
   });
 });
 
