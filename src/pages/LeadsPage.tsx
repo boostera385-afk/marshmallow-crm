@@ -33,6 +33,7 @@ import { doesLeadMatchScheduleDateRange, leadNeedsAttention } from "@/lib/schedu
 import { readLeadsCacheEntry, writeLeadsCache } from "@/lib/leadsCache";
 import { subscribeToLeadChanges } from "@/lib/realtime";
 import { useRealtimeReconnect } from "@/lib/realtime-health";
+import { isBackgroundPollPaused } from "@/lib/overload-guard";
 import {
   LEADS_DELTA_LIMIT,
   deltaSince,
@@ -499,7 +500,8 @@ export default function LeadsPage() {
       }
     };
 
-    const intervalId = setInterval(refresh, 60000);
+    // Timer turns skip while the server is overloaded; returning to the tab still refreshes.
+    const intervalId = setInterval(() => { if (!isBackgroundPollPaused()) refresh(); }, 60000);
     const onVisibility = () => {
       if (document.visibilityState === "visible") refresh();
     };

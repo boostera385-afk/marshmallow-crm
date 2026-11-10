@@ -43,6 +43,7 @@ import MFAEnroll from "@/components/auth/MFAEnroll";
 import { motion } from "framer-motion";
 import { heroTitle } from "@/lib/motion";
 import { DEFAULT_MESSAGE_TEMPLATES, MESSAGE_TEMPLATE_LABELS, type MessageTemplateKey } from "@/lib/message-templates";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 const generateCode = () => {
   const arr = new Uint32Array(1);
@@ -302,7 +303,7 @@ const Settings = () => {
         return [];
       }
     },
-    refetchInterval: 15000,
+    refetchInterval: backgroundInterval(15000),
   });
 
   const userTotpMap = useMemo(() => {

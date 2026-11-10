@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LeadsPage from "./LeadsPage";
 import { LEADS_DELTA_LIMIT, LEADS_FULL_RECONCILE_MS, resetLeadsSyncState } from "@/lib/leads-sync";
+import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse, resetOverloadGuard } from "@/lib/overload-guard";
 
 /**
  * Request behaviour of the Leads page against a recording Supabase fake.
@@ -122,7 +123,7 @@ beforeEach(() => {
   state.toastError.mockReset();
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); resetOverloadGuard(); });
 
 const freshCache = (savedAgoMs = 60_000) => ({
   leads: [
@@ -236,5 +237,22 @@ describe("Leads page background refresh", () => {
     await advance(60_000);
     const since = deltaReads()[1].calls.find((c) => c.method === "gt")!.args[1];
     expect(since).toBe("2026-11-10T11:57:30.000Z");
+  });
+
+  it("skips timed refreshes while the server is overloaded but still refreshes when the user returns to the tab", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    state.cache = freshCache();
+    await mount();
+    state.reads = [];
+    for (let i = 0; i < OVERLOAD_TRIP_COUNT; i++) recordOverloadResponse();
+    await advance(OVERLOAD_BASE_COOLDOWN_MS - 1_000);
+    expect(deltaReads()).toHaveLength(0);
+    // A user action: coming back to the tab.
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); await vi.advanceTimersByTimeAsync(10); });
+    expect(deltaReads()).toHaveLength(1);
+    // After the pause the timed refresh resumes.
+    await advance(60_000);
+    expect(deltaReads()).toHaveLength(2);
   });
 });

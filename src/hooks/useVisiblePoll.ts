@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { isBackgroundPollPaused } from "@/lib/overload-guard";
 
 const isVisible = () => typeof document === "undefined" || document.visibilityState === "visible";
 
@@ -20,7 +21,8 @@ export function useVisiblePoll(
       void refresh();
     };
     run();
-    const id = setInterval(() => { if (isVisible()) run(); }, intervalMs);
+    // Timer turns skip while the server is overloaded; a return to the tab still refreshes.
+    const id = setInterval(() => { if (isVisible() && !isBackgroundPollPaused()) run(); }, intervalMs);
     const onVisibility = () => {
       if (isVisible() && Date.now() - lastRun >= minGapMs) run();
     };

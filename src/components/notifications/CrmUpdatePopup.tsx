@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Megaphone, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
+import { isBackgroundPollPaused } from "@/lib/overload-guard";
 
 const SECTION_LABEL: Record<string, string> = {
   general: "General / Entire CRM",
@@ -97,7 +98,8 @@ export default function CrmUpdatePopup() {
     };
 
     refreshWhenVisible();
-    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
+    // Timer turns skip while the server is overloaded (see overload-guard).
+    const intervalId = window.setInterval(() => { if (!isBackgroundPollPaused()) refreshWhenVisible(); }, 60_000);
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 

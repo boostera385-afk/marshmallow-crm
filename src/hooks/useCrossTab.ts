@@ -11,6 +11,7 @@ import {
 import { crossTab, type CrossTabCoordinator } from "@/lib/cross-tab";
 import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
 import { realtimeAwareInterval, useRealtimeHealthy, useRealtimeReconnect } from "@/lib/realtime-health";
+import { useBackgroundPollPaused } from "@/lib/overload-guard";
 
 const CrossTabContext = createContext<CrossTabCoordinator | null>(null);
 
@@ -94,6 +95,7 @@ export function useSharedQuery<TQueryFnData = unknown, TError = Error, TData = T
   }, [client]);
   const owner = useCrossTabOwner(enabled ? key : null, onRemoteRequest);
   const realtimeHealthy = useRealtimeHealthy();
+  const overloadPaused = useBackgroundPollPaused();
   const realtimeBacked = Boolean(sharedPoll?.realtimeBacked);
   // Events may have been missed while realtime was down: the owner reads once.
   useRealtimeReconnect(onRemoteRequest, owner && enabled && realtimeBacked);
@@ -103,7 +105,8 @@ export function useSharedQuery<TQueryFnData = unknown, TError = Error, TData = T
   return useQuery({
     ...rest,
     queryFn: (context) => coordinator.fetch(key, () => Promise.resolve(queryFn(context))),
-    refetchInterval: owner && sharedPoll ? intervalMs : false,
+    // No polling while the server is overloaded; the interval restarts when the pause ends.
+    refetchInterval: owner && sharedPoll && !overloadPaused ? intervalMs : false,
     refetchIntervalInBackground: sharedPoll?.inBackground ?? false,
   });
 }

@@ -15,6 +15,7 @@ import {
   type TechnicianChangeType,
 } from "@/lib/tech-change-requests";
 import { silkySpring } from "@/lib/motion";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 export interface TechnicianFlagTarget {
   id: string;
@@ -47,7 +48,7 @@ export function GoodTechFlagCell({ tech }: { tech: TechnicianFlagTarget }) {
   const pendingQuery = useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetchPendingChangeSummary,
-    refetchInterval: 30_000,
+    refetchInterval: backgroundInterval(30_000),
     refetchIntervalInBackground: false,
     enabled: role === "processor",
   });
@@ -172,7 +173,7 @@ export function ActiveFlagCell({ tech }: { tech: TechnicianFlagTarget }) {
   const pendingQuery = useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetchPendingChangeSummary,
-    refetchInterval: 30_000,
+    refetchInterval: backgroundInterval(30_000),
     refetchIntervalInBackground: false,
     enabled: role === "processor",
   });

@@ -13,6 +13,7 @@ import { useCrossTabOwner } from "@/hooks/useCrossTab";
 import { customerSaidFromAlert, isNewScheduleAlert, requestScheduleRequirementPrompt } from "@/lib/schedule-requirement";
 import WorkflowToast from "./WorkflowToast";
 import { activeNotificationSince, laterOf } from "@/lib/notification-window";
+import { backgroundDelay, subscribeOverload } from "@/lib/overload-guard";
 
 export default function WorkflowAlerts() {
   const { user, role } = useAuth();
@@ -77,14 +78,15 @@ export default function WorkflowAlerts() {
     let timer = 0;
     const poll = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => { void refresh().then(poll); }, pollAlertDelay(failedPolls.current, isRealtimeHealthy()));
+      timer = window.setTimeout(() => { void refresh().then(poll); }, backgroundDelay(pollAlertDelay(failedPolls.current, isRealtimeHealthy())));
     };
     poll();
     // Reschedule at once when realtime health changes (fast again the moment it
     // drops), and catch up on anything missed when it recovers.
     const stopHealth = subscribeRealtimeHealth(poll);
+    const stopOverload = subscribeOverload(poll);
     const stopReconnect = onRealtimeReconnected(() => { void refresh(); });
-    return () => { unsubscribe(); stopHealth(); stopReconnect(); window.clearTimeout(timer); };
+    return () => { unsubscribe(); stopHealth(); stopOverload(); stopReconnect(); window.clearTimeout(timer); };
   }, [user, role, refresh, readsHere]);
   // Shown toasts stay up when another tab takes over reading (they were claimed
   // here and are not shown again); they close when the user or role changes.

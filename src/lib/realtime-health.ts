@@ -1,4 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
+import { OVERLOAD_MAX_COOLDOWN_MS, msUntilBackgroundResume, useBackgroundPollPaused } from "@/lib/overload-guard";
 
 /**
  * Is realtime delivering changes right now?
@@ -31,7 +32,7 @@ function recompute() {
   healthy = next;
   if (healthy && hadFailure) {
     hadFailure = false;
-    reconnectTarget.dispatchEvent(new Event(REALTIME_RECONNECTED_EVENT));
+    scheduleReconnectCatchUp();
   }
   listeners.forEach((listener) => listener());
 }
@@ -59,7 +60,26 @@ export function subscribeRealtimeHealth(listener: () => void) {
   return () => { listeners.delete(listener); };
 }
 
-/** Run `onReconnect` each time realtime recovers after a failure. */
+/** Catch-up reads after a reconnect are spread over this window. */
+export const RECONNECT_JITTER_MS = 5000;
+let catchUpTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Every open tab reconnects at the same moment, so each tab announces its
+ * catch-up after its own random delay of up to RECONNECT_JITTER_MS (and only
+ * once any overload pause has ended). All consumers in a tab hear it together,
+ * so their reads still batch.
+ */
+function scheduleReconnectCatchUp() {
+  if (catchUpTimer) return;
+  const delay = msUntilBackgroundResume() + Math.random() * RECONNECT_JITTER_MS;
+  catchUpTimer = setTimeout(() => {
+    catchUpTimer = null;
+    reconnectTarget.dispatchEvent(new Event(REALTIME_RECONNECTED_EVENT));
+  }, delay);
+}
+
+/** Run `onReconnect` each time realtime recovers after a failure (see scheduleReconnectCatchUp). */
 export function onRealtimeReconnected(onReconnect: () => void) {
   const listener = () => onReconnect();
   reconnectTarget.addEventListener(REALTIME_RECONNECTED_EVENT, listener);
@@ -75,9 +95,14 @@ export function useRealtimeHealthy() {
   return useSyncExternalStore(subscribeRealtimeHealth, isRealtimeHealthy, isRealtimeHealthy);
 }
 
-/** The current safety-net interval for a poll that normally runs every `fastMs`. */
+/**
+ * The current safety-net interval for a poll that normally runs every `fastMs`.
+ * While the server is overloaded the poll waits the longest backoff instead;
+ * the interval is recreated (without an extra read) when the pause ends.
+ */
 export function useRealtimeAwareInterval(fastMs: number) {
-  return realtimeAwareInterval(fastMs, useRealtimeHealthy());
+  const interval = realtimeAwareInterval(fastMs, useRealtimeHealthy());
+  return useBackgroundPollPaused() ? Math.max(interval, OVERLOAD_MAX_COOLDOWN_MS) : interval;
 }
 
 /** Calls the latest `onReconnect` whenever realtime recovers after a failure. */
@@ -92,6 +117,8 @@ export function useRealtimeReconnect(onReconnect: () => void, enabled: boolean =
 
 /** Test helper: forget every tracked channel and listener state. */
 export function resetRealtimeHealth() {
+  if (catchUpTimer) clearTimeout(catchUpTimer);
+  catchUpTimer = null;
   channels.clear();
   healthy = false;
   hadFailure = false;

@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CrossTabCoordinator } from "@/lib/cross-tab";
 import { CrossTabProvider, useCrossTabQuerySync, useSharedQuery } from "@/hooks/useCrossTab";
 import { createFakeTab, FakeChannelHub, FakeLocks } from "@/test/cross-tab-fakes";
-import { REALTIME_SAFETY_POLL_MS, reportRealtimeStatus, resetRealtimeHealth } from "@/lib/realtime-health";
+import { RECONNECT_JITTER_MS, REALTIME_SAFETY_POLL_MS, reportRealtimeStatus, resetRealtimeHealth } from "@/lib/realtime-health";
+import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse, resetOverloadGuard } from "@/lib/overload-guard";
 
 function Badge({ read, enabled = true }: { read: () => Promise<number>; enabled?: boolean }) {
   useCrossTabQuerySync();
@@ -103,7 +104,8 @@ describe("realtime-backed shared polls", () => {
     const hub = new FakeChannelHub(); const locks = new FakeLocks();
     return render(
       <CrossTabProvider coordinator={createFakeTab(locks, hub, true).coordinator}>
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        {/* Same defaults as the app's QueryClient (src/App.tsx). */}
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })}>
           <RealtimeBadge read={read} realtimeBacked={realtimeBacked} />
         </QueryClientProvider>
       </CrossTabProvider>,
@@ -126,8 +128,8 @@ describe("realtime-backed shared polls", () => {
     await advance(15_000);
     expect(read).toHaveBeenCalledTimes(4);
     act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
-    await advance(10);
-    expect(read).toHaveBeenCalledTimes(5); // catch-up read on reconnect
+    await advance(RECONNECT_JITTER_MS);
+    expect(read).toHaveBeenCalledTimes(5); // one catch-up read on reconnect, spread over a few seconds
     await advance(60_000);
     expect(read).toHaveBeenCalledTimes(5);
   });
@@ -139,5 +141,24 @@ describe("realtime-backed shared polls", () => {
     act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
     await advance(60_000);
     expect(read).toHaveBeenCalledTimes(5);
+  });
+
+  it("waits out an overload pause instead of polling into it", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const read = vi.fn(async () => 1);
+    mountRealtime(read, false);
+    await advance(10);
+    expect(read).toHaveBeenCalledTimes(1);
+    await advance(15_000);
+    expect(read).toHaveBeenCalledTimes(2);
+    act(() => { for (let i = 0; i < OVERLOAD_TRIP_COUNT; i++) recordOverloadResponse(); });
+    // Nothing during the 30 s pause (it would have polled twice)...
+    await advance(OVERLOAD_BASE_COOLDOWN_MS);
+    expect(read).toHaveBeenCalledTimes(2);
+    // ...then the normal 15 s cadence restarts from the end of the pause.
+    await advance(15_000);
+    expect(read).toHaveBeenCalledTimes(3);
+    resetOverloadGuard();
   });
 });

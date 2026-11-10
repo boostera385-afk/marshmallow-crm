@@ -3,13 +3,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { configureCopilot, fetchCopilotSettings, setCopilotPermission, type CopilotConfig } from "@/lib/copilot-api";
 import { toast } from "sonner";
 import { announceCopilotAccessChange } from "@/lib/copilot-access-events";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 export function useCopilotSettings() {
   const { user, role } = useAuth();
   const client = useQueryClient();
   const key = ["copilot-settings", user?.id, role];
   const query = useQuery({ queryKey: key, queryFn: fetchCopilotSettings, enabled: role === "admin", retry: false,
-    refetchOnWindowFocus: "always", refetchInterval: 15000 });
+    refetchOnWindowFocus: "always", refetchInterval: backgroundInterval(15000) });
   const save = useMutation({
     retry: false,
     mutationFn: (change: { kind: "permission"; role: string | null; userId: string | null; allowed: boolean | null } | { kind: "config"; config: CopilotConfig; expected?: CopilotConfig }) =>

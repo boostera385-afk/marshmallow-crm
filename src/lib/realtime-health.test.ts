@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  RECONNECT_JITTER_MS,
   REALTIME_SAFETY_POLL_MS,
   forgetRealtimeChannel,
   isRealtimeHealthy,
@@ -9,6 +10,7 @@ import {
   resetRealtimeHealth,
   subscribeRealtimeHealth,
 } from "./realtime-health";
+import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse, resetOverloadGuard } from "./overload-guard";
 
 afterEach(resetRealtimeHealth);
 
@@ -44,15 +46,50 @@ describe("realtime health", () => {
     expect(realtimeAwareInterval(10 * 60_000, true)).toBe(10 * 60_000);
   });
 
-  it("announces a reconnect only after a failure, not on the first connection", () => {
+  it("announces a reconnect only after a failure, not on the first connection, spread over a few seconds", () => {
+    vi.useFakeTimers();
     const reconnected = vi.fn();
     const stop = onRealtimeReconnected(reconnected);
     reportRealtimeStatus("global", "SUBSCRIBED");
+    vi.advanceTimersByTime(RECONNECT_JITTER_MS);
     expect(reconnected).not.toHaveBeenCalled();
     reportRealtimeStatus("global", "CHANNEL_ERROR");
     reportRealtimeStatus("global", "SUBSCRIBED");
+    vi.advanceTimersByTime(RECONNECT_JITTER_MS);
     expect(reconnected).toHaveBeenCalledOnce();
     stop();
+    vi.useRealTimers();
+  });
+
+  it("holds the catch-up read until an overload pause ends", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const reconnected = vi.fn();
+    const stop = onRealtimeReconnected(reconnected);
+    for (let i = 0; i < OVERLOAD_TRIP_COUNT; i++) recordOverloadResponse();
+    reportRealtimeStatus("global", "CHANNEL_ERROR");
+    reportRealtimeStatus("global", "SUBSCRIBED");
+    vi.advanceTimersByTime(OVERLOAD_BASE_COOLDOWN_MS - 1);
+    expect(reconnected).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(RECONNECT_JITTER_MS + 1);
+    expect(reconnected).toHaveBeenCalledOnce();
+    stop();
+    resetOverloadGuard();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("cancels a pending catch-up when its consumer unmounts", () => {
+    vi.useFakeTimers();
+    const reconnected = vi.fn();
+    const stop = onRealtimeReconnected(reconnected);
+    reportRealtimeStatus("global", "CHANNEL_ERROR");
+    reportRealtimeStatus("global", "SUBSCRIBED");
+    stop();
+    vi.advanceTimersByTime(RECONNECT_JITTER_MS);
+    expect(reconnected).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it("notifies listeners on each health change", () => {

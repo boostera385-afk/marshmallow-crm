@@ -13,7 +13,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CrossTabProvider } from "@/hooks/useCrossTab";
 import { createFakeTab, FakeChannelHub, FakeLocks } from "@/test/cross-tab-fakes";
 import type { CrossTabCoordinator } from "@/lib/cross-tab";
-import { REALTIME_SAFETY_POLL_MS, reportRealtimeStatus, resetRealtimeHealth } from "@/lib/realtime-health";
+import { RECONNECT_JITTER_MS, REALTIME_SAFETY_POLL_MS, reportRealtimeStatus, resetRealtimeHealth } from "@/lib/realtime-health";
+import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, isBackgroundPollPaused, recordOverloadResponse, resetOverloadGuard } from "@/lib/overload-guard";
 
 type Read = { table: string; columns: string; head: boolean; title: string; filters: Record<string, unknown>; limit?: number; since?: string; from?: string };
 type Result = { data: unknown[] | null; count?: number; error?: { message: string } | null };
@@ -126,7 +127,7 @@ beforeEach(() => {
   sessionStorage.clear();
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); resetRealtimeHealth(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); resetRealtimeHealth(); resetOverloadGuard(); });
 
 describe("notification request optimization", () => {
   it.each(["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin"] as AppRole[])(
@@ -194,7 +195,7 @@ describe("notification request optimization", () => {
     // Realtime recovers: one catch-up read for anything missed, then rare again.
     const beforeRecover = popupReads().length; const bellsBeforeRecover = bellReads().length;
     act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(RECONNECT_JITTER_MS + 30); });
     expect(popupReads()).toHaveLength(beforeRecover + 1);
     expect(bellReads()).toHaveLength(bellsBeforeRecover + 2);
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
@@ -210,6 +211,36 @@ describe("notification request optimization", () => {
     act(() => { emit("Urgent Job"); });
     await act(async () => { await vi.advanceTimersByTimeAsync(100); });
     expect(screen.getByText(/Synthetic Customer/)).toBeInTheDocument();
+  });
+
+  it("stops background polling while the server is overloaded, still shows realtime alerts at once, and resumes after the pause", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mountAll();
+    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+    // Resume exactly at the cooldown (no per-tab spread) so timings are exact.
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    act(() => { for (let i = 0; i < OVERLOAD_TRIP_COUNT; i++) recordOverloadResponse(); });
+    random.mockRestore();
+    const bells = bellReads().length; const popups = popupReads().length;
+    // Without the guard this would be 2 bell + 1 pop-up reads every 15-20 s.
+    await act(async () => { await vi.advanceTimersByTimeAsync(OVERLOAD_BASE_COOLDOWN_MS - 1_000); });
+    expect(bellReads()).toHaveLength(bells);
+    expect(popupReads()).toHaveLength(popups);
+    // A realtime alert during the pause is still read and shown immediately.
+    respondWith([notification("Urgent Job")]);
+    act(() => { emit("Urgent Job"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(popupReads()).toHaveLength(popups + 1);
+    expect(screen.getByText(/Synthetic Customer/)).toBeInTheDocument();
+    // After the pause, the normal 15 s / 20 s cadence returns within one interval.
+    const bellsAtPause = bellReads().length;
+    // Step past the end of the pause so React re-renders, then one full interval.
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(isBackgroundPollPaused()).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(21_000); });
+    expect(bellReads().length).toBeGreaterThan(bellsAtPause);
+    expect(popupReads().length).toBeGreaterThanOrEqual(popups + 2);
   });
 
   it("coalesces a 50-event burst into one read of only the affected pop-up type", async () => {
