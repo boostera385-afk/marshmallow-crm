@@ -18,7 +18,6 @@
 //   RESEND_API_KEY + HEALTH_ALERT_EMAILS (+ optional HEALTH_ALERT_FROM) for email.
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { jsonResponse } from "../_shared/quo-ai.ts";
 import {
   criticalWithoutDatabase,
   hostSample,
@@ -26,6 +25,11 @@ import {
   sendAlertEmail,
   type HealthSample,
 } from "../_shared/system-health.ts";
+
+/** Server-to-server only (pg_cron), so no CORS headers. */
+function jsonResponse(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
 
 function cronSecretFrom(value: unknown): string | null {
   if (Array.isArray(value)) return value.find((v): v is string => typeof v === "string" && v.trim().length > 0) ?? null;
