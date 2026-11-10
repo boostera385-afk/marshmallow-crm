@@ -14,22 +14,9 @@ import { Label } from "@/components/ui/label";
 import NotificationSoundControls from "@/components/notifications/NotificationSoundControls";
 import ScheduleMonitorPanel from "@/components/notifications/ScheduleMonitorPanel";
 import { DateInput } from "@/components/ui/date-input";
-import { NOTIFICATIONS_PAUSED } from "@/lib/notification-pause";
 
 const initial: InboxFilters = { view: "all", category: "all", search: "" };
 export default function NotificationsPage() {
-  const { role } = useAuth();
-  if (!NOTIFICATIONS_PAUSED || !canAccessNotifications(role)) return <NotificationHistory />;
-  return <section className="mx-auto max-w-5xl space-y-5" aria-label="Notification history">
-    <h1 className="flex items-center gap-2 text-2xl font-bold"><Bell className="h-6 w-6 text-primary" />Notifications</h1>
-    <p role="status" className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-      Notifications are temporarily paused to reduce system load. New notifications are still saved and will appear when they are turned back on.
-    </p>
-    {role === "admin" && <ScheduleMonitorPanel />}
-  </section>;
-}
-
-function NotificationHistory() {
   const { role, user } = useAuth();
   const scope = `${user?.id}:${role}`;
   const currentScope = useRef(scope);

@@ -2,18 +2,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import NotificationsPage from "./NotificationsPage";
-const state = vi.hoisted(() => ({ paused: false, role: "processor", error: false, inboxReads: 0, mark: vi.fn(), open: vi.fn(), refetch: vi.fn(), toastError: vi.fn() }));
+const state = vi.hoisted(() => ({ role: "processor", error: false, mark: vi.fn(), open: vi.fn(), refetch: vi.fn(), toastError: vi.fn() }));
 const row = { id: "00000000-0000-4000-8000-000000000001", title: "CS Updated", message: "Job WF-1 has a response", lead_id: null, read: false,
   created_at: "2026-10-20T01:00:00Z", event_type: "update_answered", request_kind: "cx", request_id: "request", revision: 2, job_id: "WF-1", action_required: true };
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ role: state.role, user: { id: "synthetic" } }) }));
-vi.mock("@/lib/notification-pause", () => ({ get NOTIFICATIONS_PAUSED() { return state.paused; } }));
-vi.mock("@/components/notifications/ScheduleMonitorPanel", () => ({ default: () => <div>Schedule monitor</div> }));
-vi.mock("@/hooks/useNotificationInbox", () => ({ useNotificationInbox: () => (state.inboxReads += 1, { data: { rows: [row], total: 55, unread_count: 30 }, isError: state.error, error: new Error("Denied"), isPending: false, isFetching: false, refetch: state.refetch }) }));
+vi.mock("@/hooks/useNotificationInbox", () => ({ useNotificationInbox: () => ({ data: { rows: [row], total: 55, unread_count: 30 }, isError: state.error, error: new Error("Denied"), isPending: false, isFetching: false, refetch: state.refetch }) }));
 vi.mock("@/lib/workflow-inbox", () => ({ markInboxRead: state.mark, openInboxNotification: state.open }));
 vi.mock("sonner", () => ({ toast: { error: state.toastError } }));
 const mount = () => render(<MemoryRouter><NotificationsPage /></MemoryRouter>);
 afterEach(cleanup);
-beforeEach(() => { state.paused = false; state.inboxReads = 0; state.role = "processor"; state.error = false; state.mark.mockReset(); state.open.mockReset(); state.refetch.mockReset(); state.toastError.mockReset(); });
+beforeEach(() => { state.role = "processor"; state.error = false; state.mark.mockReset(); state.open.mockReset(); state.refetch.mockReset(); state.toastError.mockReset(); });
 it("shows exact history totals and permits navigation beyond the bell page", () => {
   mount(); expect(screen.getByText("30 unread · 55 matching")).toBeInTheDocument();
   expect(screen.getByText("Action required", { selector: "span" })).toBeInTheDocument();
@@ -37,22 +35,4 @@ it("does not show stale rows after access denial", () => {
 });
 it("denies excluded Operator roles", () => {
   state.role = "opr"; mount(); expect(screen.getByRole("alert")).toHaveTextContent("do not have access"); expect(screen.queryByText(row.message)).not.toBeInTheDocument();
-});
-it("loads no history while notifications are paused", () => {
-  state.paused = true; mount();
-  expect(screen.getByRole("status")).toHaveTextContent("temporarily paused");
-  expect(state.inboxReads).toBe(0);
-  expect(screen.queryByText(row.message)).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Mark this page read" })).not.toBeInTheDocument();
-  expect(screen.queryByText("Schedule monitor")).not.toBeInTheDocument();
-});
-it("keeps the admin schedule monitor while notifications are paused", () => {
-  state.paused = true; state.role = "admin"; mount();
-  expect(screen.getByText("Schedule monitor")).toBeInTheDocument();
-  expect(state.inboxReads).toBe(0);
-});
-it("still denies excluded roles while notifications are paused", () => {
-  state.paused = true; state.role = "opr"; mount();
-  expect(screen.getByRole("alert")).toHaveTextContent("do not have access");
-  expect(screen.queryByText("temporarily paused")).not.toBeInTheDocument();
 });
