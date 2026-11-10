@@ -15,6 +15,19 @@
   `20261210030000_quo_webhook_events_retention.sql`. It runs nightly at 04:07 UTC, only at
   normal load. Each batch is uploaded to `archives/quo_webhook_events/<date>/…jsonl.gz`, and only
   the uploaded ids are deleted. `processing` and `failed` rows are never touched.
+- First run (2026-11-10, backlog cleared by calling the function by hand): every finished event
+  older than the cutoff of 2026-10-11 was archived and then deleted. That is 165 files, 33 MB, in
+  `archives/quo_webhook_events/2026-11-10/`. The table still holds:
+
+  | Status | Rows |
+  |---|---|
+  | processed | 88,448 |
+  | ignored | 2,373 |
+  | processing (Aug–Sep, untouched) | 9,097 |
+  | failed | 6 |
+
+  `quo_messages` is unchanged at 246,683. The load governor stayed `normal` throughout, peaking at
+  8.5% busy. The file on disk is still 357 MB: the freed space is reused by new rows.
 - Not done: the optional one-time `VACUUM FULL`, and triage of the August–September stuck
   summaries and transcripts.
 
