@@ -84,6 +84,10 @@ const QUICK_CHAT_UNREAD_POLL_MS = 60000;
 // used only as a fallback while that channel is disconnected.
 const QUICK_CHAT_THREAD_POLL_MS = 5000;
 let quickChatUnreadPollTimer: ReturnType<typeof setInterval> | null = null;
+// A hidden tab skips the unread poll (it only drives the lead-card badge, not an
+// alert) and catches up once when the user returns, if a tick was skipped.
+let quickChatUnreadMissedWhileHidden = false;
+const isDocumentHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
 let nextQuickChatUnreadWatcherId = 0;
 let nextQuickChatRealtimeChannelId = 0;
 
@@ -97,14 +101,7 @@ function scheduleQuickChatUnreadRefresh() {
 async function refreshQuickChatUnreadStatuses() {
   const watchers = Array.from(quickChatUnreadWatchers.values());
   if (watchers.length === 0) {
-    if (quickChatUnreadRefreshTimer) {
-      clearTimeout(quickChatUnreadRefreshTimer);
-      quickChatUnreadRefreshTimer = null;
-    }
-    if (quickChatUnreadPollTimer) {
-      clearInterval(quickChatUnreadPollTimer);
-      quickChatUnreadPollTimer = null;
-    }
+    stopQuickChatUnreadPolling();
     return;
   }
 
@@ -152,11 +149,35 @@ async function refreshQuickChatUnreadStatuses() {
   });
 }
 
+function onQuickChatUnreadVisibilityChange() {
+  if (isDocumentHidden() || !quickChatUnreadMissedWhileHidden) return;
+  quickChatUnreadMissedWhileHidden = false;
+  scheduleQuickChatUnreadRefresh();
+}
+
 function ensureQuickChatUnreadPolling() {
   if (quickChatUnreadPollTimer) return;
   quickChatUnreadPollTimer = setInterval(() => {
+    if (isDocumentHidden()) {
+      quickChatUnreadMissedWhileHidden = true;
+      return;
+    }
     scheduleQuickChatUnreadRefresh();
   }, QUICK_CHAT_UNREAD_POLL_MS);
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", onQuickChatUnreadVisibilityChange);
+}
+
+function stopQuickChatUnreadPolling() {
+  if (quickChatUnreadRefreshTimer) {
+    clearTimeout(quickChatUnreadRefreshTimer);
+    quickChatUnreadRefreshTimer = null;
+  }
+  if (quickChatUnreadPollTimer) {
+    clearInterval(quickChatUnreadPollTimer);
+    quickChatUnreadPollTimer = null;
+  }
+  quickChatUnreadMissedWhileHidden = false;
+  if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onQuickChatUnreadVisibilityChange);
 }
 
 function mergeQuoMessages(messages: QuoChatMessage[]) {
@@ -266,14 +287,7 @@ export default function QuoPhoneTrigger({
     return () => {
       quickChatUnreadWatchers.delete(watcherKey);
       if (quickChatUnreadWatchers.size === 0) {
-        if (quickChatUnreadRefreshTimer) {
-          clearTimeout(quickChatUnreadRefreshTimer);
-          quickChatUnreadRefreshTimer = null;
-        }
-        if (quickChatUnreadPollTimer) {
-          clearInterval(quickChatUnreadPollTimer);
-          quickChatUnreadPollTimer = null;
-        }
+        stopQuickChatUnreadPolling();
       } else {
         scheduleQuickChatUnreadRefresh();
       }

@@ -92,6 +92,7 @@ const URGENT_TABLE_COLUMNS = "id, customer_name, customer_phone, service_type, c
 // customer replies. 15s (was 5s) cuts this page's steady database load by about
 // two thirds on the shared Micro instance.
 const URGENT_TABLE_POLL_MS = 15000;
+const LEADS_SAFETY_NET_POLL_MS = 60000;
 
 type UrgentRow = Pick<Lead, "id" | "customer_name" | "customer_phone" | "service_type" | "city" | "state" | "address" | "zip_code" | "urgent_at" | "created_at" | "customer_schedule_requirements" | "terms" | "location_label"> & { lead_ai_statuses?: { status: string; checked_at?: string } | null };
 
@@ -416,32 +417,21 @@ export default function LeadsPage() {
 
   // Safety-net polling. The realtime subscription above already merges every
   // INSERT/UPDATE/DELETE surgically, so a full refetch is only a fallback for
-  // missed events (e.g. RLS-blocked realtime). Instead of re-downloading every
-  // lead every 15s in every open tab — including hidden ones — poll only while
-  // the tab is visible, and far less often, plus refresh once when the user
-  // returns to the tab so it's immediately up to date.
-  useEffect(() => {
-    if (!user || !role) return;
-
-    const refresh = () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      void fetchLeads(true);
-      if (role === "customer_service") {
-        void fetchSharedLeads();
-      }
-    };
-
-    const intervalId = setInterval(refresh, 60000);
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [fetchLeads, fetchSharedLeads, user, role]);
+  // missed events (e.g. RLS-blocked realtime). It runs every 60 s while the tab
+  // is visible and once on return to the tab - but not if the last full read was
+  // under 60 s ago: realtime keeps delivering while a tab is in the background,
+  // and each full read pages the whole table (~6 requests of 1000 rows).
+  const refreshLeadsSafetyNet = useCallback(() => {
+    void fetchLeads(true);
+    if (role === "customer_service") {
+      void fetchSharedLeads();
+    }
+  }, [fetchLeads, fetchSharedLeads, role]);
+  useVisiblePoll(refreshLeadsSafetyNet, LEADS_SAFETY_NET_POLL_MS, {
+    enabled: Boolean(user && role),
+    minGapMs: LEADS_SAFETY_NET_POLL_MS,
+    immediate: false, // the mount effect above already loads
+  });
 
 
 
