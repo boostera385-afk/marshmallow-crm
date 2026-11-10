@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { realtimeBus } from "@/lib/realtime";
 import { useCrossTabOwner } from "@/hooks/useCrossTab";
+import { isBackgroundPollPaused } from "@/lib/overload-guard";
 
 /** One listener/poll per session, not one subscription or timer per lead card. */
 export default function OperatorWorkflowSync() {
@@ -29,7 +30,8 @@ export default function OperatorWorkflowSync() {
     realtimeBus.addEventListener("lead_copy_user_permissions", refreshCopy);
     realtimeBus.addEventListener("lead_hold_alerts", refreshHold);
     document.addEventListener("visibilitychange", refresh);
-    const timer = pollsHere ? window.setInterval(refresh, 20000) : 0;
+    // Timer turns skip while the server is overloaded (see overload-guard).
+    const timer = pollsHere ? window.setInterval(() => { if (!isBackgroundPollPaused()) refresh(); }, 20000) : 0;
     return () => {
       realtimeBus.removeEventListener("lead_copy_role_permissions", refreshCopy);
       realtimeBus.removeEventListener("lead_copy_user_permissions", refreshCopy);

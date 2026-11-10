@@ -27,6 +27,7 @@
  *   customer_phone, customer_landline, address, city, state, service_type
  *                                - the search box matches on exactly these
  *   customer_schedule_requirements - leadNeedsAttention, for the Need Attention view
+ *   updated_at                    - the delta-sync cursor (src/lib/leads-sync.ts)
  *
  * Measured across 3,857 rows this is 577 kB, against 2,110 kB for every column.
  * The full card row is then fetched for just the 20-100 leads on screen.
@@ -50,4 +51,5 @@ export const LEADS_INDEX_COLUMNS = [
   "state",
   "service_type",
   "customer_schedule_requirements",
+  "updated_at",
 ].join(", ");

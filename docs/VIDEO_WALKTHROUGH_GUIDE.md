@@ -257,8 +257,7 @@ Lead Coverage & Sources, CS Team Performance); Activity Logs.
 ### Video 8 — Settings and user management (~8 min)
 
 **Show:** Settings tabs: Users (hide or zoom past codes, QR codes and
-password fields), Feature Access, Status Visibility, Templates, Security, CRM
-Updates, Google Sheets, Documentation.
+password fields), Feature Access, Status Visibility, Security, CRM Updates, Google Sheets, Documentation.
 
 **Say:**
 - "This is how you add someone, set their role, and reset their password or
@@ -267,7 +266,6 @@ Updates, Google Sheets, Documentation.
   their role."
 - "Status Visibility decides which statuses a person can see. It's separate
   from which statuses they can change."
-- "Templates are the messages we copy to technicians."
 - "Google Sheets shows whether the spreadsheet copy is healthy."
 - "When someone leaves, remove them here."
 

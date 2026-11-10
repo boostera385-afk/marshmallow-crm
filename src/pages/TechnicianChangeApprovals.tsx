@@ -20,6 +20,7 @@ import {
   type TechnicianChangeStatus,
 } from "@/lib/tech-change-requests";
 import { silkySpring } from "@/lib/motion";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 const QUERY_KEY = ["tech-change-requests"];
 
@@ -49,7 +50,7 @@ export default function TechnicianChangeApprovals() {
     queryKey: [...QUERY_KEY, tab],
     queryFn: () => listTechnicianChangeRequests(tab),
     enabled: allowed,
-    refetchInterval: 30_000,
+    refetchInterval: backgroundInterval(30_000),
     refetchIntervalInBackground: false,
   });
 

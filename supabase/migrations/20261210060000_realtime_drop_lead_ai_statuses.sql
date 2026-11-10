@@ -19,7 +19,7 @@
 -- change. Idempotent: does nothing if the table is already unpublished.
 --
 -- Apply manually in the SQL editor at a quiet time (open tabs may briefly
--- reconnect to Realtime). Check: supabase/tests/171_realtime_publication_scope.sql
+-- reconnect to Realtime). Check: supabase/tests/173_realtime_publication_scope.sql
 -- (read-only) before and after.
 -- =============================================================================
 BEGIN;

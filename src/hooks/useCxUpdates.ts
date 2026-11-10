@@ -27,7 +27,7 @@ export function useUpdateCount(kind: UpdateRequestKind, requested = true) {
   const enabled = requested && Boolean(user) && canAccessCxUpdates(role);
   useUpdateRefresh(enabled);
   return useSharedQuery({ queryKey: [...UPDATE_QUERY_KEY, "counts", user?.id, role], queryFn: fetchUpdateCounts,
-    select: (counts) => counts[kind], enabled, sharedPoll: { intervalMs: 15000 } });
+    select: (counts) => counts[kind], enabled, sharedPoll: { intervalMs: 15000, realtimeBacked: true } });
 }
 export function useUpdateQueue(kind: UpdateRequestKind, view: UpdateRequestView, offset: number, requestId?: string | null) {
   const { user, role } = useAuth();
@@ -36,7 +36,7 @@ export function useUpdateQueue(kind: UpdateRequestKind, view: UpdateRequestView,
   return useSharedQuery({ queryKey: [...UPDATE_QUERY_KEY, kind, "queue", user?.id, role, view, offset, requestId],
     queryFn: () => requestId ? fetchUpdateRequest(kind, requestId) : fetchUpdateQueue(kind, view, offset),
     enabled,
-    sharedPoll: { intervalMs: 15000 },
+    sharedPoll: { intervalMs: 15000, realtimeBacked: true },
   });
 }
 

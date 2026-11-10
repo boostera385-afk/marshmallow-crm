@@ -1,6 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { forgetRealtimeChannel, reportRealtimeStatus } from "@/lib/realtime-health";
+import { setServerLoadLevel } from "@/lib/overload-guard";
 
 /**
  * A lightweight global event bus for distributing Supabase Realtime events locally
@@ -40,7 +42,9 @@ export function subscribeToNotifications(userId: string, onChange: (payload: Not
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}`,
       }, dispatch)
-      .subscribe();
+      .subscribe((status) => {
+        if (notificationSubscriptions.get(userId) === entry) reportRealtimeStatus("notifications", status);
+      });
     subscription = entry;
   }
   subscription.consumers++;
@@ -52,6 +56,55 @@ export function subscribeToNotifications(userId: string, onChange: (payload: Not
     realtimeBus.removeEventListener(eventName, listener);
     if (--entry.consumers === 0) {
       notificationSubscriptions.delete(userId);
+      forgetRealtimeChannel("notifications");
+      void supabase.removeChannel(entry.channel);
+    }
+  };
+}
+
+type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
+export type LeadChange = RealtimePostgresChangesPayload<LeadRow>;
+type LeadChangeSubscription = { channel: ReturnType<typeof supabase.channel>; consumers: number };
+let leadChangeSubscription: LeadChangeSubscription | null = null;
+let leadChangeGeneration = 0;
+const LEAD_CHANGE_EVENT = "leads:change";
+
+/**
+ * Every screen that follows all lead changes shares ONE `leads` realtime
+ * channel per tab. Each subscription costs the database a security check per
+ * changed row, so several screens (Leads, Map, Schedule, Areas, Quote Pending,
+ * Processor Board, nearby-urgent) each opening their own channel multiplied
+ * that work for the same events. Consumers get the same payloads, instantly;
+ * the channel closes when the last consumer unmounts.
+ */
+export function subscribeToLeadChanges(onChange: (payload: LeadChange) => void) {
+  const listener = (event: Event) => onChange((event as CustomEvent<LeadChange>).detail);
+  realtimeBus.addEventListener(LEAD_CHANGE_EVENT, listener);
+
+  if (!leadChangeSubscription) {
+    // A distinct name also avoids reusing a channel still leaving after a rapid remount.
+    const channel = supabase.channel(`leads-changes:${++leadChangeGeneration}`);
+    const entry: LeadChangeSubscription = { channel, consumers: 0 };
+    leadChangeSubscription = entry;
+    channel
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, (payload: LeadChange) => {
+        if (leadChangeSubscription !== entry) return;
+        realtimeBus.dispatchEvent(new CustomEvent(LEAD_CHANGE_EVENT, { detail: payload }));
+      })
+      .subscribe((status) => {
+        if (leadChangeSubscription === entry) reportRealtimeStatus("leads", status);
+      });
+  }
+  const entry = leadChangeSubscription;
+  entry.consumers++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    realtimeBus.removeEventListener(LEAD_CHANGE_EVENT, listener);
+    if (--entry.consumers === 0 && leadChangeSubscription === entry) {
+      leadChangeSubscription = null;
+      forgetRealtimeChannel("leads");
       void supabase.removeChannel(entry.channel);
     }
   };
@@ -62,6 +115,7 @@ let globalChannel: ReturnType<typeof supabase.channel> | null = null;
 let processorBoardConsumers = 0;
 let processorBoardChannel: ReturnType<typeof supabase.channel> | null = null;
 let processorBoardGeneration = 0;
+let processorBoardLeadsRelease: (() => void) | null = null;
 
 /** Mounted Processor Board consumers share one transport; no board traffic for other screens/roles. */
 export function subscribeToProcessorBoard(onChange: () => void) {
@@ -72,8 +126,9 @@ export function subscribeToProcessorBoard(onChange: () => void) {
     const dispatch = () => {
       if (generation === processorBoardGeneration) realtimeBus.dispatchEvent(new Event("processor_board_changed"));
     };
+    // Lead changes come from the shared leads channel; technicians stay here.
+    processorBoardLeadsRelease = subscribeToLeadChanges(dispatch);
     processorBoardChannel = supabase.channel(`processor-board:${generation}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, dispatch)
       .on("postgres_changes", { event: "*", schema: "public", table: "technicians" }, dispatch)
       .subscribe((status) => { if (status === "SUBSCRIBED") dispatch(); });
   }
@@ -84,6 +139,8 @@ export function subscribeToProcessorBoard(onChange: () => void) {
     realtimeBus.removeEventListener("processor_board_changed", onChange);
     if (--processorBoardConsumers === 0 && processorBoardChannel) {
       ++processorBoardGeneration;
+      processorBoardLeadsRelease?.();
+      processorBoardLeadsRelease = null;
       void supabase.removeChannel(processorBoardChannel);
       processorBoardChannel = null;
     }
@@ -133,6 +190,11 @@ export function setupGlobalRealtime() {
   // Single global channel for row-level components
   globalChannel = supabase
     .channel("global-app-events")
+    // Load level from the database's governor (20261210010000_load_governor.sql):
+    // a public broadcast on this same channel, so no extra channel or RLS check.
+    .on("broadcast", { event: "system_load" }, (message: { payload?: { level?: unknown } }) => {
+      setServerLoadLevel(message?.payload?.level);
+    })
     // Lead Notes
     .on(
       "postgres_changes",
@@ -154,6 +216,7 @@ export function setupGlobalRealtime() {
       realtimeBus.dispatchEvent(new Event("lead_copy_user_permissions"));
     })
     .subscribe((status, err) => {
+      reportRealtimeStatus("global", status);
       if (status === 'SUBSCRIBED') {
         console.log("Global Realtime Channel Connected");
       }

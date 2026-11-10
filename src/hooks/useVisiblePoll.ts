@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { isBackgroundPollPaused } from "@/lib/overload-guard";
 
 const isVisible = () => typeof document === "undefined" || document.visibilityState === "visible";
 
@@ -6,12 +7,11 @@ const isVisible = () => typeof document === "undefined" || document.visibilitySt
  * Run `refresh` once on mount, then every `intervalMs` while the tab is visible,
  * and again when the user returns to the tab. A return within `minGapMs` of the
  * last run is skipped, so rapid tab switching does not fire extra reads.
- * With `immediate: false` the caller has already loaded; the gap counts from mount.
  */
 export function useVisiblePoll(
   refresh: () => unknown,
   intervalMs: number,
-  { enabled = true, minGapMs = 5000, immediate = true }: { enabled?: boolean; minGapMs?: number; immediate?: boolean } = {},
+  { enabled = true, minGapMs = 5000 }: { enabled?: boolean; minGapMs?: number } = {},
 ) {
   useEffect(() => {
     if (!enabled) return;
@@ -20,9 +20,9 @@ export function useVisiblePoll(
       lastRun = Date.now();
       void refresh();
     };
-    if (immediate) run();
-    else lastRun = Date.now();
-    const id = setInterval(() => { if (isVisible()) run(); }, intervalMs);
+    run();
+    // Timer turns skip while the server is overloaded; a return to the tab still refreshes.
+    const id = setInterval(() => { if (isVisible() && !isBackgroundPollPaused()) run(); }, intervalMs);
     const onVisibility = () => {
       if (isVisible() && Date.now() - lastRun >= minGapMs) run();
     };
@@ -31,5 +31,5 @@ export function useVisiblePoll(
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [refresh, intervalMs, enabled, minGapMs, immediate]);
+  }, [refresh, intervalMs, enabled, minGapMs]);
 }

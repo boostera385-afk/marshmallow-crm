@@ -35,6 +35,7 @@ import { requestTechnicianChange } from "@/lib/tech-change-requests";
 import { logActivity } from "@/lib/activity";
 import { TECHNICIANS_ROOT_KEY } from "@/lib/technicians";
 import { REVIEW_STATES, technicianLabelClass, technicianReviewState } from "@/lib/technician-review";
+import { isBackgroundPollPaused } from "@/lib/overload-guard";
 
 const LABELS = [
   ["tech_dont_respond", "Tech don't respond"],
@@ -128,7 +129,7 @@ export function TechnicianProcessingWorkflow({
         .then(({ data, error }) => { if (active && !error && typeof data?.aiConfigured === "boolean") setHealth(data); }).catch(() => undefined);
     };
     refresh();
-    const timer = window.setInterval(refresh, 60000);
+    const timer = window.setInterval(() => { if (!isBackgroundPollPaused()) refresh(); }, 60000);
     window.addEventListener("focus", refresh);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, []);

@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CrossTabCoordinator } from "@/lib/cross-tab";
 import { CrossTabProvider, useCrossTabQuerySync, useSharedQuery } from "@/hooks/useCrossTab";
 import { createFakeTab, FakeChannelHub, FakeLocks } from "@/test/cross-tab-fakes";
+import { RECONNECT_JITTER_MS, REALTIME_SAFETY_POLL_MS, reportRealtimeStatus, resetRealtimeHealth } from "@/lib/realtime-health";
+import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse, resetOverloadGuard } from "@/lib/overload-guard";
 
 function Badge({ read, enabled = true }: { read: () => Promise<number>; enabled?: boolean }) {
   useCrossTabQuerySync();
@@ -79,5 +81,84 @@ describe("useSharedQuery across tabs", () => {
     );
     await advance(60_000);
     expect(read).not.toHaveBeenCalled();
+  });
+});
+
+function RealtimeBadge({ read, realtimeBacked }: { read: () => Promise<number>; realtimeBacked: boolean }) {
+  const { data } = useSharedQuery({
+    queryKey: ["realtime-count", "user-1", realtimeBacked],
+    queryFn: read,
+    sharedPoll: { intervalMs: 15_000, realtimeBacked },
+  });
+  return <span data-testid="badge">{data ?? "-"}</span>;
+}
+
+describe("realtime-backed shared polls", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  });
+  afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); resetRealtimeHealth(); });
+
+  const mountRealtime = (read: () => Promise<number>, realtimeBacked: boolean) => {
+    const hub = new FakeChannelHub(); const locks = new FakeLocks();
+    return render(
+      <CrossTabProvider coordinator={createFakeTab(locks, hub, true).coordinator}>
+        {/* Same defaults as the app's QueryClient (src/App.tsx). */}
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })}>
+          <RealtimeBadge read={read} realtimeBacked={realtimeBacked} />
+        </QueryClientProvider>
+      </CrossTabProvider>,
+    );
+  };
+
+  it("polls rarely while realtime is healthy, fast when it is not, and once on recovery", async () => {
+    const read = vi.fn(async () => 1);
+    mountRealtime(read, true);
+    await advance(10);
+    expect(read).toHaveBeenCalledTimes(1);
+    act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
+    await advance(60_000);
+    expect(read).toHaveBeenCalledTimes(1);
+    await advance(REALTIME_SAFETY_POLL_MS);
+    expect(read).toHaveBeenCalledTimes(2);
+    act(() => { reportRealtimeStatus("global", "CHANNEL_ERROR"); });
+    await advance(15_000);
+    expect(read).toHaveBeenCalledTimes(3);
+    await advance(15_000);
+    expect(read).toHaveBeenCalledTimes(4);
+    act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
+    await advance(RECONNECT_JITTER_MS);
+    expect(read).toHaveBeenCalledTimes(5); // one catch-up read on reconnect, spread over a few seconds
+    await advance(60_000);
+    expect(read).toHaveBeenCalledTimes(5);
+  });
+
+  it("leaves polls without a realtime source at their normal interval", async () => {
+    const read = vi.fn(async () => 1);
+    mountRealtime(read, false);
+    await advance(10);
+    act(() => { reportRealtimeStatus("global", "SUBSCRIBED"); });
+    await advance(60_000);
+    expect(read).toHaveBeenCalledTimes(5);
+  });
+
+  it("waits out an overload pause instead of polling into it", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const read = vi.fn(async () => 1);
+    mountRealtime(read, false);
+    await advance(10);
+    expect(read).toHaveBeenCalledTimes(1);
+    await advance(15_000);
+    expect(read).toHaveBeenCalledTimes(2);
+    act(() => { for (let i = 0; i < OVERLOAD_TRIP_COUNT; i++) recordOverloadResponse(); });
+    // Nothing during the 30 s pause (it would have polled twice)...
+    await advance(OVERLOAD_BASE_COOLDOWN_MS);
+    expect(read).toHaveBeenCalledTimes(2);
+    // ...then the normal 15 s cadence restarts from the end of the pause.
+    await advance(15_000);
+    expect(read).toHaveBeenCalledTimes(3);
+    resetOverloadGuard();
   });
 });

@@ -183,7 +183,6 @@ or grants allow.
 | **Users** | Create users, set passwords, OPR codes, access codes, two-factor (2FA) setup and reset, delete users. CS Admins with *Can manage users* see a limited version. |
 | **Feature Access** | Per-person on/off switches for screens and features. |
 | **Status Visibility** | Which lead statuses each person can see. |
-| **Templates** | The *Copy Technician Message* and *Reminder Message* texts filled in from a lead. |
 | **Security** | Your own password and 2FA. |
 | **CRM Updates** | Send a one-time announcement to chosen roles. |
 | **Google Sheets** | The Google Sheets sync and its health. |

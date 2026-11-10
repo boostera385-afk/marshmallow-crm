@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { subscribeToLeadChanges } from "@/lib/realtime";
 import { findNearbyUrgentLeads, isUrgentLead, type ProximityLead } from "@/lib/lead-proximity";
 import { preloadZipDataset } from "@/lib/zipCentroids";
 import { useAuth } from "@/contexts/AuthContext";
@@ -59,9 +60,8 @@ export function useNearbyUrgentLeads(lead: ProximityLead | null): ProximityLead[
   useEffect(() => {
     if (!active) return;
 
-    const channel = supabase
-      .channel("lead-detail-urgent-proximity")
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, (payload) => {
+    // Shared per-tab leads channel (src/lib/realtime.ts): same events, instantly.
+    return subscribeToLeadChanges((payload) => {
         const next = payload.new as { id?: string; status?: string } | undefined;
         const prev = payload.old as { id?: string; status?: string } | undefined;
         const id = next?.id ?? prev?.id;
@@ -70,12 +70,7 @@ export function useNearbyUrgentLeads(lead: ProximityLead | null): ProximityLead[
         if (held || next?.status === "urgent_job" || prev?.status === "urgent_job") {
           void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
         }
-      })
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    });
   }, [active, queryClient]);
 
   return useMemo(

@@ -73,6 +73,7 @@ import {
 import QuoChatDialog from "@/components/quo-dashboard/QuoChatDialog";
 import RenderEmoji from "@/components/common/RenderEmoji";
 import { DateInput } from "@/components/ui/date-input";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 type TypeFilter = "all" | "missed_call" | "unanswered_text" | "new_lead";
 
@@ -147,7 +148,7 @@ export default function AiAssistancePage() {
       if (error) throw new Error(error.message);
       return (data as CsMissedFollowup[]) ?? [];
     },
-    refetchInterval: 30000,
+    refetchInterval: backgroundInterval(30000),
   });
 
   const markHandled = useMutation({

@@ -5,6 +5,7 @@ import { canAccessProcessorBoard } from "@/lib/access";
 import { fetchProcessorDetail, fetchProcessorJobs, type ProcessorFilters, type ProcessorJob } from "@/lib/processor-board";
 import { subscribeToProcessorActivity, subscribeToProcessorBoard } from "@/lib/realtime";
 import { createCoalescedRefresh } from "@/lib/coalesced-refresh";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 export const PROCESSOR_QUERY_KEY = ["processor-board"] as const;
 export function useProcessorBoard(filters: ProcessorFilters) {
@@ -14,7 +15,7 @@ export function useProcessorBoard(filters: ProcessorFilters) {
   const refreshRef = useRef<ReturnType<typeof createCoalescedRefresh> | null>(null);
   const query = useQuery({ queryKey: [...PROCESSOR_QUERY_KEY, user?.id, role, filters], queryFn: ({ signal }) => fetchProcessorJobs(filters, signal), enabled,
     // Checks run on the server; this read only refreshes statuses and time-based changes.
-    refetchInterval: 60000, refetchOnReconnect: true, staleTime: 30000 });
+    refetchInterval: backgroundInterval(60000), refetchOnReconnect: true, staleTime: 30000 });
   const activityScope = [...new Set(query.data?.rows.flatMap((row) => row.chat_setup?.conversation_id ? [row.chat_setup.conversation_id] : []) ?? [])].sort().join(",");
   useEffect(() => {
     if (!enabled) return;

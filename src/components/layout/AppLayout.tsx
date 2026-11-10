@@ -12,6 +12,7 @@ import { NotificationPopupProvider } from "@/components/notifications/popup-slot
 import JobInProgressPopup from "@/components/notifications/JobInProgressPopup";
 import QuoteUpdatedPopup from "@/components/notifications/QuoteUpdatedPopup";
 import CrmUpdatePopup from "@/components/notifications/CrmUpdatePopup";
+import SystemHealthPopup from "@/components/notifications/SystemHealthPopup";
 import ThemeToggle from "@/components/ThemeToggle";
 import { NotepadProvider, useNotepad } from "@/contexts/NotepadContext";
 import FloatingNotepad from "@/components/notepad/FloatingNotepad";
@@ -159,6 +160,7 @@ export default function AppLayout() {
             {!isQuoMonitor && <QuoteUpdatedPopup />}
             {!isQuoMonitor && <IncompleteDetailsPopup />}
             <CrmUpdatePopup />
+            <SystemHealthPopup />
           </NotificationPopupProvider>
           <FloatingNotepad />
         </SidebarInset>

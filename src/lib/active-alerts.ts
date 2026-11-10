@@ -8,7 +8,7 @@ import { activeNotificationSince } from "@/lib/notification-window";
  * the 3-day window, selected by the server-set `kind` (notification redesign
  * phase 4). Each pop-up still gets at most PER_KIND_LIMIT rows of its own type.
  */
-export type PopupAlertKind = "urgent_job" | "job_in_progress" | "quote_updated" | "incomplete_details";
+export type PopupAlertKind = "urgent_job" | "job_in_progress" | "quote_updated" | "incomplete_details" | "system_health";
 
 export interface ActiveAlert {
   id: string;
@@ -82,6 +82,7 @@ const TITLE_FALLBACK: Record<PopupAlertKind, string> = {
   job_in_progress: "job in progress",
   quote_updated: "quote updated",
   incomplete_details: "incomplete details",
+  system_health: "database load",
 };
 
 /** Realtime rows carry `kind`; very old rows only have a title. */

@@ -18,6 +18,7 @@ import {
   type UrgentReviewRequest,
 } from "@/lib/urgent-verification";
 import { silkySpring } from "@/lib/motion";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 const QUERY_KEY = ["urgent-review-requests"];
 
@@ -59,7 +60,7 @@ export default function UrgentReviewRequests() {
     queryKey: [...QUERY_KEY, tab],
     queryFn: () => listUrgentReviewRequests(tab),
     enabled: allowed,
-    refetchInterval: 30_000,
+    refetchInterval: backgroundInterval(30_000),
     refetchIntervalInBackground: false,
   });
 

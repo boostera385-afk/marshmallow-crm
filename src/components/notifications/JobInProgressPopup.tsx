@@ -8,6 +8,7 @@ import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
 import { isAlertOfKind, readActiveAlerts } from "@/lib/active-alerts";
+import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
 
 interface JobInProgressRead {
   notifications: { id: string; title: string; message: string; lead_id: string | null; created_at: string; read: boolean }[];
@@ -114,6 +115,10 @@ export default function JobInProgressPopup() {
     setItems([...byLead.values()]);
   }, []);
   const { refresh: fetchReminders, isOwner } = useSharedRefresh(sharedKey, readReminders, applyReminders);
+  // Realtime delivers these alerts; the poll is a safety net (rare while realtime is
+  // healthy, every POLL_MS when not) plus one catch-up read when realtime recovers.
+  const pollMs = useRealtimeAwareInterval(POLL_MS);
+  useRealtimeReconnect(() => { void fetchReminders(); }, isEligible && isOwner);
 
   useEffect(() => {
     if (!isEligible) return;
@@ -122,9 +127,9 @@ export default function JobInProgressPopup() {
 
   useEffect(() => {
     if (!isEligible || !isOwner) return;
-    const interval = setInterval(fetchReminders, POLL_MS);
+    const interval = setInterval(fetchReminders, pollMs);
     return () => clearInterval(interval);
-  }, [fetchReminders, isEligible, isOwner]);
+  }, [fetchReminders, isEligible, isOwner, pollMs]);
 
   // Realtime subscription for instant pop-up when notification is inserted
   useEffect(() => {

@@ -43,6 +43,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import RenderEmoji from "@/components/common/RenderEmoji";
+import { isBackgroundPollPaused } from "@/lib/overload-guard";
 
 interface QuoPhoneTriggerProps {
   contactName: string;
@@ -162,7 +163,7 @@ function ensureQuickChatUnreadPolling() {
       quickChatUnreadMissedWhileHidden = true;
       return;
     }
-    scheduleQuickChatUnreadRefresh();
+    if (!isBackgroundPollPaused()) scheduleQuickChatUnreadRefresh();
   }, QUICK_CHAT_UNREAD_POLL_MS);
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", onQuickChatUnreadVisibilityChange);
 }
@@ -356,7 +357,7 @@ export default function QuoPhoneTrigger({
     const shouldPoll = () =>
       active && !isMinimizedRef.current && (typeof document === "undefined" || document.visibilityState === "visible");
     const pollId = setInterval(() => {
-      if (shouldPoll() && !threadRealtimeHealthyRef.current) void loadThread(false);
+      if (shouldPoll() && !threadRealtimeHealthyRef.current && !isBackgroundPollPaused()) void loadThread(false);
     }, QUICK_CHAT_THREAD_POLL_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible" && shouldPoll() && !threadRealtimeHealthyRef.current) {

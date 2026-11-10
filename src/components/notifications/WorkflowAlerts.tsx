@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canAccessNotifications } from "@/lib/access";
 import { fetchWorkflowAlerts, openInboxNotification } from "@/lib/workflow-inbox";
 import { claimWorkflowAlert, claimWorkflowChime, loadAlertCursor, pollAlertDelay, saveAlertCursor } from "@/lib/workflow-alerts";
+import { isRealtimeHealthy, onRealtimeReconnected, subscribeRealtimeHealth } from "@/lib/realtime-health";
 import { playAssignmentSound } from "@/lib/notification-sound";
 import { subscribeToNotifications, realtimeBus } from "@/lib/realtime";
 import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
@@ -12,6 +13,7 @@ import { useCrossTabOwner } from "@/hooks/useCrossTab";
 import { customerSaidFromAlert, isNewScheduleAlert, requestScheduleRequirementPrompt } from "@/lib/schedule-requirement";
 import WorkflowToast from "./WorkflowToast";
 import { activeNotificationSince, laterOf } from "@/lib/notification-window";
+import { backgroundDelay, subscribeOverload } from "@/lib/overload-guard";
 
 export default function WorkflowAlerts() {
   const { user, role } = useAuth();
@@ -75,10 +77,16 @@ export default function WorkflowAlerts() {
     const unsubscribe = subscribeToNotifications(user.id, () => { void refresh(); });
     let timer = 0;
     const poll = () => {
-      timer = window.setTimeout(() => { void refresh().then(poll); }, pollAlertDelay(failedPolls.current));
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { void refresh().then(poll); }, backgroundDelay(pollAlertDelay(failedPolls.current, isRealtimeHealthy())));
     };
     poll();
-    return () => { unsubscribe(); window.clearTimeout(timer); };
+    // Reschedule at once when realtime health changes (fast again the moment it
+    // drops), and catch up on anything missed when it recovers.
+    const stopHealth = subscribeRealtimeHealth(poll);
+    const stopOverload = subscribeOverload(poll);
+    const stopReconnect = onRealtimeReconnected(() => { void refresh(); });
+    return () => { unsubscribe(); stopHealth(); stopOverload(); stopReconnect(); window.clearTimeout(timer); };
   }, [user, role, refresh, readsHere]);
   // Shown toasts stay up when another tab takes over reading (they were claimed
   // here and are not shown again); they close when the user or role changes.

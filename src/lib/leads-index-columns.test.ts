@@ -54,6 +54,12 @@ describe("leads index projection", () => {
     expect(columns).toContain("customer_schedule_requirements");
   });
 
+  it("carries updated_at, the delta-sync cursor", () => {
+    // Without it the page cannot ask for "changed since" and would fall back to
+    // re-reading every lead on every refresh.
+    expect(columns).toContain("updated_at");
+  });
+
   it("carries assigned_cs for the shared-with-me bucket", () => {
     expect(columns).toContain("assigned_cs");
   });

@@ -1,5 +1,5 @@
 -- READ-ONLY. Safe on the shared project: no writes, no role switch.
--- Covers 20261210000000_realtime_drop_lead_ai_statuses.
+-- Covers 20261210060000_realtime_drop_lead_ai_statuses.
 -- Run before the migration (expect the first check to FAIL) and after (all PASS).
 -- Every row must be PASS after the migration.
 WITH listened(tablename) AS (

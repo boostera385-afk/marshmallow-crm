@@ -30,6 +30,7 @@ import {
   type SyncStatus,
 } from "@/lib/sheets-sync-health";
 import { premiumEase, silkySpring, smoothSpring } from "@/lib/motion";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 const HEALTH_POLL_MS = 30_000;
 
@@ -85,7 +86,7 @@ export function SyncHealthCard({ autoSync = true }: { autoSync?: boolean }) {
   const healthQuery = useQuery({
     queryKey: ["google-sheets-sync-health"],
     queryFn: () => fetchSyncHealth(),
-    refetchInterval: HEALTH_POLL_MS,
+    refetchInterval: backgroundInterval(HEALTH_POLL_MS),
     refetchIntervalInBackground: false,
   });
 
