@@ -21,6 +21,10 @@ of memory (swap grew to almost the size of RAM, IO wait ~88%) and the CRM stoppe
   block work) and as an email.
 - While the level stays raised, a reminder comes every 30 minutes at critical and
   every 60 minutes at warning.
+- In the CRM, warning and critical cards are **red** with a WARNING / CRITICAL label
+  (critical also has a pulsing red strip), and they play their own siren: a
+  high/low "wee-woo", about 2 seconds for a warning and 4 seconds for critical. It
+  sounds nothing like the lead chimes. "Back to normal" is green and silent.
 
 ## Starting thresholds
 

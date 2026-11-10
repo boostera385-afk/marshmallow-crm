@@ -13,12 +13,23 @@ import { healthSeverity, type HealthSeverity } from "@/lib/system-health-alert";
 const POLL_MS = 60_000;
 const MAX_CARDS = 3;
 
-const STYLE: Record<HealthSeverity, { box: string; icon: string; Icon: typeof AlertTriangle }> = {
-  critical: { box: "border-red-500/60 shadow-[0_20px_50px_-20px_rgba(239,68,68,0.6)]", icon: "bg-red-500/15 text-red-600 dark:text-red-400", Icon: ShieldAlert },
-  warning: { box: "border-amber-500/60 shadow-[0_20px_50px_-20px_rgba(245,158,11,0.5)]", icon: "bg-amber-500/15 text-amber-700 dark:text-amber-300", Icon: AlertTriangle },
-  ok: { box: "border-emerald-500/50", icon: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", Icon: CheckCircle2 },
-  info: { box: "border-border", icon: "bg-muted text-muted-foreground", Icon: Info },
+/**
+ * Overload warnings and critical alerts are red, unlike every other pop-up, so
+ * they stand out. Critical adds a solid red header strip and a pulsing ring.
+ */
+const STYLE: Record<HealthSeverity, { box: string; icon: string; badge?: string; strip?: string; Icon: typeof AlertTriangle }> = {
+  critical: {
+    box: "border-red-600 bg-red-50 ring-4 ring-red-500/40 shadow-[0_20px_50px_-15px_rgba(220,38,38,0.8)] dark:bg-red-950/80",
+    icon: "bg-red-600 text-white", badge: "bg-red-600 text-white", strip: "bg-red-600 motion-safe:animate-pulse", Icon: ShieldAlert,
+  },
+  warning: {
+    box: "border-red-500 bg-red-50 ring-2 ring-red-500/30 shadow-[0_20px_50px_-20px_rgba(239,68,68,0.6)] dark:bg-red-950/60",
+    icon: "bg-red-500/15 text-red-600 dark:text-red-400", badge: "bg-red-500/15 text-red-700 dark:text-red-300", strip: "bg-red-500/70", Icon: AlertTriangle,
+  },
+  ok: { box: "border-emerald-500/50 bg-card", icon: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", Icon: CheckCircle2 },
+  info: { box: "border-border bg-card", icon: "bg-muted text-muted-foreground", Icon: Info },
 };
+const BADGE: Partial<Record<HealthSeverity, string>> = { critical: "CRITICAL", warning: "WARNING" };
 
 /**
  * Overload early warning for Admins: a card in the corner (not a blocking
@@ -42,12 +53,12 @@ export default function SystemHealthPopup() {
     const rows = data.filter((n) => !dismissedIds.current.has(n.id));
     const fresh = rows.filter((n) => !seenIds.current.has(n.id));
     rows.forEach((n) => seenIds.current.add(n.id));
-    const loud = fresh.find((n) => healthSeverity(n.title) === "critical" || healthSeverity(n.title) === "warning");
-    if (loud) {
-      void import("@/lib/notification-sound").then(({ playAssignmentSound, playUrgentAlertSound }) => {
-        if (!isCurrent()) return;
-        if (healthSeverity(loud.title) === "critical") playUrgentAlertSound();
-        else playAssignmentSound();
+    // Its own siren (not the lead chimes); the most severe new alert decides how long.
+    const levels = fresh.map((n) => healthSeverity(n.title));
+    const alarm = levels.includes("critical") ? "critical" : levels.includes("warning") ? "warning" : null;
+    if (alarm) {
+      void import("@/lib/notification-sound").then(({ playSystemAlarmSound }) => {
+        if (isCurrent()) playSystemAlarmSound(alarm);
       });
     }
     setItems(rows);
@@ -96,14 +107,20 @@ export default function SystemHealthPopup() {
             key={n.id}
             role={severity === "critical" ? "alert" : "status"}
             aria-label={n.title}
-            className={cn("pointer-events-auto rounded-2xl border-2 bg-card p-4", style.box)}
+            className={cn("pointer-events-auto relative overflow-hidden rounded-2xl border-2 p-4", style.box)}
           >
+            {style.strip && <div className={cn("absolute inset-x-0 top-0 h-1.5", style.strip)} aria-hidden="true" />}
             <div className="flex items-start gap-3">
               <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", style.icon)}>
                 <style.Icon className="h-5 w-5" aria-hidden="true" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-bold leading-5 text-foreground">{n.title}</p>
+                {BADGE[severity] && (
+                  <span className={cn("mb-1 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider", style.badge)}>
+                    {BADGE[severity]}
+                  </span>
+                )}
+                <p className={cn("text-[13px] font-bold leading-5", BADGE[severity] ? "text-red-700 dark:text-red-300" : "text-foreground")}>{n.title}</p>
                 <p className="mt-1 whitespace-pre-line text-[12px] leading-5 text-foreground/85">{n.message}</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">{new Date(n.created_at).toLocaleTimeString()}</p>
               </div>

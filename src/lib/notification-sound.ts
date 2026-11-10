@@ -19,11 +19,11 @@ function getAudioContext(): AudioContext | null {
   }
 }
 
-function playTone(ctx: AudioContext, frequency: number, startTime: number, duration: number, volume: number) {
+function playTone(ctx: AudioContext, frequency: number, startTime: number, duration: number, volume: number, type: OscillatorType = "sine") {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
 
-  osc.type = "sine";
+  osc.type = type;
   osc.frequency.setValueAtTime(frequency, startTime);
 
   gain.gain.setValueAtTime(0, startTime);
@@ -66,5 +66,25 @@ export function playUrgentAlertSound(): void {
     const offset = i * 0.6; // repeat every 600ms
     playTone(ctx, 587.33, now + offset, 0.18, 0.25);
     playTone(ctx, 783.99, now + offset + 0.15, 0.28, 0.20);
+  }
+}
+
+/** Siren cycles per level: a warning sounds briefly, critical twice as long. */
+export const SYSTEM_ALARM_CYCLES = { warning: 3, critical: 6 } as const;
+
+/**
+ * Database overload alarm for Admins: a "wee-woo" siren (square wave, high/low
+ * alternating) that sounds nothing like the lead chimes above, so it is never
+ * mistaken for an ordinary notification. Warning ~1.8 s, critical ~3.6 s.
+ */
+export function playSystemAlarmSound(level: "warning" | "critical"): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  for (let i = 0; i < SYSTEM_ALARM_CYCLES[level]; i++) {
+    const offset = i * 0.6;
+    playTone(ctx, 880, now + offset, 0.28, 0.12, "square"); // high
+    playTone(ctx, 660, now + offset + 0.3, 0.28, 0.12, "square"); // low
   }
 }
