@@ -1,8 +1,24 @@
-# Plan: retention for `quo_webhook_events` (DRAFT, not applied)
+# Retention for `quo_webhook_events` (decided and implemented 2026-11-10)
 
-Status: **proposal for review. Nothing has been deleted.** Data deletion on the
-shared project needs an explicit decision, a backup and a separate migration
-(see AGENTS.md, "Database and production safety").
+**Decisions (2026-11-10):**
+1. Recover the stuck Nov 7 and Nov 9 events first: **done**.
+2. Keep **30 days**.
+3. **Export before deleting**, to the private Supabase Storage bucket `archives`.
+
+**Implemented:**
+- Recovery: `supabase/functions/quo-reprocess-stuck-events` and `_shared/quo-event-recovery.ts`.
+  For Nov 7–9, 905 stuck events became 900 recovered (849 new messages, about 229 of them customer
+  texts, 13 new conversations, 0 duplicates) and 5 marked failed: transcripts or summaries whose
+  call never arrived.
+- Retention: `supabase/functions/quo-webhook-events-retention` and
+  `_shared/webhook-event-retention.ts`, plus migration
+  `20261210030000_quo_webhook_events_retention.sql`. It runs nightly at 04:07 UTC, only at
+  normal load. Each batch is uploaded to `archives/quo_webhook_events/<date>/…jsonl.gz`, and only
+  the uploaded ids are deleted. `processing` and `failed` rows are never touched.
+- Not done: the optional one-time `VACUUM FULL`, and triage of the August–September stuck
+  summaries and transcripts.
+
+The original proposal follows for reference.
 
 ## Why
 

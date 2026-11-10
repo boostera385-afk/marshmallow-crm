@@ -27,7 +27,8 @@ allowed AS (
     ('sheets_sync', 'normal', 3, true), ('sheets_sync', 'elevated', 3, false), ('sheets_sync', 'elevated', 5, true),
     ('sheets_sync', 'critical', 5, false), ('urgent_ai_refresh', 'elevated', 0, false),
     ('processor_board_daily', 'elevated', 0, false), ('sheets_watchdog', 'elevated', 0, false),
-    ('schedule_monitor', 'elevated', 0, true), ('schedule_monitor', 'critical', 0, false)
+    ('schedule_monitor', 'elevated', 0, true), ('schedule_monitor', 'critical', 0, false),
+    ('webhook_retention', 'normal', 0, true), ('webhook_retention', 'elevated', 0, false), ('webhook_retention', 'critical', 0, false)
   ) t(job, lvl, minute, want)
 ),
 config AS (
