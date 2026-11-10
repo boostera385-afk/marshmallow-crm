@@ -6,6 +6,7 @@ import { fetchScheduleMonitor, changeScheduleMonitor, type ScheduleMonitorRow, t
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 const selectClass = "h-10 w-full rounded-md border bg-background px-3 text-sm";
 const MODE_LABELS: Record<ScheduleMonitorMode, string> = {
@@ -67,7 +68,7 @@ export default function ScheduleMonitorPanel() {
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
   const [offset, setOffset] = useState(0);
-  const query = useQuery({ queryKey: ["schedule-monitor", user?.id, role, offset], queryFn: () => fetchScheduleMonitor(offset), enabled: role === "admin" && open, refetchInterval: open ? 30000 : false });
+  const query = useQuery({ queryKey: ["schedule-monitor", user?.id, role, offset], queryFn: () => fetchScheduleMonitor(offset), enabled: role === "admin" && open, refetchInterval: open ? backgroundInterval(30000) : false });
   const [mode, setMode] = useState<ScheduleMonitorMode | null>(null);
   const [draftRevision, setDraftRevision] = useState<string | null>(null);
   const [reason, setReason] = useState("");

@@ -8,6 +8,7 @@ import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
 import { isAlertOfKind, readActiveAlerts } from "@/lib/active-alerts";
+import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
 
 interface UrgentNotification {
   id: string;
@@ -72,6 +73,10 @@ export default function UrgentLeadPopup() {
     setItems(rows);
   }, []);
   const { refresh: fetchUrgent, isOwner } = useSharedRefresh(sharedKey, readUrgent, applyUrgent);
+  // Realtime delivers these alerts; the poll is a safety net (rare while realtime is
+  // healthy, every POLL_MS when not) plus one catch-up read when realtime recovers.
+  const pollMs = useRealtimeAwareInterval(POLL_MS);
+  useRealtimeReconnect(() => { void fetchUrgent(); }, eligible && isOwner);
 
   useEffect(() => {
     if (!eligible) return;
@@ -80,9 +85,9 @@ export default function UrgentLeadPopup() {
 
   useEffect(() => {
     if (!eligible || !isOwner) return;
-    const interval = setInterval(fetchUrgent, POLL_MS);
+    const interval = setInterval(fetchUrgent, pollMs);
     return () => clearInterval(interval);
-  }, [fetchUrgent, eligible, isOwner]);
+  }, [fetchUrgent, eligible, isOwner, pollMs]);
 
   // Realtime - surface the alert as it lands instead of up to POLL_MS later. Scoped to this
   // user's own notification rows, matching the Job in Progress and Quote Updated popups.

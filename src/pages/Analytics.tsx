@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DateInput } from "@/components/ui/date-input";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 interface AnalyticsLeadRow {
   id: string;
@@ -91,7 +92,7 @@ const Analytics = () => {
       if (error) throw error;
       return (data ?? []) as ProximityLead[];
     },
-    refetchInterval: 60000,
+    refetchInterval: backgroundInterval(60000),
   });
 
   const [zipDataReady, setZipDataReady] = useState(false);

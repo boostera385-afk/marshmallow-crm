@@ -32,7 +32,7 @@ export function useNotificationInbox(filters: InboxFilters, offset: number) {
   return useSharedQuery({ queryKey: [...INBOX_QUERY_KEY, user?.id, role, filters, offset],
     // History covers the last 30 days and never starts before the account existed.
     queryFn: () => fetchInbox({ ...filters, since: laterOf(filters.since, historyNotificationSince(user?.created_at)) }, offset),
-    enabled, sharedPoll: { intervalMs: 15000 },
+    enabled, sharedPoll: { intervalMs: 15000, realtimeBacked: true },
     // workflowCall already retries transient edge-runtime failures once; the 15s interval refetches anyway.
     // One tab per browser polls; other tabs read through it.
     retry: false });

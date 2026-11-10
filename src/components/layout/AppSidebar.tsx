@@ -148,7 +148,7 @@ export default function AppSidebar() {
       }
       return count || 0;
     },
-    sharedPoll: { intervalMs: 15000 },
+    sharedPoll: { intervalMs: 15000, realtimeBacked: true },
   });
 
   // Hidden badges do not need a query or a polling timer.
@@ -165,7 +165,7 @@ export default function AppSidebar() {
       }
       return count || 0;
     },
-    sharedPoll: { intervalMs: 30000 },
+    sharedPoll: { intervalMs: 30000, realtimeBacked: true },
   });
 
   const canSeeQuoteApproval = canAccess("quote_approval_requests");
@@ -183,7 +183,7 @@ export default function AppSidebar() {
       }
       return count || 0;
     },
-    sharedPoll: { intervalMs: 30000 },
+    sharedPoll: { intervalMs: 30000, realtimeBacked: true },
   });
 
   const { data: pendingQuoteCount = 0 } = useSharedQuery({

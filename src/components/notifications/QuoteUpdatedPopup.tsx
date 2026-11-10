@@ -8,6 +8,7 @@ import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
 import { isAlertOfKind, readActiveAlerts } from "@/lib/active-alerts";
+import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
 
 interface QuoteUpdatedNotification {
   id: string;
@@ -96,6 +97,10 @@ export default function QuoteUpdatedPopup() {
     setItems(rows);
   }, []);
   const { refresh: fetchUpdated, isOwner } = useSharedRefresh(sharedKey, readUpdated, applyUpdated);
+  // Realtime delivers these alerts; the poll is a safety net (rare while realtime is
+  // healthy, every POLL_MS when not) plus one catch-up read when realtime recovers.
+  const pollMs = useRealtimeAwareInterval(POLL_MS);
+  useRealtimeReconnect(() => { void fetchUpdated(); }, isEligible && isOwner);
 
   // Polling: one tab per browser runs the timer.
   useEffect(() => {
@@ -105,9 +110,9 @@ export default function QuoteUpdatedPopup() {
 
   useEffect(() => {
     if (!isEligible || !isOwner) return;
-    const interval = setInterval(fetchUpdated, POLL_MS);
+    const interval = setInterval(fetchUpdated, pollMs);
     return () => clearInterval(interval);
-  }, [fetchUpdated, isEligible, isOwner]);
+  }, [fetchUpdated, isEligible, isOwner, pollMs]);
 
   // Realtime — fire immediately when notification is inserted
   useEffect(() => {

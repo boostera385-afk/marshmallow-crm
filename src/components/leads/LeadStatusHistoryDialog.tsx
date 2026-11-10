@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import StatusBadge from "./StatusBadge";
 import { LeadStatus } from "@/lib/constants";
 import { Loader2 } from "lucide-react";
+import { isBackgroundPollPaused } from "@/lib/overload-guard";
 
 interface StatusHistoryLog {
   id: string;
@@ -41,7 +42,7 @@ export default function LeadStatusHistoryDialog({ leadId, open, onOpenChange, cu
     if (!open || !leadId) return;
     
     const intervalId = setInterval(() => {
-      void fetchHistory(true);
+      if (!isBackgroundPollPaused()) void fetchHistory(true);
     }, 15000);
 
     return () => clearInterval(intervalId);

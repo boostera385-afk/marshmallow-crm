@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { fetchCopilotAccess } from "@/lib/copilot-api";
 import { realtimeBus } from "@/lib/realtime";
 import { COPILOT_ACCESS_STORAGE_KEY } from "@/lib/copilot-access-events";
+import { backgroundDelay } from "@/lib/overload-guard";
 
 export function useCopilotAccess(open = false) {
   const { user, role, fullyAuthenticated, profileLoaded } = useAuth();
@@ -14,7 +15,7 @@ export function useCopilotAccess(open = false) {
     refetchOnWindowFocus: "always", refetchOnReconnect: "always",
     // No new database subscriptions: an unapplied Copilot migration must never
     // break the existing global realtime channel. Server checks remain authoritative.
-    refetchInterval: (state) => state.state.status === "success" ? open ? 5000 : 10000 : false,
+    refetchInterval: (state) => state.state.status === "success" ? backgroundDelay(open ? 5000 : 10000) : false,
   });
   useEffect(() => {
     const invalidate = () => { void client.invalidateQueries({ queryKey: ["copilot-access"] }); void client.invalidateQueries({ queryKey: ["copilot-settings"] }); };

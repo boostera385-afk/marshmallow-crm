@@ -15,6 +15,7 @@ import {
 } from "@/lib/quote-approval-requests";
 import type { Lead } from "@/types";
 import { toast } from "sonner";
+import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
 
 type QuoteApprovalRow = LeadQuoteApprovalRequest & { lead: Lead | null };
 
@@ -26,6 +27,9 @@ export default function QuoteApprovalRequests() {
   const [search, setSearch] = useState("");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
 
+  // Requests arrive by realtime, so this read is a safety net: rare while realtime
+  // is healthy, every 30s when not, and once when it recovers.
+  const approvalPollMs = useRealtimeAwareInterval(30_000);
   const { data: requests = [], isLoading, refetch } = useQuery<QuoteApprovalRow[]>({
     queryKey: ["quote-approval-requests"],
     queryFn: async () => {
@@ -48,8 +52,9 @@ export default function QuoteApprovalRequests() {
         lead: leadsById.get(request.lead_id) ?? null,
       }));
     },
-    refetchInterval: 30_000,
+    refetchInterval: approvalPollMs,
   });
+  useRealtimeReconnect(() => { void refetch(); });
 
   const { data: profiles = {} } = useQuery({
     queryKey: ["profiles-map"],

@@ -82,6 +82,7 @@ import QuoChatDialog from "@/components/quo-dashboard/QuoChatDialog";
 import ManageNumbersModal from "@/components/quo-dashboard/ManageNumbersModal";
 import RenderEmoji from "@/components/common/RenderEmoji";
 import { DateInput } from "@/components/ui/date-input";
+import { backgroundInterval } from "@/lib/overload-guard";
 
 
 interface QuoPhoneNumber {
@@ -348,7 +349,7 @@ export default function QuoDashboardPage() {
         return { data: [], count: 0 };
       }
     },
-    refetchInterval: 60000,
+    refetchInterval: backgroundInterval(60000),
   });
 
   const rawConversations = queryData.data;

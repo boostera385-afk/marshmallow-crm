@@ -20,6 +20,7 @@ import { openInboxNotification } from '@/lib/workflow-inbox';
 import { useQueryClient } from '@tanstack/react-query';
 import { notificationUnreadKey } from '@/hooks/useNotificationInbox';
 import { activeNotificationSince } from '@/lib/notification-window';
+import { useRealtimeAwareInterval, useRealtimeReconnect } from '@/lib/realtime-health';
 
 const NOTIFICATION_POLL_INTERVAL_MS = 15 * 1000;
 const MAX_REMEMBERED_CANCELLATION_POPUPS = 200;
@@ -194,13 +195,18 @@ export default function NotificationBell() {
     }
   }, [fetchNotifications, open, role, refetchHoldInbox]);
 
+  // Realtime delivers notifications; this poll is a safety net (rare while realtime
+  // is healthy, every NOTIFICATION_POLL_INTERVAL_MS when not) plus one catch-up
+  // read when realtime recovers.
+  const pollMs = useRealtimeAwareInterval(NOTIFICATION_POLL_INTERVAL_MS);
+  useRealtimeReconnect(() => { void fetchNotifications(); }, pollsHere);
   useEffect(() => {
     if (!pollsHere) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void fetchNotifications();
-    }, NOTIFICATION_POLL_INTERVAL_MS);
+    }, pollMs);
     return () => window.clearInterval(timer);
-  }, [fetchNotifications, pollsHere]);
+  }, [fetchNotifications, pollsHere, pollMs]);
 
   useEffect(() => {
     // Processors approve cancellations alongside admins (getCancellationApproverRoles), so they

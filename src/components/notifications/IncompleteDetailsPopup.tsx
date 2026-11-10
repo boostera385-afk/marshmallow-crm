@@ -8,6 +8,7 @@ import { useNotificationPopupSlot } from "./popup-slot";
 import { subscribeToNotifications } from "@/lib/realtime";
 import { useSharedRefresh } from "@/hooks/useCrossTab";
 import { isAlertOfKind, readActiveAlerts } from "@/lib/active-alerts";
+import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
 
 interface IncompleteDetailsNotification {
   id: string;
@@ -73,6 +74,10 @@ export default function IncompleteDetailsPopup() {
     setItems(rows);
   }, []);
   const { refresh: fetchIncomplete, isOwner } = useSharedRefresh(sharedKey, readIncomplete, applyIncomplete);
+  // Realtime delivers these alerts; the poll is a safety net (rare while realtime is
+  // healthy, every POLL_MS when not) plus one catch-up read when realtime recovers.
+  const pollMs = useRealtimeAwareInterval(POLL_MS);
+  useRealtimeReconnect(() => { void fetchIncomplete(); }, isEligible && isOwner);
 
   useEffect(() => {
     if (!isEligible) return;
@@ -81,9 +86,9 @@ export default function IncompleteDetailsPopup() {
 
   useEffect(() => {
     if (!isEligible || !isOwner) return;
-    const interval = setInterval(fetchIncomplete, POLL_MS);
+    const interval = setInterval(fetchIncomplete, pollMs);
     return () => clearInterval(interval);
-  }, [fetchIncomplete, isEligible, isOwner]);
+  }, [fetchIncomplete, isEligible, isOwner, pollMs]);
 
   // Realtime so the popup lands the moment the tag is applied.
   useEffect(() => {

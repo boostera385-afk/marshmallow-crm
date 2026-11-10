@@ -21,7 +21,6 @@ import { premiumEase, pageVariants } from "@/lib/motion";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalCommandMenu } from "@/components/layout/GlobalCommandMenu";
-import { NOTIFICATIONS_PAUSED } from "@/lib/notification-pause";
 
 function HeaderNotepadTrigger() {
   const { toggleNotepad, activeUserIds, isPickerOpen } = useNotepad();
@@ -77,8 +76,6 @@ export default function AppLayout() {
     Object.entries(pageMeta).find(([path]) => location.pathname.startsWith(path))?.[1] ??
     pageMeta["/leads"];
   const isQuoMonitor = location.pathname.startsWith("/quo-monitor") || location.pathname.startsWith("/quo-dashboard");
-  // Notification pop-ups each poll the notifications table; see notification-pause.ts.
-  const showNotificationPopups = !isQuoMonitor && !NOTIFICATIONS_PAUSED;
 
   return (
     <NotepadProvider>
@@ -135,7 +132,7 @@ export default function AppLayout() {
                   <ExtensionUpdateStatus />
                   <HeaderNotepadTrigger />
                   <ThemeToggle />
-                  {!NOTIFICATIONS_PAUSED && <NotificationBell />}
+                  <NotificationBell />
                 </div>
               </motion.div>
             </header>
@@ -154,13 +151,13 @@ export default function AppLayout() {
               </AnimatePresence>
             </main>
           <NotificationPopupProvider>
-            {!NOTIFICATIONS_PAUSED && <WorkflowAlerts />}
+            <WorkflowAlerts />
             <ScheduleRequirementPrompt />
             <HoldJobPopup />
-            {showNotificationPopups && <UrgentLeadPopup />}
-            {showNotificationPopups && <JobInProgressPopup />}
-            {showNotificationPopups && <QuoteUpdatedPopup />}
-            {showNotificationPopups && <IncompleteDetailsPopup />}
+            {!isQuoMonitor && <UrgentLeadPopup />}
+            {!isQuoMonitor && <JobInProgressPopup />}
+            {!isQuoMonitor && <QuoteUpdatedPopup />}
+            {!isQuoMonitor && <IncompleteDetailsPopup />}
             <CrmUpdatePopup />
           </NotificationPopupProvider>
           <FloatingNotepad />

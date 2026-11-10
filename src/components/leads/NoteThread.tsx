@@ -12,6 +12,9 @@ import { formatUSPhone } from "@/lib/phone";
 import { realtimeBus } from "@/lib/realtime";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
+
+const NOTE_POLL_MS = 15000;
 
 interface LeadNote {
   id: string;
@@ -107,20 +110,24 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
 
   // Keep the same visible-tab fallback, without polling an unread background tab.
   // Catch up immediately on return even if Realtime missed an event while asleep.
+  // Notes arrive by realtime, so the fallback is rare while realtime is healthy,
+  // every 15s when it is not, and catches up once when realtime recovers.
+  const pollMs = useRealtimeAwareInterval(NOTE_POLL_MS);
+  useRealtimeReconnect(() => { void fetchNotes(); }, canViewThread);
   useEffect(() => {
     if (!canViewThread) return;
 
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void fetchNotes();
     };
-    const intervalId = setInterval(refreshWhenVisible, 15000);
+    const intervalId = setInterval(refreshWhenVisible, pollMs);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [fetchNotes, canViewThread]);
+  }, [fetchNotes, canViewThread, pollMs]);
 
   // Realtime subscription for notes
   useEffect(() => {

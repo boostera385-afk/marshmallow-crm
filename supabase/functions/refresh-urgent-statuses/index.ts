@@ -19,6 +19,7 @@
 
 import { corsHeaders, jsonResponse, normalizePhone } from "../_shared/quo-ai.ts";
 import { normalizeUrgentStatus } from "../_shared/urgent-status.ts";
+import { markLeadsChecked } from "../_shared/urgent-status-checks.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MODEL = "gpt-4o-mini";
@@ -182,6 +183,9 @@ Deno.serve(async (req) => {
   let skipped = 0;
   let failed = 0;
   let total = 0;
+  // Unchanged chats only need checked_at moved forward; stamped in one batch below.
+  const unchangedIds: string[] = [];
+  let stampFailed = 0;
 
   try {
     // Urgent leads, plus any lead we already label whose own status has since
@@ -259,7 +263,7 @@ Deno.serve(async (req) => {
         trigger === "cron" && prior && conversation.last_message_at &&
         prior.last_message_at && conversation.last_message_at <= prior.last_message_at
       ) {
-        await admin.from("lead_ai_statuses").update({ checked_at: now }).eq("lead_id", lead.id);
+        unchangedIds.push(lead.id);
         skipped++;
         return;
       }
@@ -309,14 +313,18 @@ Deno.serve(async (req) => {
         }
       }),
     );
+
+    // One UPDATE per chunk instead of one per unchanged lead.
+    const stamp = await markLeadsChecked(admin, unchangedIds, new Date().toISOString(), (message, detail) => console.error(message, detail));
+    stampFailed = stamp.failed;
   } catch (error) {
     await admin.rpc("finish_ai_status_refresh", {
-      p_summary: { trigger, error: error instanceof Error ? error.message : "unknown", refreshed, skipped, failed, total },
+      p_summary: { trigger, error: error instanceof Error ? error.message : "unknown", refreshed, skipped, failed, stamp_failed: stampFailed, total },
     });
     return jsonResponse({ error: "The refresh could not be completed.", reason: "failed" }, 500);
   }
 
-  const summary = { trigger, total, refreshed, skipped, failed, elapsed_ms: Date.now() - startedAt };
+  const summary = { trigger, total, refreshed, skipped, failed, stamp_failed: stampFailed, elapsed_ms: Date.now() - startedAt };
   await admin.rpc("finish_ai_status_refresh", { p_summary: summary });
   return jsonResponse({ ok: true, ...summary, finished_at: new Date().toISOString() });
 });
