@@ -36,6 +36,7 @@ CREATE FUNCTION net.http_post(url text, headers jsonb, body jsonb, timeout_milli
   LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body) RETURNING 1::bigint $$;
 
 \ir ../migrations/20261210040000_system_health_alerts.sql
+\ir ../migrations/20261210050000_system_health_cpu_carry_forward.sql
 
 CREATE TABLE public.results (n serial, check_name text, ok boolean, detail text);
 CREATE TABLE public.t_last (r jsonb);
@@ -153,6 +154,18 @@ SELECT public.t_check('counters saved for the next minute',
 UPDATE marshmallow_private.health_state SET counters_at = now() - interval '1 minute';
 SELECT public.t_call(public.t_s(60) || '{"cpu_total_seconds": 10, "cpu_idle_seconds": 9, "cpu_iowait_seconds": 0}');
 SELECT public.t_check('counter reset (host restart): no CPU reading, no false alarm',
+  (SELECT r->'readings'->'cpu_busy_pct' = 'null'::jsonb AND r->>'instant_level' = 'normal' FROM public.t_r));
+
+SELECT public.t_reset();
+UPDATE marshmallow_private.health_state SET cpu_total = 1100, cpu_idle = 905, cpu_iowait = 45, counters_at = now() - interval '1 minute';
+INSERT INTO marshmallow_private.health_samples (sampled_at, metrics_ok, cpu_busy_pct, iowait_pct, instant_rank) VALUES (now() - interval '1 minute', true, 50, 45, 2);
+SELECT public.t_call(public.t_s(60) || '{"cpu_total_seconds": 1100, "cpu_idle_seconds": 905, "cpu_iowait_seconds": 45}');
+SELECT public.t_check('feed not refreshed: last CPU / IO wait reading carried, streak kept',
+  (SELECT (r->'readings'->>'iowait_pct')::numeric = 45 AND (r->'readings'->>'cpu_busy_pct')::numeric = 50 AND r->>'instant_level' = 'critical' FROM public.t_r)
+  AND (SELECT counters_at < now() - interval '50 seconds' FROM marshmallow_private.health_state));
+UPDATE marshmallow_private.health_state SET counters_at = now() - interval '4 minutes';
+SELECT public.t_call(public.t_s(60) || '{"cpu_total_seconds": 1100, "cpu_idle_seconds": 905, "cpu_iowait_seconds": 45}');
+SELECT public.t_check('feed stuck over 3 minutes: no stale CPU reading',
   (SELECT r->'readings'->'cpu_busy_pct' = 'null'::jsonb AND r->>'instant_level' = 'normal' FROM public.t_r));
 
 -- 8. Swap only warns while rising --------------------------------------------------------
