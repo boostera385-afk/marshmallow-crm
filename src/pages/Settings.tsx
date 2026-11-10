@@ -166,7 +166,7 @@ function TemplateEditor({
       <Textarea value={value} onChange={(event) => setValue(event.target.value)} rows={12} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[11px] text-muted-foreground">
-          Available placeholders include {"{tech_name}"}, {"{schedule_time}"}, {"{customer_name}"}, {"{customer_phone}"}, {"{customer_address}"}, {"{service_details}"}, and {"{quote}"}.
+          Available placeholders include {"{tech_name}"}, {"{schedule_time}"}, {"{customer_name}"}, {"{customer_phone}"}, {"{customer_address}"}, {"{service_details}"}, {"{quote}"}, and {"{quote_line}"} (quoted jobs: total, for you, for us).
         </p>
         <Button onClick={() => onSave(value)} disabled={saving || !value.trim()}>
           {saving ? "Saving..." : "Save template"}
