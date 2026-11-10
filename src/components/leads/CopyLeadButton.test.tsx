@@ -4,15 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Lead } from "@/types";
 import CopyLeadButton from "./CopyLeadButton";
 
-const state = vi.hoisted(() => ({ role: "processor" as string, writeText: vi.fn() }));
+const state = vi.hoisted(() => ({ role: "processor" as string, writeText: vi.fn(), dbFrom: vi.fn() }));
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ role: state.role, user: { id: "synthetic" } }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("@/lib/message-templates", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/message-templates")>();
-  // The saved-template read is not under test: always resolve to the default template.
-  return { ...actual, useMessageTemplate: () => ({ data: actual.DEFAULT_MESSAGE_TEMPLATES.technician_message }) };
-});
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: state.dbFrom, rpc: state.dbFrom } }));
 
 const quotedLead = {
   id: "lead-1",
@@ -66,5 +62,13 @@ describe("CopyLeadButton original wording by terms", () => {
     const copied = openAndCopy({ ...quotedLead, terms: "free_estimate" } as Lead);
     expect(copied).toContain("FREE ESTIMATE VISIT\n\nFREE ESTIMATE VISIT Scheduled for: TBD");
     expect(copied).not.toContain("agreed to pay");
+  });
+
+  it("uses the built-in messages and reads nothing from the database", () => {
+    state.role = "admin";
+    expect(openAndCopy(quotedLead)).toContain("Customer is agreed to pay ($300) total labor");
+    cleanup();
+    expect(openAndCopy({ ...quotedLead, terms: null } as Lead)).toContain("Job Scheduled for: Not scheduled");
+    expect(state.dbFrom).not.toHaveBeenCalled();
   });
 });

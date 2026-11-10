@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import type { Lead } from "@/types";
 import { copyTextToClipboard } from "@/lib/lead-copy";
-import { DEFAULT_MESSAGE_TEMPLATES, renderLeadTemplate, useMessageTemplate } from "@/lib/message-templates";
+import { DEFAULT_MESSAGE_TEMPLATES, renderLeadTemplate } from "@/lib/message-templates";
 import { cn } from "@/lib/utils";
 
 interface ReminderButtonProps {
@@ -18,8 +18,7 @@ export default function ReminderButton({ lead, className }: ReminderButtonProps)
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
-  const { data: template = DEFAULT_MESSAGE_TEMPLATES.technician_reminder } =
-    useMessageTemplate("technician_reminder");
+  const template = DEFAULT_MESSAGE_TEMPLATES.technician_reminder;
 
   useEffect(() => {
     if (open) {
