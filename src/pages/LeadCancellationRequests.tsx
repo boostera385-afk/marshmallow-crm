@@ -18,11 +18,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import StatusBadge from "@/components/leads/StatusBadge";
 import { canReviewCancellationRequest, reviewCancellationRequest } from "@/lib/cancellation-requests";
-import type { Lead, LeadCancellationRequest } from "@/types";
+import { CANCELLATION_PAGE_LEAD_COLUMNS, type CancellationPageLead } from "@/lib/request-page-leads";
+import type { LeadCancellationRequest } from "@/types";
 import { toast } from "sonner";
 
 type RequestWithLead = LeadCancellationRequest & {
-  lead?: Lead | null;
+  lead?: CancellationPageLead | null;
   requester_name?: string | null;
 };
 
@@ -51,11 +52,11 @@ export default function LeadCancellationRequests() {
       const requesterIds = rows.map((row) => row.requested_by).filter(Boolean) as string[];
 
       const [{ data: leads }, { data: profiles }] = await Promise.all([
-        leadIds.length ? supabase.from("leads").select("*").in("id", leadIds) : Promise.resolve({ data: [] }),
+        leadIds.length ? supabase.from("leads").select(CANCELLATION_PAGE_LEAD_COLUMNS).in("id", leadIds) : Promise.resolve({ data: [] }),
         requesterIds.length ? supabase.from("profiles_public" as never).select("id, full_name").in("id", requesterIds) : Promise.resolve({ data: [] }),
       ]);
 
-      const leadById = new Map(((leads ?? []) as Lead[]).map((lead) => [lead.id, lead]));
+      const leadById = new Map(((leads ?? []) as CancellationPageLead[]).map((lead) => [lead.id, lead]));
       const requesterById = new Map(((profiles ?? []) as { id: string; full_name: string }[]).map((profile) => [profile.id, profile.full_name]));
 
       return rows.map((request) => ({
@@ -96,7 +97,7 @@ export default function LeadCancellationRequests() {
             const newRow = payload.new as LeadCancellationRequest;
             if (newRow.status !== "pending") return;
             
-            const { data: leadData } = await supabase.from("leads").select("*").eq("id", newRow.lead_id).single();
+            const { data: leadData } = await supabase.from("leads").select(CANCELLATION_PAGE_LEAD_COLUMNS).eq("id", newRow.lead_id).single();
             let requesterName = newRow.requested_by_name || null;
             if (newRow.requested_by) {
               const { data: profile } = await supabase.from("profiles_public").select("full_name").eq("id", newRow.requested_by).maybeSingle();
@@ -105,7 +106,7 @@ export default function LeadCancellationRequests() {
             
             const enrichedRequest: RequestWithLead = {
               ...newRow,
-              lead: leadData as Lead,
+              lead: leadData as unknown as CancellationPageLead,
               requester_name: requesterName,
             };
             
