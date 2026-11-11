@@ -22,12 +22,12 @@ import {
   reviewPaymentRequest,
   type LeadPaymentRequest,
 } from "@/lib/payment-requests";
-import type { Lead } from "@/types";
+import { PAYMENT_PAGE_LEAD_COLUMNS, type PaymentPageLead } from "@/lib/request-page-leads";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { getSignedUrl } from "@/lib/storage";
 
-type Row = LeadPaymentRequest & { lead?: Lead | null; requester_name?: string | null };
+type Row = LeadPaymentRequest & { lead?: PaymentPageLead | null; requester_name?: string | null };
 
 const roleLabel: Record<string, string> = {
   customer_service: "CS",
@@ -83,12 +83,12 @@ export default function LeadPaymentRequests() {
       const requesterIds = reqs.map((r) => r.requested_by).filter(Boolean) as string[];
 
       const [{ data: leads }, { data: profiles }] = await Promise.all([
-        leadIds.length ? supabase.from("leads").select("*").in("id", leadIds) : Promise.resolve({ data: [] }),
+        leadIds.length ? supabase.from("leads").select(PAYMENT_PAGE_LEAD_COLUMNS).in("id", leadIds) : Promise.resolve({ data: [] }),
         requesterIds.length
           ? supabase.from("profiles_public" as never).select("id, full_name").in("id", requesterIds)
           : Promise.resolve({ data: [] }),
       ]);
-      const leadMap = new Map(((leads ?? []) as Lead[]).map((l) => [l.id, l]));
+      const leadMap = new Map(((leads ?? []) as unknown as PaymentPageLead[]).map((l) => [l.id, l]));
       const profMap = new Map(((profiles ?? []) as { id: string; full_name: string }[]).map((p) => [p.id, p.full_name]));
 
       return reqs.map((r) => ({
@@ -129,7 +129,7 @@ export default function LeadPaymentRequests() {
             const newRow = payload.new as LeadPaymentRequest;
             if (newRow.status !== "pending") return;
 
-            const { data: leadData } = await supabase.from("leads").select("*").eq("id", newRow.lead_id).single();
+            const { data: leadData } = await supabase.from("leads").select(PAYMENT_PAGE_LEAD_COLUMNS).eq("id", newRow.lead_id).single();
             let requesterName = newRow.requested_by_name || null;
             if (newRow.requested_by) {
               const { data: profile } = await supabase.from("profiles_public").select("full_name").eq("id", newRow.requested_by).maybeSingle();
@@ -138,7 +138,7 @@ export default function LeadPaymentRequests() {
 
             const enrichedRequest: Row = {
               ...newRow,
-              lead: leadData as Lead,
+              lead: leadData as unknown as PaymentPageLead,
               requester_name: requesterName,
             };
 

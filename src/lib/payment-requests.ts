@@ -3,6 +3,7 @@ import type { AppRole, Lead, LeadStatus } from "@/types";
 import { logActivity } from "@/lib/activity";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { updateLeadById } from "@/lib/lead-updates";
+import type { ReviewActionLead } from "@/lib/request-page-leads";
 
 export const PAYMENT_REQUEST_STATUS: LeadStatus = "payment_requested" as LeadStatus;
 
@@ -40,7 +41,10 @@ type CreateArgs = {
 
 type ReviewArgs = {
   request: LeadPaymentRequest;
-  lead: Lead;
+  // Only the fields the review actually reads, so callers can join leads with
+  // a narrow projection (see src/lib/request-page-leads.ts). A full Lead
+  // still satisfies this.
+  lead: ReviewActionLead;
   reviewerId: string;
   reviewerName?: string | null;
   reviewerRole: AppRole;
