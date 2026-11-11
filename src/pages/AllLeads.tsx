@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useSharedQuery } from "@/hooks/useCrossTab";
+import { subscribeToLeadChanges } from "@/lib/realtime";
 import { fetchAllRows } from "@/lib/supabase-paginate";
 import { useAuth } from "@/contexts/AuthContext";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -68,7 +70,7 @@ const AllLeads = () => {
     data: leads = [],
     isLoading,
     refetch,
-  } = useQuery({
+  } = useSharedQuery({
     queryKey: ["leads", role, user?.id],
     queryFn: async () => {
       // Page through the whole table so "All Leads" and its status counts don't
@@ -88,47 +90,42 @@ const AllLeads = () => {
       });
     },
     enabled: !!user,
-    // The realtime channel below applies INSERT/UPDATE/DELETE as they happen, so
-    // this interval is only a safety net for missed events. It used to be 15s,
-    // which meant re-downloading the whole table four times a minute for the
-    // admin/processor/opr roles, who can see every row. 60s keeps the fallback
-    // while cutting that traffic to a quarter.
-    refetchInterval: 60000,
+    // The shared lead-changes subscription below applies INSERT/UPDATE/DELETE as
+    // they happen, so this interval is only a safety net for missed events. It
+    // used to be a plain per-tab refetchInterval; useSharedQuery keeps the same
+    // 60s cadence but runs it in ONE tab per browser (other tabs receive the
+    // result) and skips its turn while the overload guard has background
+    // polling paused. Manual refetches and mutations are unaffected.
+    sharedPoll: { intervalMs: 60000 },
     staleTime: 30000,
   });
 
   useEffect(() => {
     if (!user || !role) return;
 
-    const channel = supabase
-      .channel("all-leads-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "leads" },
-        (payload) => {
-          const newRow = payload.new as AllLeadsRow | undefined;
-          const oldRow = payload.old as AllLeadsRow | undefined;
+    // One shared `leads` channel per tab (src/lib/realtime.ts): every change on
+    // a leads row is security-checked server-side per open channel, so this page
+    // must not open its own duplicate next to the other lead screens'.
+    const unsubscribe = subscribeToLeadChanges((payload) => {
+      const newRow = payload.new as AllLeadsRow | undefined;
+      const oldRow = payload.old as AllLeadsRow | undefined;
 
-          queryClient.setQueryData<AllLeadsRow[]>(["leads", role, user.id], (oldData) => {
-            if (!oldData) return oldData;
+      queryClient.setQueryData<AllLeadsRow[]>(["leads", role, user.id], (oldData) => {
+        if (!oldData) return oldData;
 
-            if (payload.eventType === "INSERT" && newRow) {
-              const shouldSee = role !== "customer_service" || newRow.created_by === user.id;
-              if (shouldSee) return [newRow, ...oldData];
-            } else if (payload.eventType === "UPDATE" && newRow) {
-              return oldData.map((l) => (l.id === newRow.id ? { ...l, ...newRow } : l));
-            } else if (payload.eventType === "DELETE" && oldRow) {
-              return oldData.filter((l) => l.id !== oldRow.id);
-            }
-            return oldData;
-          });
+        if (payload.eventType === "INSERT" && newRow) {
+          const shouldSee = role !== "customer_service" || newRow.created_by === user.id;
+          if (shouldSee) return [newRow, ...oldData];
+        } else if (payload.eventType === "UPDATE" && newRow) {
+          return oldData.map((l) => (l.id === newRow.id ? { ...l, ...newRow } : l));
+        } else if (payload.eventType === "DELETE" && oldRow) {
+          return oldData.filter((l) => l.id !== oldRow.id);
         }
-      )
-      .subscribe();
+        return oldData;
+      });
+    });
 
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return unsubscribe;
   }, [user, role, queryClient]);
 
   const visibleLeads = useMemo(() => {
