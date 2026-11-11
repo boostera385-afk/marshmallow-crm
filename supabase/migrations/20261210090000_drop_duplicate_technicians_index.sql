@@ -1,0 +1,41 @@
+-- =============================================================================
+-- Migration : 20261210090000_drop_duplicate_technicians_index.sql
+-- Purpose   : Drop one of two identical indexes on public.technicians(opr_code).
+--             Every technician write maintained both for no benefit.
+--
+-- THE DEFECT
+--   Supabase performance advisor (duplicate_index, read-only, 2026-11-11):
+--   public.technicians has identical indexes idx_technicians_opr_code and
+--   technicians_opr_code_idx, both btree (opr_code).
+--     - technicians_opr_code_idx  : 20261016000100_opr_codes_and_tech_reports.sql
+--     - idx_technicians_opr_code  : 20261021000000_technician_opr_summary_rpc.sql
+--       (re-created the same index under a second name)
+--   The later stray is dropped; the original name stays, so nothing that
+--   references technicians_opr_code_idx changes.
+--
+-- DELIBERATELY NOT ADDED
+--   The advisor's unindexed_foreign_keys findings (11) were reviewed with the
+--   code: none of those FK columns is used as a query filter (e.g.
+--   workflow_notification_events is only read by notification_id - its PK -
+--   and event_key), the parent tables are small or rarely deleted from, and
+--   the same advisor run lists 59 never-used indexes on this database. Adding
+--   more unused indexes would tax every write; none is added without a
+--   measured plan that needs one.
+--
+-- VERIFYING AFTER APPLYING
+--   SELECT indexname FROM pg_indexes
+--    WHERE tablename = 'technicians' AND indexdef LIKE '%(opr_code)%';
+--   must return only technicians_opr_code_idx.
+--
+-- APPLY
+--   Paste into the Supabase SQL Editor and run as postgres. Idempotent.
+-- =============================================================================
+
+DROP INDEX IF EXISTS public.idx_technicians_opr_code;
+
+-- =============================================================================
+-- ROLLBACK - run manually to restore the duplicate exactly as created by
+-- 20261021000000_technician_opr_summary_rpc.sql:
+--
+-- CREATE INDEX IF NOT EXISTS idx_technicians_opr_code ON public.technicians (opr_code);
+-- =============================================================================
