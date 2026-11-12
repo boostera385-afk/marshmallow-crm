@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import type { Lead } from "@/types";
 import { formatLeadSchedule } from "@/lib/lead-copy";
 
@@ -24,6 +26,17 @@ export const MESSAGE_TEMPLATE_LABELS: Record<MessageTemplateKey, string> = {
   technician_message: "Copy Technician Message",
   technician_reminder: "Reminder Message",
 };
+
+/** Built-in "Check Template": asks a technician whether they can take a new job. */
+export const DEFAULT_CHECK_TEMPLATE = `Hi {tech_name}, How are you? I have a new customer looking for {service}, kindly check and confirm if you can visit {schedule_requirement}?
+
+Service Details: {service_details}
+
+Area: {area}
+
+Schedule Requirement: {schedule_requirement}
+
+QUOTE : {quote}`;
 
 const normalize = (value: unknown) => String(value ?? "").trim();
 
@@ -88,18 +101,122 @@ FREE ESTIMATE VISIT Scheduled for: {technician_schedule}
 {reference_block}`,
 } as const;
 
-/**
- * Picks the technician message for a lead: the same for every role, as before
- * June 2026. The messages are built in: the message_templates table they were
- * once meant to be edited in was never created in production (every read was a
- * 404), so nothing is read from the database.
- */
-export const technicianMessageTemplate = (lead: Pick<Lead, "terms">) => {
-  if (lead.terms === "free_estimate") return TECHNICIAN_MESSAGE_BY_TERMS.free_estimate;
-  if (lead.terms === "quoted") return TECHNICIAN_MESSAGE_BY_TERMS.quoted;
-  return DEFAULT_MESSAGE_TEMPLATES.technician_message;
+/** Templates an admin can edit in Settings > Templates. Each falls back to its built-in text. */
+export type EditableTemplateKey =
+  | "technician_message"
+  | "technician_message_quoted"
+  | "technician_message_free_estimate"
+  | "check_template";
+
+export const EDITABLE_TEMPLATE_KEYS: EditableTemplateKey[] = [
+  "technician_message",
+  "technician_message_quoted",
+  "technician_message_free_estimate",
+  "check_template",
+];
+
+export const BUILT_IN_TEMPLATES: Record<EditableTemplateKey, string> = {
+  technician_message: DEFAULT_MESSAGE_TEMPLATES.technician_message,
+  technician_message_quoted: TECHNICIAN_MESSAGE_BY_TERMS.quoted,
+  technician_message_free_estimate: TECHNICIAN_MESSAGE_BY_TERMS.free_estimate,
+  check_template: DEFAULT_CHECK_TEMPLATE,
 };
 
+export const EDITABLE_TEMPLATE_INFO: Record<EditableTemplateKey, { label: string; description: string }> = {
+  technician_message: {
+    label: "Technician Message",
+    description: "Copy Technician Message for leads with no terms selected.",
+  },
+  technician_message_quoted: {
+    label: "Technician Message: Quoted",
+    description: "Copy Technician Message for leads with Quoted terms.",
+  },
+  technician_message_free_estimate: {
+    label: "Technician Message: Free Estimate",
+    description: "Copy Technician Message for leads with Free Estimate Visit terms.",
+  },
+  check_template: {
+    label: "Check Template",
+    description: "Asks a technician whether they can take a new customer before the job is assigned.",
+  },
+};
+
+export const TEMPLATE_PLACEHOLDERS: Record<EditableTemplateKey, string[]> = {
+  technician_message: ["customer_number", "customer_name", "customer_phone", "customer_address", "service_details", "schedule", "technician_schedule", "reference_line", "reference_block", "quote", "tech_name"],
+  technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "technician_schedule", "reference_block", "quote", "tech_name"],
+  check_template: ["tech_name", "service", "service_details", "area", "city", "state", "schedule_requirement", "quote"],
+};
+
+/** Admin-saved template texts by key; keys with no saved row are absent. */
+export type SavedTemplates = Partial<Record<EditableTemplateKey, string>>;
+
+/** The saved text for a key, or its built-in text when none is saved (or it is blank). */
+export const resolveTemplate = (key: EditableTemplateKey, saved?: SavedTemplates) => {
+  const value = saved?.[key];
+  return value && value.trim() ? value : BUILT_IN_TEMPLATES[key];
+};
+
+/** Picks the technician message for a lead by its terms; the same for every role. */
+export const technicianMessageTemplate = (lead: Pick<Lead, "terms">, saved?: SavedTemplates) => {
+  if (lead.terms === "free_estimate") return resolveTemplate("technician_message_free_estimate", saved);
+  if (lead.terms === "quoted") return resolveTemplate("technician_message_quoted", saved);
+  return resolveTemplate("technician_message", saved);
+};
+
+type MessageTemplateRow = { key: string; template: string };
+
+/**
+ * The message_templates table is created by migration
+ * 20261212000000_message_templates_settings.sql and is not in the generated
+ * types until they are regenerated after it is applied; this narrow client
+ * covers only the calls made here.
+ */
+export type MessageTemplateClient = {
+  from(table: "message_templates"): {
+    select(columns: "key, template"): {
+      in(column: "key", values: string[]): PromiseLike<{ data: MessageTemplateRow[] | null; error: { message: string } | null }>;
+    };
+    upsert(row: { key: EditableTemplateKey; template: string }): PromiseLike<{ error: { message: string } | null }>;
+    delete(): { eq(column: "key", value: EditableTemplateKey): PromiseLike<{ error: { message: string } | null }> };
+  };
+};
+
+export const messageTemplateDb = () => supabase as unknown as MessageTemplateClient;
+
+export const MESSAGE_TEMPLATES_QUERY_KEY = ["message-templates"] as const;
+
+export async function fetchSavedTemplates(): Promise<SavedTemplates> {
+  const { data, error } = await messageTemplateDb()
+    .from("message_templates")
+    .select("key, template")
+    .in("key", EDITABLE_TEMPLATE_KEYS);
+  if (error) throw new Error(error.message);
+  const saved: SavedTemplates = {};
+  for (const row of data ?? []) {
+    if ((EDITABLE_TEMPLATE_KEYS as string[]).includes(row.key)) saved[row.key as EditableTemplateKey] = row.template;
+  }
+  return saved;
+}
+
+/**
+ * Admin-saved templates, read once per minute at most and only while a copy
+ * dialog or the Templates tab is open. A failed read (for example before the
+ * migration is applied) is reported through `isError`; callers then use the
+ * built-in texts.
+ */
+export function useSavedTemplates(enabled: boolean) {
+  return useQuery({
+    queryKey: MESSAGE_TEMPLATES_QUERY_KEY,
+    queryFn: fetchSavedTemplates,
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Fills a template from the lead's saved values; unknown placeholders become empty. */
 export const renderLeadTemplate = (
   template: string,
   lead: Lead,
@@ -124,7 +241,13 @@ export const renderLeadTemplate = (
     quote: normalize(lead.quote),
     schedule,
     schedule_time: scheduleTime || schedule,
-    tech_name: normalize(lead.tech_name) || "TECH NAME",
+    tech_name: normalize(extras.tech_name) || normalize(lead.tech_name) || "TECH NAME",
+    service: normalize(lead.service_type) || normalize(lead.service_details),
+    city: normalize(lead.city),
+    state: normalize(lead.state),
+    area: [normalize(lead.city), normalize(lead.state)].filter(Boolean).join(" "),
+    schedule_requirement:
+      normalize(lead.customer_schedule_requirements) || (lead.scheduled_date ? formatTechnicianSchedule(lead) : ""),
     tech_number: normalize(lead.tech_number),
     labor_amount: normalize(lead.labor_amount),
     material_amount: normalize(lead.material_amount),

@@ -41,6 +41,7 @@ import PaymentDialog from "@/components/leads/PaymentDialog";
 import ImageLightbox from "@/components/leads/ImageLightbox";
 import LeadPhotoActions from "@/components/leads/LeadPhotoActions";
 import CopyLeadButton from "@/components/leads/CopyLeadButton";
+import CheckTemplateButton from "@/components/leads/CheckTemplateButton";
 import CompleteLeadCopyButton from "@/components/leads/CompleteLeadCopyButton";
 import CxUpdateRequestButton from "@/components/leads/CxUpdateRequestButton";
 import TechUpdateRequestButton from "@/components/leads/TechUpdateRequestButton";
@@ -1652,6 +1653,10 @@ export default function LeadDetailPage() {
                         className="h-9 rounded-xl px-2.5 text-[10px]"
                       />
                       <CopyLeadButton
+                        lead={currentCopyLead}
+                        className="h-9 rounded-xl px-2.5 text-[10px]"
+                      />
+                      <CheckTemplateButton
                         lead={currentCopyLead}
                         className="h-9 rounded-xl px-2.5 text-[10px]"
                       />

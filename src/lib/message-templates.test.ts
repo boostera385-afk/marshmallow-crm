@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Lead } from "@/types";
 import {
+  BUILT_IN_TEMPLATES,
+  DEFAULT_CHECK_TEMPLATE,
   DEFAULT_MESSAGE_TEMPLATES,
+  resolveTemplate,
   formatTechnicianSchedule,
   renderLeadTemplate,
   technicianMessageTemplate,
@@ -95,5 +98,61 @@ describe("technician message by terms (original wording restored)", () => {
     expect(formatTechnicianSchedule(lead({ scheduled_date: null }))).toBe("TBD");
     expect(formatTechnicianSchedule(lead({ scheduled_date: "2024-12-01", scheduled_time_start: "13:05", scheduled_time_end: "00:00" })))
       .toBe("SUNDAY 1st December between 1:05pm-12:00am");
+  });
+});
+
+describe("admin-saved templates", () => {
+  it("uses a saved template for the lead's terms and the built-in text for the rest", () => {
+    const saved = { technician_message_quoted: "Q {customer_name}", technician_message: "STD {customer_name}" };
+    expect(technicianMessageTemplate(lead(), saved)).toBe("Q {customer_name}");
+    expect(technicianMessageTemplate(lead({ terms: null }), saved)).toBe("STD {customer_name}");
+    expect(technicianMessageTemplate(lead({ terms: "free_estimate" }), saved)).toBe(BUILT_IN_TEMPLATES.technician_message_free_estimate);
+  });
+
+  it("ignores blank saved texts", () => {
+    expect(resolveTemplate("check_template", { check_template: "   " })).toBe(DEFAULT_CHECK_TEMPLATE);
+    expect(resolveTemplate("check_template", undefined)).toBe(DEFAULT_CHECK_TEMPLATE);
+  });
+});
+
+describe("Check Template", () => {
+  const checkLead = (over: Partial<Lead> = {}) =>
+    lead({
+      tech_name: "Sam",
+      service_type: "Plumbing",
+      service_details: "Leaking kitchen sink",
+      city: "Austin",
+      state: "TX",
+      customer_schedule_requirements: "tomorrow after 2pm",
+      quote: "$250",
+      ...over,
+    } as Partial<Lead>);
+
+  it("fills the built-in check message from the lead", () => {
+    expect(renderLeadTemplate(DEFAULT_CHECK_TEMPLATE, checkLead())).toBe(
+      [
+        "Hi Sam, How are you? I have a new customer looking for Plumbing, kindly check and confirm if you can visit tomorrow after 2pm?",
+        "",
+        "Service Details: Leaking kitchen sink",
+        "",
+        "Area: Austin TX",
+        "",
+        "Schedule Requirement: tomorrow after 2pm",
+        "",
+        "QUOTE : $250",
+      ].join("\n"),
+    );
+  });
+
+  it("uses the typed technician name and falls back to TECH NAME", () => {
+    expect(renderLeadTemplate("Hi {tech_name}", checkLead(), { tech_name: "Jo" })).toBe("Hi Jo");
+    expect(renderLeadTemplate("Hi {tech_name}", checkLead({ tech_name: null }))).toBe("Hi TECH NAME");
+  });
+
+  it("uses the scheduled visit when there is no written schedule requirement, and leaves it blank if neither", () => {
+    expect(renderLeadTemplate("{schedule_requirement}", checkLead({ customer_schedule_requirements: null }), {}))
+      .toBe("THURSDAY 12th December between 9:00am-11:30am");
+    expect(renderLeadTemplate("{schedule_requirement}|{area}", checkLead({ customer_schedule_requirements: null, scheduled_date: null, city: "", state: "TX" })))
+      .toBe("|TX");
   });
 });
