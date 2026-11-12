@@ -58,13 +58,7 @@ Deno.serve(async (req) => {
   try {
     const result = await runRetention({
       async fetchBatch(cutoffIso, limit) {
-        const { data, error } = await admin
-          .from("quo_webhook_events")
-          .select("*")
-          .in("processing_status", [...RETENTION_STATUSES])
-          .lt("received_at", cutoffIso)
-          .order("received_at", { ascending: true })
-          .limit(limit);
+        const { data, error } = await admin.rpc("webhook_retention_batch", { p_cutoff: cutoffIso, p_limit: limit });
         if (error) throw new Error(`read failed: ${error.message}`);
         return (data ?? []) as ArchivedEvent[];
       },
@@ -90,8 +84,14 @@ Deno.serve(async (req) => {
       gzip,
     });
     const status = result.stopped === "upload_failed" || result.stopped === "delete_failed" ? 500 : 200;
+    await admin.rpc("record_webhook_retention_run", {
+      p_result: { ok: status === 200, stopped: result.stopped, error: result.error ?? null },
+    }).catch(() => { /* status recording must never affect the retention response itself */ });
     return jsonResponse({ ok: status === 200, bucket: BUCKET, ...result }, status);
   } catch (error) {
-    return jsonResponse({ ok: false, error: error instanceof Error ? error.message : "retention failed" }, 500);
+    const message = error instanceof Error ? error.message : "retention failed";
+    await admin.rpc("record_webhook_retention_run", { p_result: { ok: false, stopped: null, error: message } })
+      .catch(() => { /* status recording must never affect the retention response itself */ });
+    return jsonResponse({ ok: false, error: message }, 500);
   }
 });

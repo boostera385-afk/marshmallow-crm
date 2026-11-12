@@ -20,6 +20,22 @@ decide AS (
     ('unknown minute never escalates', 'normal', '{NULL,90}', 0, 'normal')
   ) t(label, cur, arr, conn, want)
 ),
+-- 20261212002000_load_governor_memory_io.sql: memory/IO pressure added as two
+-- more optional, independent elevation signals. Calling with only the
+-- original 4 positional args (the `decide` CTE above) must still behave
+-- exactly as before - that is what these extra cases on the 8-arg call verify.
+decide_health AS (
+  SELECT 'decide (mem/io): ' || label AS check_name,
+         marshmallow_private.decide_load_level(cur, arr, conn, (SELECT p FROM pol), mem, io, mem_elev, io_elev) = want AS ok
+  FROM (VALUES
+    ('low memory alone -> elevated', 'normal', '{0,0}'::numeric[], 0::numeric, 8::numeric, NULL::numeric, 20::numeric, NULL::numeric, 'elevated'),
+    ('memory above threshold -> normal', 'normal', '{0,0}', 0, 25, NULL, 20, NULL, 'normal'),
+    ('high io wait alone -> elevated', 'normal', '{0,0}', 0, NULL, 35, NULL, 15, 'elevated'),
+    ('io wait below threshold -> normal', 'normal', '{0,0}', 0, NULL, 5, NULL, 15, 'normal'),
+    ('missing mem/io thresholds never elevate', 'normal', '{0,0}', 0, 8, 35, NULL, NULL, 'normal'),
+    ('mem/io normal does not block busy-% critical', 'normal', '{85,90}', 0, 50, 2, 20, 15, 'critical')
+  ) t(label, cur, arr, conn, mem, io, mem_elev, io_elev, want)
+),
 allowed AS (
   SELECT format('allowed: %s @ %s', job, lvl) AS check_name,
          marshmallow_private.deferrable_job_allowed(job, lvl, minute, 60, true, 10) = want AS ok
@@ -55,7 +71,7 @@ config AS (
          EXISTS (SELECT 1 FROM marshmallow_private.load_samples WHERE sampled_at > now() - interval '3 minutes')
 )
 SELECT CASE WHEN ok THEN 'PASS' ELSE 'FAIL' END AS result, check_name
-FROM (SELECT * FROM decide UNION ALL SELECT * FROM allowed UNION ALL SELECT * FROM config) all_checks
+FROM (SELECT * FROM decide UNION ALL SELECT * FROM decide_health UNION ALL SELECT * FROM allowed UNION ALL SELECT * FROM config) all_checks
 UNION ALL
 SELECT 'INFO', format('current level %s since %s; last sample %s; busy %s%%',
   s.level, s.changed_at, s.sampled_at,

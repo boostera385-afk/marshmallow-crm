@@ -1,9 +1,13 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LeadsPage from "./LeadsPage";
 import { LEADS_DELTA_LIMIT, LEADS_FULL_RECONCILE_MS, LEADS_VISIBILITY_CHECK_MS, resetLeadsSyncState } from "@/lib/leads-sync";
 import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse, resetOverloadGuard, setServerLoadLevel } from "@/lib/overload-guard";
+import { supabase } from "@/integrations/supabase/client";
+import type { ComponentProps } from "react";
+import type LeadCard from "@/components/leads/LeadCard";
 
 /**
  * Request behaviour of the Leads page against a recording Supabase fake.
@@ -12,6 +16,8 @@ import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse,
  */
 type Call = { method: string; args: unknown[] };
 type Read = { table: string; calls: Call[] };
+type Response = { data: Record<string, unknown>[] | null; error: { message: string; code?: string } | null; count?: number };
+type PendingMetadata = { read: Read; resolve: (value: Response) => void; reject: (reason: Error) => void };
 
 const state = vi.hoisted(() => ({
   role: "admin" as string,
@@ -24,6 +30,10 @@ const state = vi.hoisted(() => ({
   visibleIds: null as null | string[],
   idError: null as null | { message: string },
   toastError: vi.fn(),
+  holdMetadata: false,
+  pendingMetadata: [] as PendingMetadata[],
+  metadataRows: {} as Record<string, Record<string, unknown>[]>,
+  metadataErrors: {} as Record<string, { message: string; code?: string }>,
 }));
 
 const has = (read: Read, method: string, first?: unknown) =>
@@ -33,8 +43,19 @@ const fullReads = () => state.reads.filter((r) => isLeadsIndexRead(r) && has(r, 
 const deltaReads = () => state.reads.filter((r) => isLeadsIndexRead(r) && has(r, "gt", "updated_at"));
 const isIdRead = (read: Read) => read.table === "leads" && read.calls.some((c) => c.method === "select" && c.args[0] === "id");
 const idReads = () => state.reads.filter(isIdRead);
+const isMetadataRead = (read: Read) => ["lead_notes", "lead_photos", "lead_cancellation_requests", "lead_quote_approval_requests"].includes(read.table) && has(read, "in", "lead_id");
+const metadataReads = () => state.reads.filter(isMetadataRead);
+const fallbackReads = () => state.reads.filter((read) => ["lead_notes", "lead_photos", "lead_cancellation_requests"].includes(read.table) && has(read, "eq", "lead_id"));
+const metadataResponse = (read: Read): Response => {
+  const ids = read.calls.find((call) => call.method === "in" && call.args[0] === "lead_id")!.args[1] as string[];
+  return { data: (state.metadataRows[read.table] ?? []).filter((row) => ids.includes(String(row.lead_id))), error: state.metadataErrors[read.table] ?? null };
+};
 
 function respond(read: Read) {
+  if (isMetadataRead(read)) {
+    if (state.holdMetadata) return new Promise<Response>((resolve, reject) => { state.pendingMetadata.push({ read, resolve, reject }); });
+    return Promise.resolve(metadataResponse(read));
+  }
   if (isIdRead(read)) {
     if (state.idError) return Promise.resolve({ data: null, error: state.idError });
     const [from, to] = read.calls.find((c) => c.method === "range")!.args as [number, number];
@@ -108,9 +129,19 @@ vi.mock("@/lib/leadsCache", () => ({
 }));
 vi.mock("@/lib/zipCentroids", () => ({ preloadZipDataset: () => Promise.resolve() }));
 vi.mock("sonner", () => ({ toast: { error: state.toastError, success: vi.fn(), info: vi.fn() } }));
-vi.mock("@/components/leads/LeadCard", () => ({ default: ({ lead }: { lead: { id: string } }) => <div data-testid="lead-card">{lead.id}</div> }));
+// Record the card's existing fallback contract: without page metadata it starts
+// notes, an exact photo count, photo paths, and a pending cancellation on mount.
+vi.mock("@/components/leads/LeadCard", () => ({ default: function Card({ lead, initialHasNotes, initialPhotoCount, initialPhotoPaths, initialPendingCancellationRequest, pendingQuoteApproval }: ComponentProps<typeof LeadCard>) {
+  useEffect(() => {
+    if (initialHasNotes === undefined) void Promise.resolve(supabase.from("lead_notes").select("note_type").eq("lead_id", lead.id));
+    if (initialPhotoCount === undefined) void Promise.resolve(supabase.from("lead_photos").select("id", { count: "exact", head: true }).eq("lead_id", lead.id));
+    if (initialPhotoPaths === undefined) void Promise.resolve(supabase.from("lead_photos").select("photo_url").eq("lead_id", lead.id).order("created_at", { ascending: true }));
+    if (initialPendingCancellationRequest === undefined) void Promise.resolve(supabase.from("lead_cancellation_requests").select("*").eq("lead_id", lead.id).eq("status", "pending"));
+  }, [lead.id, initialHasNotes, initialPhotoCount, initialPhotoPaths, initialPendingCancellationRequest]);
+  return <div data-testid="lead-card" data-photo-count={initialPhotoCount} data-has-notes={initialHasNotes?.general} data-pending-quote={pendingQuoteApproval}>{lead.id}</div>;
+} }));
 vi.mock("@/components/leads/OprLeadCard", () => ({ default: () => null }));
-vi.mock("@/components/leads/LeadTable", () => ({ default: () => null }));
+vi.mock("@/components/leads/LeadTable", () => ({ default: () => <div data-testid="lead-table" /> }));
 vi.mock("@/components/leads/AddLeadDialog", () => ({ default: () => null }));
 vi.mock("@/components/leads/UrgentAICheckDialog", () => ({ default: () => null }));
 vi.mock("@/components/leads/LeadReportDialog", () => ({ default: () => null }));
@@ -138,6 +169,11 @@ beforeEach(() => {
   state.visibleIds = null;
   state.idError = null;
   state.toastError.mockReset();
+  state.holdMetadata = false;
+  state.pendingMetadata = [];
+  state.metadataRows = {};
+  state.metadataErrors = {};
+  localStorage.removeItem("leadsViewMode");
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); resetOverloadGuard(); });
@@ -190,6 +226,110 @@ describe("Leads page loading", () => {
     expect(deltaReads()).toHaveLength(1);
     expect(has(deltaReads()[0], "eq", "created_by")).toBe(true);
     expect(deltaReads()[0].calls.find((c) => c.method === "eq" && c.args[0] === "created_by")!.args[1]).toBe("user-1");
+  });
+});
+
+describe("Leads page metadata batching", () => {
+  const releaseMetadata = async (pending = state.pendingMetadata.splice(0)) => {
+    await act(async () => {
+      pending.forEach(({ read, resolve }) => resolve(metadataResponse(read)));
+      await vi.advanceTimersByTimeAsync(10);
+    });
+  };
+
+  it.each(["admin", "customer_service", "opr"])("waits for the batch instead of issuing per-card reads for %s", async (role) => {
+    state.role = role;
+    state.totalLeads = 20;
+    state.holdMetadata = true;
+    state.metadataRows = {
+      lead_notes: [{ lead_id: "lead-0", note_type: "general" }],
+      lead_photos: [{ lead_id: "lead-0", photo_url: "synthetic/photo.jpg", created_at: "2026-11-01T00:00:00Z" }],
+    };
+    await mount();
+    expect(metadataReads()).toHaveLength(5);
+    expect(screen.queryAllByTestId("lead-card")).toHaveLength(0);
+    expect(fallbackReads()).toHaveLength(0);
+
+    await releaseMetadata();
+    const cards = screen.getAllByTestId("lead-card");
+    expect(cards).toHaveLength(20);
+    const first = cards.find((card) => card.textContent === "lead-0")!;
+    expect(first).toHaveAttribute("data-photo-count", "1");
+    expect(first).toHaveAttribute("data-has-notes", "true");
+    expect(metadataReads()).toHaveLength(5);
+    expect(fallbackReads()).toHaveLength(0);
+  });
+
+  it("keeps card fallback available when a required batch read is denied", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    state.totalLeads = 2;
+    state.metadataErrors.lead_photos = { code: "42501", message: "permission denied" };
+    await mount();
+    expect(screen.getAllByTestId("lead-card")).toHaveLength(2);
+    expect(fallbackReads()).toHaveLength(8);
+    expect(error).toHaveBeenCalledWith("Failed to load paged metadata", state.metadataErrors.lead_photos);
+    error.mockRestore();
+  });
+
+  it("does not fall back or block cards when only quote-approval metadata is denied", async () => {
+    state.totalLeads = 2;
+    state.metadataErrors.lead_quote_approval_requests = { code: "42501", message: "permission denied" };
+    await mount();
+    expect(screen.getAllByTestId("lead-card")).toHaveLength(2);
+    expect(screen.getAllByTestId("lead-card").every((card) => card.dataset.pendingQuote === "false")).toBe(true);
+    expect(fallbackReads()).toHaveLength(0);
+  });
+
+  it("allows card fallback after a network rejection instead of leaving a loading skeleton", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    state.totalLeads = 2;
+    state.holdMetadata = true;
+    await mount();
+    const pending = state.pendingMetadata.splice(0);
+    await act(async () => {
+      pending[0].reject(new Error("network unavailable"));
+      pending.slice(1).forEach(({ read, resolve }) => resolve(metadataResponse(read)));
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(screen.getAllByTestId("lead-card")).toHaveLength(2);
+    expect(fallbackReads()).toHaveLength(8);
+    error.mockRestore();
+  });
+
+  it("does not wait for card-only metadata in table view", async () => {
+    localStorage.setItem("leadsViewMode", "table");
+    state.totalLeads = 2;
+    state.holdMetadata = true;
+    await mount();
+    expect(screen.getByTestId("lead-table")).toBeInTheDocument();
+    expect(fallbackReads()).toHaveLength(0);
+    await releaseMetadata();
+  });
+
+  it("ignores a retired page's batch failure and recovers on the current page", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    state.totalLeads = 40;
+    state.holdMetadata = true;
+    await mount();
+    const retired = state.pendingMetadata.splice(0);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    const current = state.pendingMetadata.splice(0);
+    expect(current).toHaveLength(5);
+    const ids = current[0].read.calls.find((call) => call.method === "in")!.args[1] as string[];
+    await act(async () => {
+      retired[0].reject(new Error("retired request failed"));
+      retired.slice(1).forEach(({ read, resolve }) => resolve(metadataResponse(read)));
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(screen.queryAllByTestId("lead-card")).toHaveLength(0);
+    expect(fallbackReads()).toHaveLength(0);
+    await releaseMetadata(current);
+    expect(screen.getAllByTestId("lead-card").map((card) => card.textContent).sort()).toEqual([...ids].sort());
+    expect(fallbackReads()).toHaveLength(0);
+    error.mockRestore();
   });
 });
 

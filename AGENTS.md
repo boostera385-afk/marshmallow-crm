@@ -132,8 +132,14 @@ interfaces in the same task. CRM-only fixes are not complete for shared features
 - A coding request is not permission for production writes or deployment. Obtain
   explicit approval before remote mutations, secret changes, Edge Function deployment,
   CRM publication, ingestion changes, bulk sync/backfill, or external message sending.
-- Never run `supabase db push`, `npm run sb:push`, or `supabase db reset` against
-  the shared project. Migrations are applied manually by the user.
+- Never run `supabase db reset` against the shared project.
+  `supabase db push` / `npm run sb:push` may be run against the shared project
+  only with the user's explicit, per-session approval (2026-11-12: the user
+  authorized Claude to do this for the pending 2026-12-11/12 migrations).
+  Before pushing, run `supabase migration list` and compare it against
+  `supabase/migrations/`; if the remote history does not already account for
+  migrations applied manually in the past, repair that history first
+  (`supabase migration repair`) rather than letting `db push` re-run them.
 - Write new idempotent SQL in `supabase/migrations/`, with a defect/purpose header
   and rollback section. Do not rewrite already-applied migration history. Never put
   `UPDATE public.leads` in a migration; data repair requires a separate reviewed plan.

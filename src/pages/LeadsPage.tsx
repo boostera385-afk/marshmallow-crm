@@ -1800,7 +1800,10 @@ export default function LeadsPage() {
         </div>
       </motion.div>
 
-      {loading || (paged.length > 0 && !pageRowsReady) ? (
+      {/* Wait for the card metadata batch before mounting cards; undefined props
+          start each card's individual fallback reads. A failed batch explicitly
+          enables that fallback. Table view does not consume card metadata. */}
+      {loading || (paged.length > 0 && (!pageRowsReady || (viewMode === "grid" && !pagedMetadataReady))) ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="h-56 rounded-xl skeleton-shimmer border border-border/30" />
