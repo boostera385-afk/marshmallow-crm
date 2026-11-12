@@ -164,30 +164,10 @@ export const technicianMessageTemplate = (lead: Pick<Lead, "terms">, saved?: Sav
   return resolveTemplate("technician_message", saved);
 };
 
-type MessageTemplateRow = { key: string; template: string };
-
-/**
- * The message_templates table is created by migration
- * 20261212000000_message_templates_settings.sql and is not in the generated
- * types until they are regenerated after it is applied; this narrow client
- * covers only the calls made here.
- */
-export type MessageTemplateClient = {
-  from(table: "message_templates"): {
-    select(columns: "key, template"): {
-      in(column: "key", values: string[]): PromiseLike<{ data: MessageTemplateRow[] | null; error: { message: string } | null }>;
-    };
-    upsert(row: { key: EditableTemplateKey; template: string }): PromiseLike<{ error: { message: string } | null }>;
-    delete(): { eq(column: "key", value: EditableTemplateKey): PromiseLike<{ error: { message: string } | null }> };
-  };
-};
-
-export const messageTemplateDb = () => supabase as unknown as MessageTemplateClient;
-
 export const MESSAGE_TEMPLATES_QUERY_KEY = ["message-templates"] as const;
 
 export async function fetchSavedTemplates(): Promise<SavedTemplates> {
-  const { data, error } = await messageTemplateDb()
+  const { data, error } = await supabase
     .from("message_templates")
     .select("key, template")
     .in("key", EDITABLE_TEMPLATE_KEYS);

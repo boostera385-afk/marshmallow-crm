@@ -1686,6 +1686,45 @@ export type Database = {
         }
         Relationships: []
       }
+      message_templates: {
+        Row: {
+          created_at: string
+          key: string
+          template: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          key: string
+          template: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          key?: string
+          template?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       navigation_permissions: {
         Row: {
           allowed: boolean | null
@@ -3224,6 +3263,7 @@ export type Database = {
         Returns: number
       }
       healthcheck: { Args: never; Returns: Json }
+      ingest_quo_message: { Args: { p_input: Json }; Returns: Json }
       is_admin_user: { Args: { check_user_id: string }; Returns: boolean }
       is_assigned_opr_code: { Args: { _opr_code: string }; Returns: boolean }
       is_org_member: { Args: { _org_id: string }; Returns: boolean }
@@ -3491,6 +3531,14 @@ export type Database = {
         Args: { p_lead_id?: string }
         Returns: undefined
       }
+      record_system_health: {
+        Args: { p_options?: Json; p_sample: Json }
+        Returns: Json
+      }
+      record_webhook_retention_run: {
+        Args: { p_result: Json }
+        Returns: undefined
+      }
       refresh_lead_coverage: { Args: { _lead_id: string }; Returns: undefined }
       refresh_technician_area_coordinate_cache: { Args: never; Returns: number }
       request_quote_approval: { Args: { _lead_id: string }; Returns: string }
@@ -3617,6 +3665,15 @@ export type Database = {
           state_code: string
         }[]
       }
+      technician_area_place_live: {
+        Args: { _area: string }
+        Returns: {
+          city: string
+          latitude: number
+          longitude: number
+          state_code: string
+        }[]
+      }
       update_requests: {
         Args: {
           p_action: string
@@ -3640,6 +3697,30 @@ export type Database = {
         }[]
       }
       us_state_code: { Args: { _text: string }; Returns: string }
+      webhook_retention_batch: {
+        Args: { p_cutoff: string; p_limit?: number }
+        Returns: {
+          created_at: string
+          error_message: string | null
+          event_type: string | null
+          id: string
+          processed_at: string | null
+          processing_status: string
+          quo_conversation_id: string | null
+          quo_event_id: string | null
+          quo_message_id: string | null
+          quo_phone_number_id: string | null
+          raw_payload: Json
+          received_at: string
+          signature_verified: boolean
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "quo_webhook_events"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       withdraw_technician_change: {
         Args: { p_request_id: string }
         Returns: undefined

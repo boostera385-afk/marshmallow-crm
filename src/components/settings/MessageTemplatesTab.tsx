@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { logActivity } from "@/lib/activity";
 import {
   BUILT_IN_TEMPLATES,
@@ -13,7 +14,6 @@ import {
   EDITABLE_TEMPLATE_KEYS,
   MESSAGE_TEMPLATES_QUERY_KEY,
   TEMPLATE_PLACEHOLDERS,
-  messageTemplateDb,
   resolveTemplate,
   useSavedTemplates,
   type EditableTemplateKey,
@@ -89,7 +89,7 @@ export default function MessageTemplatesTab() {
 
   const save = useMutation({
     mutationFn: async ({ key, template }: Change) => {
-      const db = messageTemplateDb().from("message_templates");
+      const db = supabase.from("message_templates");
       const { error: saveError } = template === null
         ? await db.delete().eq("key", key)
         : await db.upsert({ key, template });

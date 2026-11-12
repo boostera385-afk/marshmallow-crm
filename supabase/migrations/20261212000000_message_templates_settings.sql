@@ -1,5 +1,6 @@
 -- =============================================================================
 -- Migration : 20261212000000_message_templates_settings.sql
+-- Applied   : production (kxiqholnmhkwhdkhtopp) 2026-11-12, at the user's request.
 -- Purpose   : Storage for Settings > Templates: admin-edited texts for the
 --             Copy Technician Message (no terms / Quoted / Free Estimate) and
 --             the new Check Template.
