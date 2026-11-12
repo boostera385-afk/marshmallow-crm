@@ -149,6 +149,88 @@ test("Request optimization: notes catch up when a hidden tab returns", async ({ 
   expect(reads).toBeGreaterThan(before);
 });
 
+test.describe("Lead metadata batching", () => {
+  for (const role of ["admin", "opr"] as const) {
+    test(`${role}: delayed metadata mounts complete cards without per-card reads`, async ({ page }) => {
+      await mockSession(page, role, { photos: true });
+      let release = () => {};
+      const metadataReady = new Promise<void>((resolve) => { release = resolve; });
+      let batches = 0;
+      const fallbackReads: string[] = [];
+      page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (["GET", "HEAD"].includes(request.method()) &&
+          ["/rest/v1/lead_notes", "/rest/v1/lead_photos", "/rest/v1/lead_cancellation_requests"].includes(url.pathname) &&
+          url.searchParams.get("lead_id")?.startsWith("eq.")) fallbackReads.push(url.pathname);
+      });
+      await page.route("**/rest/v1/lead_photos*", async (route) => {
+        if (new URL(route.request().url()).searchParams.get("lead_id")?.startsWith("in.")) {
+          batches++;
+          await metadataReady;
+        }
+        await route.fallback();
+      });
+      const hydrated = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === "/rest/v1/leads" && Boolean(url.searchParams.get("id")?.startsWith("in."));
+      });
+      try {
+        await page.goto("/leads", { waitUntil: "domcontentloaded" });
+        await hydrated;
+        await expect.poll(() => batches).toBeGreaterThan(0);
+        // Let React commit the hydrated rows while the independent metadata read
+        // stays pending. All external HTTP and WebSocket traffic is mocked above.
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        expect(fallbackReads).toEqual([]);
+        await expect(page.locator(".crm-lead-card").filter({ hasText: "Synthetic Customer" })).toHaveCount(0);
+        release();
+        const card = page.locator(".crm-lead-card").filter({ hasText: "Synthetic Customer" });
+        await expect(card).toBeVisible();
+        const view = card.getByRole("button", { name: "View 2 photos", exact: true });
+        await expect(view).toBeEnabled();
+        expect(fallbackReads).toEqual([]);
+        await view.click();
+        await expect(page.getByRole("dialog", { name: "Photo preview" })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(view).toBeFocused();
+        if (role === "opr") await expect(card.getByRole("button", { name: "Send photos to tech" })).toHaveCount(0);
+      } finally {
+        release();
+      }
+    });
+  }
+
+  test("a failed batch still renders cards through the existing individual fallback", async ({ page }) => {
+    await mockSession(page, "admin");
+    const fallbackReads: string[] = [];
+    const failedBatchRetries: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (["GET", "HEAD"].includes(request.method()) &&
+        ["/rest/v1/lead_notes", "/rest/v1/lead_photos", "/rest/v1/lead_cancellation_requests"].includes(url.pathname) &&
+        url.searchParams.get("lead_id")?.startsWith("eq.")) fallbackReads.push(url.pathname);
+    });
+    await page.route("**/rest/v1/lead_notes*", async (route) => {
+      const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS", "Access-Control-Expose-Headers": "Retry-After" };
+      if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: corsHeaders });
+      if (new URL(route.request().url()).searchParams.get("lead_id")?.startsWith("in.")) {
+        failedBatchRetries.push(route.request().headers()["x-retry-count"] ?? "0");
+        // The installed PostgREST client retries 503 reads three times. Honour
+        // that real retry path without spending seven seconds on its backoff.
+        return route.fulfill({ status: 503, headers: { ...corsHeaders, "Retry-After": "0" }, json: { code: "PGRST003", message: "Synthetic batch unavailable" } });
+      }
+      await route.fallback();
+    });
+    await page.goto("/leads", { waitUntil: "domcontentloaded" });
+    await expect(page.locator(".crm-lead-card").filter({ hasText: "Synthetic Customer" })).toBeVisible();
+    await expect.poll(() => [...fallbackReads].sort()).toEqual([
+      "/rest/v1/lead_cancellation_requests", "/rest/v1/lead_notes",
+      "/rest/v1/lead_photos", "/rest/v1/lead_photos", // Exact count and ordered paths.
+    ]);
+    expect(failedBatchRetries).toContain("3");
+  });
+});
+
 async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", options: { copyAllowed?: boolean; hold?: boolean; photos?: boolean } = {}) {
   let holdRead = false;
   let permission = options.copyAllowed ?? true;
