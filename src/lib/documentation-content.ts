@@ -352,6 +352,7 @@ export const DOC_SECTIONS: DocSection[] = [
     blocks: [
       { type: "kv", label: "Users", value: "Create users, set role and password, OPR code, access codes, set up or reset 2FA, delete (through the admin-users Edge Function). Deleting a user keeps history: leads are unassigned and their id is cleared from logs and notes." },
       { type: "kv", label: "Feature Access / Status Visibility", value: "Per-user tab switches and per-user visible statuses." },
+      { type: "kv", label: "Templates", value: "Admin-only. Copy Technician Message texts (no terms, Quoted, Free Estimate) and the Check Template, stored in message_templates; a template with no saved text uses its built-in wording." },
       { type: "kv", label: "CRM Updates", value: "One-time announcements to chosen roles; receipts in crm_update_receipts." },
       { type: "kv", label: "Google Sheets", value: "The Sheets copy of leads: transactional outbox, retries, full rebuild and health watchdog (google-sheets-sync)." },
       { type: "kv", label: "Documentation", value: "This reference, a PDF export, and Sync Population Data, which refreshes us_places from the Census (run yearly)." },

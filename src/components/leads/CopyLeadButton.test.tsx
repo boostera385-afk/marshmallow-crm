@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Lead } from "@/types";
 import CopyLeadButton from "./CopyLeadButton";
@@ -39,6 +39,7 @@ function openAndCopy(lead: Lead) {
 describe("CopyLeadButton original wording by terms", () => {
   beforeEach(() => {
     state.writeText.mockReset();
+    state.dbFrom.mockReset();
     Object.assign(navigator, { clipboard: { writeText: state.writeText } });
   });
 
@@ -64,11 +65,40 @@ describe("CopyLeadButton original wording by terms", () => {
     expect(copied).not.toContain("agreed to pay");
   });
 
-  it("uses the built-in messages and reads nothing from the database", () => {
+  it("uses the built-in messages when saved templates cannot be read", async () => {
     state.role = "admin";
+    state.dbFrom.mockImplementation(() => ({
+      select: () => ({ in: async () => ({ data: null, error: { message: "relation does not exist" } }) }),
+    }));
     expect(openAndCopy(quotedLead)).toContain("Customer is agreed to pay ($300) total labor");
+    await waitFor(() => expect(state.dbFrom).toHaveBeenCalledWith("message_templates"));
+    fireEvent.click(screen.getByRole("button", { name: /Copy to Clipboard|Copied!/ }));
+    expect(String(state.writeText.mock.calls.at(-1)?.[0])).toContain("Customer is agreed to pay ($300) total labor");
     cleanup();
     expect(openAndCopy({ ...quotedLead, terms: null } as Lead)).toContain("Job Scheduled for: Not scheduled");
-    expect(state.dbFrom).not.toHaveBeenCalled();
+  });
+
+  it("uses the admin-saved template for the lead's terms, for every role", async () => {
+    state.role = "customer_service";
+    state.dbFrom.mockImplementation(() => ({
+      select: () => ({
+        in: async () => ({
+          data: [
+            { key: "technician_message_quoted", template: "EDITED QUOTED {customer_name} ${labor_amount_or_zero}" },
+            { key: "check_template", template: "not used here" },
+          ],
+          error: null,
+        }),
+      }),
+    }));
+    const client = new QueryClient();
+    render(<QueryClientProvider client={client}><CopyLeadButton lead={quotedLead} /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /Copy Technician Message/ }));
+    await waitFor(() => expect(screen.getByDisplayValue("EDITED QUOTED Synthetic Customer $300")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Copy to Clipboard/ }));
+    expect(state.writeText).toHaveBeenLastCalledWith("EDITED QUOTED Synthetic Customer $300");
+    cleanup();
+    // A lead with no terms still uses the (unsaved) built-in standard message.
+    expect(openAndCopy({ ...quotedLead, terms: null } as Lead)).toContain("Job Scheduled for: Not scheduled");
   });
 });

@@ -40,6 +40,7 @@ import { showsUrgentCheck } from "@/lib/urgent-verification";
 import LeadUpdatesSection from "./LeadUpdatesSection";
 import PaymentDialog from "./PaymentDialog";
 import CopyLeadButton from "./CopyLeadButton";
+import CheckTemplateButton from "./CheckTemplateButton";
 import CompleteLeadCopyButton from "./CompleteLeadCopyButton";
 import CxUpdateRequestButton from "./CxUpdateRequestButton";
 import TechUpdateRequestButton from "./TechUpdateRequestButton";
@@ -815,6 +816,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                   </QuoPhoneTrigger>
                 )}
                 <CopyLeadButton lead={lead} />
+                <CheckTemplateButton lead={lead} />
                 <CompleteLeadCopyButton lead={lead} />
                 <CxUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />
                 <TechUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />

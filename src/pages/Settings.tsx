@@ -24,10 +24,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy, RefreshCw, KeyRound, Lock, BookOpen, Megaphone, FileSpreadsheet, Hash } from "lucide-react";
+import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy, RefreshCw, KeyRound, Lock, FileText, BookOpen, Megaphone, FileSpreadsheet, Hash } from "lucide-react";
 import { DocumentationTab } from "@/components/settings/DocumentationTab";
 import { GoogleSheetsTab } from "@/components/settings/GoogleSheetsTab";
 import LeadCopyAccessSettings from "@/components/settings/LeadCopyAccessSettings";
+import MessageTemplatesTab from "@/components/settings/MessageTemplatesTab";
 import PaidLeadAccessDialog from "@/components/settings/PaidLeadAccessDialog";
 import { describePaidWindow, fetchPaidLeadAccess, setPaidLeadAccess, type PaidAccessChoice } from "@/lib/paid-lead-access";
 import { type AccessFeature } from "@/components/settings/FeatureAccessMatrix";
@@ -140,7 +141,7 @@ const Settings = () => {
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState<AppRole>("customer_service");
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<"users" | "nav_permissions" | "status_permissions" | "security" | "documentation" | "crm_updates" | "google_sheets">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "nav_permissions" | "status_permissions" | "templates" | "security" | "documentation" | "crm_updates" | "google_sheets">("users");
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [passwordUserId, setPasswordUserId] = useState("");
   const [passwordUserName, setPasswordUserName] = useState("");
@@ -946,6 +947,7 @@ const Settings = () => {
             { key: "users", label: "Users", icon: Shield },
             ...(isAdmin ? [{ key: "nav_permissions" as const, label: "Feature Access", icon: Shield }] : []),
               ...(isAdmin ? [{ key: "status_permissions" as const, label: "Status Visibility", icon: Eye }] : []),
+            ...(isAdmin ? [{ key: "templates" as const, label: "Templates", icon: FileText }] : []),
             
             
             { key: "security", label: "Security", icon: ShieldCheck },
@@ -982,6 +984,7 @@ const Settings = () => {
       )}
 
       {activeTab === "google_sheets" && isAdmin && <GoogleSheetsTab />}
+      {activeTab === "templates" && isAdmin && <MessageTemplatesTab />}
 
       {activeTab === "users" && (
         <div className="grid gap-3">
