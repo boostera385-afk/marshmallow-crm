@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { Megaphone, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useNotificationPopupSlot } from "./popup-slot";
 import { isBackgroundPollPaused } from "@/lib/overload-guard";
+import { useSharedRefresh } from "@/hooks/useCrossTab";
 
 const SECTION_LABEL: Record<string, string> = {
   general: "General / Entire CRM",
@@ -49,12 +50,16 @@ export default function CrmUpdatePopup() {
   const { user, role, fullyAuthenticated } = useAuth();
   const [queue, setQueue] = useState<CrmUpdate[]>([]);
   const [ackingId, setAckingId] = useState<string | null>(null);
-  const refreshInFlight = useRef(false);
+  const scope = user && role && fullyAuthenticated ? `crm-announcements:${user.id}:${role}:${user.created_at ?? ""}` : null;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  // A refresh that started before an acknowledgement can still return the old
+  // unread list. Keep acknowledged IDs out of this tab's queue so it cannot
+  // briefly reappear while the trailing refresh catches up.
+  const ackedIdsRef = useRef<Set<string>>(new Set());
 
   const loadUnreadUpdates = useCallback(async () => {
-    if (!user || !role || !fullyAuthenticated || refreshInFlight.current) return;
-    refreshInFlight.current = true;
-    try {
+    if (!user || !role || !fullyAuthenticated) return { scope: "", updates: [] as CrmUpdate[] };
       // New users see nothing published before their account existed.
       let query = supabase
         .from("crm_updates" as never)
@@ -64,29 +69,39 @@ export default function CrmUpdatePopup() {
       if (user.created_at) query = query.gte("published_at", user.created_at);
       const { data: updates, error } = await query.order("published_at", { ascending: true });
 
-      if (error || !updates) return;
+      if (error) throw error;
 
       const { data: receipts, error: receiptsError } = await supabase
         .from("crm_update_receipts" as never)
         .select("notification_id")
         .eq("user_id", user.id);
 
-      if (receiptsError) return;
+      if (receiptsError) throw receiptsError;
 
       const ackIds = new Set(
         ((receipts ?? []) as unknown as { notification_id: string }[]).map((r) => r.notification_id),
       );
-      const unread = (updates as unknown as CrmUpdate[]).filter((u) => !ackIds.has(u.id));
-      if (unread.length > 0) {
-        setQueue((prev) => {
-          const existing = new Set(prev.map((x) => x.id));
-          return [...prev, ...unread.filter((u) => !existing.has(u.id))];
-        });
-      }
-    } finally {
-      refreshInFlight.current = false;
-    }
-  }, [user, role, fullyAuthenticated]);
+      return {
+        scope: scope ?? "",
+        updates: ((updates ?? []) as unknown as CrmUpdate[]).filter((u) => !ackIds.has(u.id)),
+      };
+  }, [user, role, fullyAuthenticated, scope]);
+  const applyUnread = useCallback((result: { scope: string; updates: CrmUpdate[] }, isCurrent: () => boolean) => {
+    // A read for an old user/role must never populate the new scope's queue.
+    if (!isCurrent() || result.scope !== scopeRef.current) return;
+    const fresh = result.updates.filter((update) => !ackedIdsRef.current.has(update.id));
+    setQueue((prev) => {
+      const remaining = prev.filter((item) => fresh.some((update) => update.id === item.id));
+      const existing = new Set(remaining.map((item) => item.id));
+      return [...remaining, ...fresh.filter((item) => !existing.has(item.id))];
+    });
+  }, []);
+  const { refresh, isOwner } = useSharedRefresh(scope, loadUnreadUpdates, applyUnread);
+  useEffect(() => {
+    ackedIdsRef.current = new Set();
+    setQueue([]);
+    setAckingId(null);
+  }, [scope]);
 
   // CRM announcements are low-frequency. Visibility-aware polling keeps the
   // same acknowledgement workflow while avoiding the project's hottest query.
@@ -94,12 +109,12 @@ export default function CrmUpdatePopup() {
     if (!user || !role || !fullyAuthenticated) return;
 
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void loadUnreadUpdates();
+      if (document.visibilityState === "visible") void refresh().catch((error: unknown) => console.warn("CRM announcements could not be refreshed", error));
     };
 
     refreshWhenVisible();
     // Timer turns skip while the server is overloaded (see overload-guard).
-    const intervalId = window.setInterval(() => { if (!isBackgroundPollPaused()) refreshWhenVisible(); }, 60_000);
+    const intervalId = isOwner ? window.setInterval(() => { if (!isBackgroundPollPaused()) refreshWhenVisible(); }, 60_000) : 0;
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
@@ -108,24 +123,29 @@ export default function CrmUpdatePopup() {
       window.removeEventListener("focus", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [user, role, fullyAuthenticated, loadUnreadUpdates]);
+  }, [user, role, fullyAuthenticated, refresh, isOwner]);
 
   const current = queue[0];
   const visible = useNotificationPopupSlot("crmUpdate", Boolean(current));
 
   const handleAck = async () => {
     if (!current || !user) return;
+    const ackScope = scope;
     setAckingId(current.id);
     const { error } = await supabase.from("crm_update_receipts" as never).insert({
       notification_id: current.id,
       user_id: user.id,
     } as never);
+    if (scopeRef.current !== ackScope) return;
     setAckingId(null);
     if (error && !/duplicate|unique/i.test(error.message)) {
       console.error("Failed to acknowledge CRM update", error);
       return;
     }
+    ackedIdsRef.current.add(current.id);
     setQueue((prev) => prev.slice(1));
+    // Broadcast the acknowledged result so other tabs do not ask for it again.
+    void refresh().catch((error: unknown) => console.warn("CRM announcement acknowledgement refresh failed", error));
   };
 
   const handleRefresh = () => {
