@@ -25,9 +25,19 @@
 --   admin             ibraheem@gmail.com
 --   cs_admin          csadminleadcrm@accboosters.com
 --   customer_service  HassanCS@gmail.com
---   processor         IrfanSC@gmail.com
+--   processor         JawadProcessor@gmail.com
 --   opr               RehanOPR112@gmail.com
---   opr_admin         FaiqOperator@gmail.com
+--   opr_admin         (none — no account currently holds this role; see below)
+--
+-- 2026-11-14: the previous processor fixture (IrfanSC@gmail.com) and the
+-- previous opr_admin fixture (FaiqOperator@gmail.com) no longer exist in
+-- public.profiles, so their rows silently read all-zero instead of testing
+-- anything. processor was swapped for a current account. opr_admin was not:
+-- `select count(*) from public.user_roles where role = 'opr_admin'` returns 0
+-- today, so there is no live account to substitute. That row is EXPECTED to
+-- read all-zero until an opr_admin account exists — re-check who holds the
+-- role (`select * from public.user_roles where role = 'opr_admin'`) before
+-- relying on it, and swap in a real id/email once one does.
 --
 -- Note: SET LOCAL ROLE cannot be issued inside a plpgsql block, so each role is
 -- a separate top-level section. The results table is created while already
@@ -135,14 +145,14 @@ RESET ROLE;
 -- 4. processor - expect to see everything
 -- ===========================================================================
 SELECT set_config('request.jwt.claims', json_build_object(
-  'sub','eb18f72a-92f5-405b-83ac-a9192cca1d78','role','authenticated')::text, true);
-SELECT set_config('request.jwt.claim.sub',  'eb18f72a-92f5-405b-83ac-a9192cca1d78', true);
+  'sub','2f22e9df-1b94-4653-bf50-36a965d5dec4','role','authenticated')::text, true);
+SELECT set_config('request.jwt.claim.sub',  '2f22e9df-1b94-4653-bf50-36a965d5dec4', true);
 SET LOCAL ROLE authenticated;
 
 DO $$
-DECLARE u uuid := 'eb18f72a-92f5-405b-83ac-a9192cca1d78';
+DECLARE u uuid := '2f22e9df-1b94-4653-bf50-36a965d5dec4';
 BEGIN
-  INSERT INTO _matrix SELECT 4, 'processor', 'IrfanSC@gmail.com',
+  INSERT INTO _matrix SELECT 4, 'processor', 'JawadProcessor@gmail.com',
     (SELECT count(*) FROM public.leads),
     (SELECT count(*) FROM public.leads WHERE created_by = u),
     (SELECT count(*) FROM public.leads WHERE assigned_cs = u),
@@ -189,6 +199,11 @@ RESET ROLE;
 
 -- ===========================================================================
 -- 6. opr_admin - expect urgent_job only
+--
+-- This fixture id belongs to the deleted FaiqOperator@gmail.com account and
+-- is kept only as a placeholder: no account currently holds the opr_admin
+-- role (2026-11-14), so this row reads all-zero no matter whose id is here.
+-- Swap in a real opr_admin id/email once one exists, to make this row live.
 -- ===========================================================================
 SELECT set_config('request.jwt.claims', json_build_object(
   'sub','0071cf5f-1eec-4ad6-abf7-82e16fee76b1','role','authenticated')::text, true);
@@ -198,7 +213,7 @@ SET LOCAL ROLE authenticated;
 DO $$
 DECLARE u uuid := '0071cf5f-1eec-4ad6-abf7-82e16fee76b1';
 BEGIN
-  INSERT INTO _matrix SELECT 6, 'opr_admin', 'FaiqOperator@gmail.com',
+  INSERT INTO _matrix SELECT 6, 'opr_admin', '(no current opr_admin account)',
     (SELECT count(*) FROM public.leads),
     (SELECT count(*) FROM public.leads WHERE created_by = u),
     (SELECT count(*) FROM public.leads WHERE assigned_cs = u),

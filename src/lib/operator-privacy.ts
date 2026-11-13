@@ -2,8 +2,9 @@ import type { AppRole } from "@/types";
 
 /**
  * Operators (`opr`, NOT `opr_admin`) see a job's location as "City, ST ZIP" only:
- * never the street address or map position, the customer's phone/landline, or the
- * technician's name/number (business rule 2026-11-06).
+ * never the street address or map position, the customer's name, phone/landline, or
+ * the technician's name/number (business rule 2026-11-06, extended 2026-11-13 to
+ * also hide the customer's name).
  *
  * The location comes from the server-computed `location_label` field
  * (migration 20261203000000_opr_location_only), which never contains street text.
@@ -38,7 +39,7 @@ export function parseLocationLabel(label: string | null | undefined): LocationPa
 }
 
 /** Fields an Operator must never see, beyond the location (rewritten below). */
-const HIDDEN_FIELDS = ["half_address", "latitude", "longitude", "customer_phone", "customer_landline", "tech_name", "tech_number"] as const;
+const HIDDEN_FIELDS = ["half_address", "latitude", "longitude", "customer_name", "customer_phone", "customer_landline", "tech_name", "tech_number"] as const;
 
 type LeadLike = {
   address?: string | null; city?: string | null; state?: string | null; zip_code?: string | null;
@@ -46,10 +47,10 @@ type LeadLike = {
 } & Partial<Record<(typeof HIDDEN_FIELDS)[number], unknown>>;
 
 /**
- * For an Operator: removes address, map position, customer numbers and technician
- * details, and replaces address/city/state/zip with the server's location label.
- * Without a label the location is left empty: the raw address is never shown.
- * Every other role gets the lead unchanged (same object).
+ * For an Operator: removes address, map position, the customer's name and numbers,
+ * and technician details, and replaces address/city/state/zip with the server's
+ * location label. Without a label the location is left empty: the raw address is
+ * never shown. Every other role gets the lead unchanged (same object).
  */
 export function redactLeadForOperator<T extends LeadLike>(lead: T, role: AppRole | null | undefined): T {
   if (!isLocationOnlyOperator(role)) return lead;

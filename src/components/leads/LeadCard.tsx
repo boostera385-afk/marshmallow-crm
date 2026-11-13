@@ -37,6 +37,7 @@ import {
   Clipboard,
   ExternalLink,
   UserPlus,
+  DollarSign,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -87,6 +88,7 @@ import { countTechs } from "@/lib/lead-techs";
 import { saveLeadTag } from "@/lib/lead-tag-actions";
 import AiTagBadge from "@/components/leads/AiTagBadge";
 import { canSeeTechDetails, isOperatorRole } from "@/lib/access";
+import { operatorQuoteSummary } from "@/lib/operator-quote";
 import BookingDateTimeDialog, { formatBookingCompact, isBookingExpired } from "./BookingDateTimeDialog";
 import AssignLeadToOperatorDialog from "./AssignLeadToOperatorDialog";
 import ActivateCustomerNoteDialog from "./ActivateCustomerNoteDialog";
@@ -933,6 +935,19 @@ function LeadCard({
       icon: Phone,
       wrap: false,
     },
+    // Plain Operators never see the free-text quote, the full labor amount, or the
+    // For You/For Us split — only the terms, half the labor, and materials if any.
+    ...(role === "opr"
+      ? [
+        {
+          key: "operator_quote",
+          label: "Quote",
+          value: operatorQuoteSummary(lead) ?? "",
+          icon: DollarSign,
+          wrap: true,
+        },
+        ]
+      : []),
     // CS Admins never see technician details.
     ...(canSeeTechDetails(role)
       ? [
@@ -1423,7 +1438,7 @@ function LeadCard({
             <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="truncate text-lg font-semibold text-foreground">
-                    {lead.customer_name}
+                    {lead.customer_name || lead.job_id}
                   </p>
                   {lead.source_url && (
                     <a

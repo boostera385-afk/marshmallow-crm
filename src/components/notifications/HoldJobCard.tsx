@@ -3,6 +3,8 @@ import { PauseCircle, ChevronDown, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CompleteLeadCopyButton from "@/components/leads/CompleteLeadCopyButton";
 import { HOLD_REASON_LABELS, type HoldAlert } from "@/lib/operator-workflow";
+import { redactLeadForOperator } from "@/lib/operator-privacy";
+import type { AppRole } from "@/types";
 
 interface Props {
   alert: HoldAlert;
@@ -10,17 +12,26 @@ interface Props {
   onDismiss?: (alert: HoldAlert) => void;
   saving?: boolean;
   expanded?: boolean;
+  /** The viewer's role, for the same Operator redaction every lead view applies. */
+  role?: AppRole | null;
 }
-export default function HoldJobCard({ alert, onAcknowledge, onDismiss, saving = false, expanded = false }: Props) {
+export default function HoldJobCard({ alert, onAcknowledge, onDismiss, saving = false, expanded = false, role = null }: Props) {
   const [open, setOpen] = useState(expanded);
-  const lead = alert.snapshot;
+  // A plain Operator never sees the raw snapshot: no name, phone, landline, street
+  // address, technician details, or free-text quote — same rule as everywhere else
+  // an Operator can see a lead (operator-privacy.ts). opr_admin is unrestricted here,
+  // same asymmetry that already exists elsewhere. The snapshot has no structured
+  // labor/materials fields to build the operator-safe quote summary from, so the
+  // Quote row is dropped for a plain Operator rather than shown raw.
+  const lead = redactLeadForOperator(alert.snapshot, role);
   const rows = [
     ["Customer", lead.customer_name], ["Phone", lead.customer_phone], ["Landline", lead.customer_landline],
     ["Service", lead.service_type], ["Service Details", lead.service_details], ["Address", lead.address],
     ["Location", [lead.city, lead.state, lead.zip_code].filter(Boolean).join(", ")],
     ["Schedule Requirement", lead.customer_schedule_requirements],
     ["Scheduled For", [lead.scheduled_date, lead.scheduled_time_start, lead.scheduled_time_end].filter(Boolean).join(" · ")],
-    ["Quote", lead.quote], ["Technician", [lead.tech_name, lead.tech_number].filter(Boolean).join(" · ")],
+    ...(role === "opr" ? [] : [["Quote", lead.quote]]),
+    ["Technician", [lead.tech_name, lead.tech_number].filter(Boolean).join(" · ")],
   ].filter(([, value]) => Boolean(value));
   return (
     <article className="relative overflow-hidden rounded-2xl border border-primary/25 bg-card p-4 text-card-foreground shadow-xl" aria-label={`Hold This Job ${lead.job_id}`}>
@@ -32,7 +43,7 @@ export default function HoldJobCard({ alert, onAcknowledge, onDismiss, saving = 
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Operator alert</p>
           <h3 className="font-semibold text-foreground">Hold This Job</h3>
-          <p className="break-words text-sm font-medium">{lead.job_id} · {lead.customer_name}</p>
+          <p className="break-words text-sm font-medium">{lead.job_id}{lead.customer_name ? ` · ${lead.customer_name}` : ""}</p>
           <p className="mt-1 text-sm text-foreground">Urgent Job → {HOLD_REASON_LABELS[alert.reason]}</p>
           <p className="mt-1 text-xs text-muted-foreground">Stop working this job. The saved status and customer schedule are unchanged by this alert.</p>
         </div>

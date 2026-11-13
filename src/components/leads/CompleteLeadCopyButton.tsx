@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildCompleteLeadCopyText, copyTextToClipboard, type LeadCopyDetails } from "@/lib/lead-copy";
+import { operatorQuoteSummary } from "@/lib/operator-quote";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,9 +24,14 @@ export default function CompleteLeadCopyButton({ lead, className }: CompleteLead
     event.stopPropagation();
     if (!allowed) return;
 
-    const includeQuote = !isOperatorRole(role) || lead.show_quote_to_opr !== false;
+    // A plain Operator never gets the free-text quote — only the Quoted/Free
+    // Estimate terms, half the labor amount and full materials (operator-quote.ts).
+    // opr_admin is unrestricted here, same as everywhere else this asymmetry exists.
+    const operatorSummary = role === "opr" ? operatorQuoteSummary(lead) : null;
+    const copyLead = role === "opr" ? { ...lead, quote: operatorSummary } : lead;
+    const includeQuote = role === "opr" ? operatorSummary != null : !isOperatorRole(role) || lead.show_quote_to_opr !== false;
     try {
-      await copyTextToClipboard(buildCompleteLeadCopyText(lead, includeQuote));
+      await copyTextToClipboard(buildCompleteLeadCopyText(copyLead, includeQuote));
       setCopied(true);
       toast.success("Complete lead details copied");
       window.setTimeout(() => setCopied(false), 1400);

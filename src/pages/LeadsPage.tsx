@@ -52,7 +52,6 @@ import { Plus, Search, Download, Share2, X, SlidersHorizontal, BarChart3, Puzzle
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useNotepad } from "@/contexts/NotepadContext";
 import LeadCard from "@/components/leads/LeadCard";
-import OprLeadCard from "@/components/leads/OprLeadCard";
 import LeadTable from "@/components/leads/LeadTable";
 import type { LeadCancellationRequest } from "@/types";
 import AddLeadDialog from "@/components/leads/AddLeadDialog";
@@ -101,7 +100,7 @@ const LEAD_LIST_COLUMNS =
 // Only the few columns the Urgent-leads overview table shows (plus zip/city for
 // the "Urgent in area" proximity count) — kept tiny so its frequent live refresh
 // stays a featherweight, filtered (status=urgent_job) indexed read.
-const URGENT_TABLE_COLUMNS = "id, customer_name, customer_phone, service_type, city, state, address, zip_code, urgent_at, created_at, customer_schedule_requirements, terms";
+const URGENT_TABLE_COLUMNS = "id, job_id, customer_name, customer_phone, service_type, city, state, address, zip_code, urgent_at, created_at, customer_schedule_requirements, terms";
 // How often to refresh the urgent overview (and its "needs CX reply" check)
 // while the page is visible. New urgent leads still land instantly through the
 // leads realtime channel; this poll catches leads leaving urgent, AI status and
@@ -109,7 +108,7 @@ const URGENT_TABLE_COLUMNS = "id, customer_name, customer_phone, service_type, c
 // two thirds on the shared Micro instance.
 const URGENT_TABLE_POLL_MS = 15000;
 
-type UrgentRow = Pick<Lead, "id" | "customer_name" | "customer_phone" | "service_type" | "city" | "state" | "address" | "zip_code" | "urgent_at" | "created_at" | "customer_schedule_requirements" | "terms" | "location_label"> & { lead_ai_statuses?: { status: string; checked_at?: string } | null };
+type UrgentRow = Pick<Lead, "id" | "job_id" | "customer_name" | "customer_phone" | "service_type" | "city" | "state" | "address" | "zip_code" | "urgent_at" | "created_at" | "customer_schedule_requirements" | "terms" | "location_label"> & { lead_ai_statuses?: { status: string; checked_at?: string } | null };
 
 function CopyableCell({ text, title, className, defaultWidth = true, emptyClassName = "text-muted-foreground", align = "left", truncate = true }: { text: string; title?: string; className?: string; defaultWidth?: boolean; emptyClassName?: string; align?: "left" | "right"; truncate?: boolean }) {
   if (!text || text === "—") return <td className={`px-2 py-2 ${className || ""}`}><span className={emptyClassName}>—</span></td>;
@@ -271,7 +270,9 @@ export default function LeadsPage() {
   const safeStatusFilter =
     rawStatusFilter === "all" ||
     allowedStatuses.has(rawStatusFilter) ||
-    (isOperatorRole(role) && leads.some((l) => Boolean(l.cs_tag) && l.status === rawStatusFilter))
+    // opr_admin only: a tagged lead they own can still move the status filter.
+    // A plain opr's query never returns a tagged lead at all (hold rule, 2026-11-13).
+    (role === "opr_admin" && leads.some((l) => Boolean(l.cs_tag) && l.status === rawStatusFilter))
       ? rawStatusFilter
       : "all";
 
@@ -710,7 +711,7 @@ export default function LeadsPage() {
   const statusExportOptions = useMemo(
     () =>
       ALL_LEAD_STATUSES.filter(
-        (s) => allowedStatuses.has(s) || (isOperatorRole(role) && leads.some((l) => Boolean(l.cs_tag) && l.status === s)),
+        (s) => allowedStatuses.has(s) || (role === "opr_admin" && leads.some((l) => Boolean(l.cs_tag) && l.status === s)),
       ).map((s) => ({ value: s, label: STATUS_LABELS[s] })),
     [allowedStatuses, role, leads],
   );
@@ -1507,7 +1508,7 @@ export default function LeadsPage() {
                         className="cursor-pointer border-t border-border/40 transition-colors hover:bg-muted/40"
                         title="Open lead"
                       >
-                        <CopyableCell text={l.customer_name || "—"} defaultWidth={false} className="font-medium text-foreground" />
+                        <CopyableCell text={l.customer_name || l.job_id || "—"} defaultWidth={false} className="font-medium text-foreground" />
                         <CopyableCell text={l.service_type || "—"} defaultWidth={false} className="text-muted-foreground" />
                         <CopyableCell text={l.address || "—"} defaultWidth={false} className="text-muted-foreground" />
                       </tr>
@@ -1602,7 +1603,7 @@ export default function LeadsPage() {
                       className="cursor-pointer border-t border-border/40 transition-colors hover:bg-muted/40"
                       title="Open lead"
                     >
-                      <CopyableCell text={l.customer_name || "—"} defaultWidth={false} className="font-medium text-foreground" />
+                      <CopyableCell text={l.customer_name || l.job_id || "—"} defaultWidth={false} className="font-medium text-foreground" />
                       <CopyableCell text={l.service_type || "—"} defaultWidth={false} className="text-muted-foreground" />
                       <td className="px-2 py-2 text-[11px] font-medium whitespace-nowrap">
                         {l.lead_ai_statuses?.status ? (
@@ -1729,7 +1730,7 @@ export default function LeadsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                {ALL_LEAD_STATUSES.filter((s) => allowedStatuses.has(s) || (isOperatorRole(role) && leads.some((l) => Boolean(l.cs_tag) && l.status === s))).map((s) => (
+                {ALL_LEAD_STATUSES.filter((s) => allowedStatuses.has(s) || (role === "opr_admin" && leads.some((l) => Boolean(l.cs_tag) && l.status === s))).map((s) => (
                   <SelectItem key={s} value={s}>
                     <span className="flex items-center gap-2">
                       <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_COLORS[s]}`} />

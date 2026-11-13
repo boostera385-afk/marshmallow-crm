@@ -409,7 +409,7 @@ export default function NotificationBell() {
           <DialogTitle>Hold This Job</DialogTitle>
           <DialogDescription>Read-only job card from the saved transition. Acknowledgement does not change the job.</DialogDescription>
         </DialogHeader>
-        {selectedHold && <HoldJobCard key={selectedHold.revision} alert={selectedHold} expanded saving={acknowledgingHold}
+        {selectedHold && <HoldJobCard key={selectedHold.revision} alert={selectedHold} role={role} expanded saving={acknowledgingHold}
           onAcknowledge={(alert) => { void acknowledgeSelectedHold(alert); }} />}
       </DialogContent>
     </Dialog>

@@ -72,6 +72,9 @@ export interface LeadCopyDetails {
   customer_schedule_requirements?: string | null;
   quote?: string | null;
   show_quote_to_opr?: boolean | null;
+  terms?: Lead["terms"];
+  labor_amount?: Lead["labor_amount"];
+  material_amount?: Lead["material_amount"];
 }
 export const buildCompleteLeadCopyText = (lead: LeadCopyDetails, includeQuote = true) => {
   const lines = [

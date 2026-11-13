@@ -32,6 +32,7 @@ export default function HoldJobPopup() {
         {displayed.map((alert) => <HoldJobCard
           key={`${alert.id}:${alert.revision}`}
           alert={alert}
+          role={role}
           onAcknowledge={(item) => acknowledge.mutate(item)}
           onDismiss={(item) => setHidden((current) => [...current, `${user?.id}:${item.id}:${item.revision}`])}
           saving={acknowledge.isPending}

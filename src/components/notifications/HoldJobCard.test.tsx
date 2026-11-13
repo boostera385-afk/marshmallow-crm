@@ -48,4 +48,25 @@ describe("Marshmallow read-only hold card", () => {
     expect(screen.queryByRole("button", { name: "Acknowledge" })).toBeNull();
     expect(screen.getByText("Acknowledged")).toBeInTheDocument();
   });
+
+  it("redacts the snapshot client-side for a plain opr viewer, including the quote", () => {
+    const quoted = { ...alertFixture, snapshot: { ...alertFixture.snapshot, quote: "$150 private" } };
+    render(<HoldJobCard alert={quoted} role="opr" onAcknowledge={vi.fn()} />);
+    expect(screen.getByText("MM-123")).toBeInTheDocument();
+    expect(screen.queryByText("Test Customer")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Complete card" }));
+    expect(screen.queryByText("Quote")).toBeNull();
+    for (const secret of ["Test Customer", "10 Main St", "5550100000", "Test Tech", "5550100001", "$150 private"]) {
+      expect(screen.queryByText(secret)).toBeNull();
+    }
+  });
+
+  it("keeps the full snapshot, including the quote, for opr_admin", () => {
+    const quoted = { ...alertFixture, snapshot: { ...alertFixture.snapshot, quote: "$150" } };
+    render(<HoldJobCard alert={quoted} role="opr_admin" onAcknowledge={vi.fn()} />);
+    expect(screen.getByText(/Test Customer/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Complete card" }));
+    expect(screen.getByText("Quote")).toBeInTheDocument();
+    expect(screen.getByText("$150")).toBeInTheDocument();
+  });
 });

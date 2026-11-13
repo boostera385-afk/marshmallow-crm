@@ -21,14 +21,29 @@ afterEach(() => {
 });
 
 describe("complete lead copy action", () => {
-  it.each(["opr", "opr_admin"])("shows the enabled-by-default copy action for %s", async (role) => {
-    auth.role = role;
+  it("shows the enabled-by-default copy action with the full quote for opr_admin", async () => {
+    auth.role = "opr_admin";
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     render(<CompleteLeadCopyButton lead={{ service_details: "Repair", address: "10 Main St Apt 2", customer_schedule_requirements: "Friday", quote: "$150" }} />);
     fireEvent.click(screen.getByRole("button", { name: "Copy Complete Details" }));
     await screen.findByRole("button", { name: "Copied" });
     expect(writeText).toHaveBeenCalledWith("Service Details: Repair\nAddress: 10 Main St Apt 2\nSchedule Requirement: Friday\nQuote: $150");
+  });
+
+  it("replaces the free-text quote with the terms/half-labor/materials summary for a plain opr", async () => {
+    auth.role = "opr";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(<CompleteLeadCopyButton lead={{
+      service_details: "Repair", address: "10 Main St Apt 2", customer_schedule_requirements: "Friday",
+      quote: "$150 private note", terms: "quoted", labor_amount: 100, material_amount: 40,
+    } as Lead} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Complete Details" }));
+    await screen.findByRole("button", { name: "Copied" });
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain("Quote: Quoted · Labor $50.00 · Materials $40.00");
+    expect(copied).not.toContain("$150 private note");
   });
 
   it("copies only City, ST ZIP for an Operator once the lead is redacted", async () => {
