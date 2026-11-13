@@ -41,7 +41,7 @@ describe("complete lead copy action", () => {
     expect(writeText).toHaveBeenCalledWith("Service Details: Repair\nAddress: 10 Main St Apt 2\nSchedule Requirement: Friday\nQuote: $150");
   });
 
-  it("replaces the free-text quote with the terms/half-labor/materials summary for a plain opr", async () => {
+  it("copies the full quote (full labor, materials and quote notes) for a plain opr", async () => {
     auth.role = "opr";
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
@@ -52,11 +52,12 @@ describe("complete lead copy action", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy Complete Details" }));
     await screen.findByRole("button", { name: "Copied" });
     const copied = writeText.mock.calls[0][0] as string;
-    expect(copied).toContain("Quote: Quoted · Labor $50.00 · Materials $40.00");
-    expect(copied).not.toContain("$150 private note");
+    expect(copied).toContain("Quoted · Labor $100.00 · Parts/Materials $40.00");
+    expect(copied).toContain("$150 private note");
+    expect(copied).not.toContain("$50.00");
   });
 
-  it("copies Quoted for a plain opr even when no labor is recorded yet", async () => {
+  it("copies Quoted and the quote notes for a plain opr even when no labor is recorded yet", async () => {
     auth.role = "opr";
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
@@ -67,7 +68,7 @@ describe("complete lead copy action", () => {
     await screen.findByRole("button", { name: "Copied" });
     const copied = writeText.mock.calls[0][0] as string;
     expect(copied).toContain("Quote: Quoted");
-    expect(copied).not.toContain("$150 private note");
+    expect(copied).toContain("$150 private note");
   });
 
   it("copies only City, ST ZIP for an Operator once the lead is redacted", async () => {
