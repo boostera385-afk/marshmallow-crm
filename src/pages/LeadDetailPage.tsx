@@ -714,10 +714,8 @@ export default function LeadDetailPage() {
   };
 
   const handleSave = async () => {
-    if (!hideProcessorDetails || isNew) {
-      const quoteError = validateQuoteBreakdown({ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included });
-      if (quoteError) { toast.error(quoteError); return; }
-    }
+    const quoteError = validateQuoteBreakdown({ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included });
+    if (quoteError) { toast.error(quoteError); return; }
     if (!user) return;
     if (isOpr) {
       toast.error("Operators cannot edit leads");
@@ -822,15 +820,11 @@ export default function LeadDetailPage() {
 
       tech_name: !hideProcessorDetails ? form.tech_name || null : (originalLead?.tech_name ?? null),
       tech_number: !hideProcessorDetails ? form.tech_number || null : (originalLead?.tech_number ?? null),
-      terms: !hideProcessorDetails || isNew ? form.terms || null : (originalLead?.terms ?? null),
-      labor_amount:
-        !hideProcessorDetails || isNew
-          ? (form.terms === "quoted" ? parseAmount(form.labor_amount) : null)
-          : (originalLead?.labor_amount ?? null),
-      material_amount:
-        !hideProcessorDetails || isNew
-          ? (form.terms === "quoted" && form.materials_included ? parseAmount(form.material_amount) : null)
-          : (originalLead?.material_amount ?? null),
+      // Every editing role (CS and CS Admin included) owns the customer quote
+      // split; only the internal For You/For Us technician split stays gated.
+      terms: form.terms || null,
+      labor_amount: form.terms === "quoted" ? parseAmount(form.labor_amount) : null,
+      material_amount: form.terms === "quoted" && form.materials_included ? parseAmount(form.material_amount) : null,
       for_you_amount:
         !hideProcessorDetails
           ? parseAmount(form.for_you_amount)
@@ -1627,7 +1621,7 @@ export default function LeadDetailPage() {
             </CollapsibleContent>
           </Collapsible>
 
-          <QuoteBreakdownFields readOnly={hideProcessorDetails && !isNew} value={{ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included }} onChange={(value) => setForm((previous) => ({ ...previous, terms: value.terms, labor_amount: value.laborAmount, material_amount: value.materialAmount, materials_included: value.includesMaterials }))} />
+          <QuoteBreakdownFields readOnly={isOpr}value={{ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included }} onChange={(value) => setForm((previous) => ({ ...previous, terms: value.terms, labor_amount: value.laborAmount, material_amount: value.materialAmount, materials_included: value.includesMaterials }))} />
 
           {!hideProcessorDetails && (
             <Collapsible open={processorOpen} onOpenChange={setProcessorOpen}>

@@ -548,10 +548,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!user) return;
-      if (role !== "customer_service" && role !== "cs_admin") {
-        const quoteError = validateQuoteBreakdown({ terms: form.terms || "", laborAmount: String(form.labor_amount ?? ""), materialAmount: String(form.material_amount ?? ""), includesMaterials: Boolean(form.materials_included) });
-        if (quoteError) throw new Error(quoteError);
-      }
+      const quoteError = validateQuoteBreakdown({ terms: form.terms || "", laborAmount: String(form.labor_amount ?? ""), materialAmount: String(form.material_amount ?? ""), includesMaterials: Boolean(form.materials_included) });
+      if (quoteError) throw new Error(quoteError);
       if (isDuplicate) throw new Error(`Duplicate phone: ${duplicateLeadName}`);
       if (!form.status || !canChangeStatus(role, form.status as LeadStatus)) {
         throw new Error("You do not have permission to set that status");
@@ -615,9 +613,9 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
         reference_name: form.reference_name,
         tech_name: role !== "customer_service" && role !== "cs_admin" ? form.tech_name : lead?.tech_name,
         tech_number: role !== "customer_service" && role !== "cs_admin" ? form.tech_number : lead?.tech_number,
-        terms: role !== "customer_service" && role !== "cs_admin" ? form.terms : lead?.terms,
-        labor_amount: role !== "customer_service" && role !== "cs_admin" ? (form.terms === "quoted" ? form.labor_amount : null) : lead?.labor_amount,
-        material_amount: role !== "customer_service" && role !== "cs_admin" ? (form.terms === "quoted" && form.materials_included ? form.material_amount : null) : lead?.material_amount,
+        terms: form.terms,
+        labor_amount: form.terms === "quoted" ? form.labor_amount : null,
+        material_amount: form.terms === "quoted" && form.materials_included ? form.material_amount : null,
         for_you_amount: role !== "customer_service" && role !== "cs_admin" ? form.for_you_amount : lead?.for_you_amount,
         for_us_amount: role !== "customer_service" && role !== "cs_admin" ? form.for_us_amount : lead?.for_us_amount,
       };
@@ -1071,7 +1069,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
             </div>
           </motion.div>
 
-          <QuoteBreakdownFields readOnly={hideProcessorDetails} value={{ terms: form.terms || "", laborAmount: String(form.labor_amount ?? ""), materialAmount: String(form.material_amount ?? ""), includesMaterials: Boolean(form.materials_included) }} onChange={(value) => setForm((previous) => ({ ...previous, terms: value.terms || null, labor_amount: parseAmountInput(value.laborAmount), material_amount: parseAmountInput(value.materialAmount), materials_included: value.includesMaterials }))} />
+          <QuoteBreakdownFields readOnly={isOpr}value={{ terms: form.terms || "", laborAmount: String(form.labor_amount ?? ""), materialAmount: String(form.material_amount ?? ""), includesMaterials: Boolean(form.materials_included) }} onChange={(value) => setForm((previous) => ({ ...previous, terms: value.terms || null, labor_amount: parseAmountInput(value.laborAmount), material_amount: parseAmountInput(value.materialAmount), materials_included: value.includesMaterials }))} />
 
           {!hideProcessorDetails && (
             <motion.div
