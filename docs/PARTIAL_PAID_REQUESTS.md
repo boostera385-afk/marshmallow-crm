@@ -12,6 +12,32 @@
 - Isolated SQL: all 25 behavioral checks plus six smoke checks passed, with the
   exact migration applied twice. No production behavioral write harness was run.
 
+## Production application (2026-11-13)
+
+- With explicit session approval, applied the committed
+  `supabase/migrations/20261214000000_partial_paid_requests.sql` through Supabase
+  MCP to shared project `kxiqholnmhkwhdkhtopp`, after the verified frontend commit
+  was pushed. Remote migration record: **`20261113072320 / partial_paid_requests`**.
+- No broad `db push` or historical migration repair was run: existing remote/local
+  timestamp drift was left untouched. The remote timestamp above accounts for
+  this file; do not assume its future-dated local version is pending schema work.
+- Ran the exact `supabase/tests/179_partial_paid_requests_readonly.sql` file via
+  linked CLI: **six PASS, zero FAIL**. Lead/request RLS policy fingerprints match
+  before/after (`8ad16ccad59f389edae457fc49a159d0`). No customer lead writes were
+  performed for testing.
+- Regenerated public-schema database types with the CLI: only the three generated
+  Row/Insert/Update `request_type` properties changed; no manual type edits.
+  Typecheck and all 25 focused payment/dialog/status-choice tests passed again.
+- Health advisors reported no findings. Existing security/performance advisories
+  remain, including the unchanged overlapping request INSERT/UPDATE policies
+  ([remediation](https://supabase.com/docs/guides/database/database-linter?lint=0006_multiple_permissive_policies))
+  and unrelated functions with a mutable search path
+  ([remediation](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable)).
+  These were not bundled into this release.
+- CRM Publish, refreshed Admin approval tabs and signed-in end-to-end workflow
+  checks remain pending. No Edge Function deployment or Donut installation is
+  required for this CRM-only change.
+
 ## Behavior
 
 Processors select **Paid** or **Partial Paid**, enter a positive amount and optionally

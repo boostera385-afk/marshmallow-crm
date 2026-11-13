@@ -921,6 +921,7 @@ export type Database = {
           id: string
           lead_id: string
           previous_status: string
+          request_type: string
           requested_by: string | null
           requested_by_name: string | null
           requested_by_role: string
@@ -939,6 +940,7 @@ export type Database = {
           id?: string
           lead_id: string
           previous_status: string
+          request_type?: string
           requested_by?: string | null
           requested_by_name?: string | null
           requested_by_role: string
@@ -957,6 +959,7 @@ export type Database = {
           id?: string
           lead_id?: string
           previous_status?: string
+          request_type?: string
           requested_by?: string | null
           requested_by_name?: string | null
           requested_by_role?: string
