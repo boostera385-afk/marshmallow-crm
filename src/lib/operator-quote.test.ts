@@ -36,8 +36,12 @@ describe("Operator-safe quote summary (business rule 2026-11-13)", () => {
     expect(summary).not.toContain("200");
   });
 
+  it("still shows Quoted when no labor or materials are recorded yet (same terms opr_admin sees)", () => {
+    expect(operatorQuoteSummary({ terms: "quoted", labor_amount: null, material_amount: null, show_quote_to_opr: true })).toBe("Quoted");
+    expect(operatorQuoteSummary({ terms: "quoted", labor_amount: null, material_amount: 0 })).toBe("Quoted");
+  });
+
   it("returns null when there is nothing to tell yet", () => {
-    expect(operatorQuoteSummary({ terms: "quoted", labor_amount: null, material_amount: null })).toBeNull();
     expect(operatorQuoteSummary({ terms: null, labor_amount: 200, material_amount: 60 })).toBeNull();
     expect(operatorQuoteSummary({})).toBeNull();
   });
