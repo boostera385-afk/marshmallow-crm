@@ -27,6 +27,17 @@ export function withOperatorLocation(columns: string, role: AppRole | null | und
   return isLocationOnlyOperator(role) ? `${columns}, ${LOCATION_LABEL_COLUMN}` : columns;
 }
 
+/**
+ * "City, ST ZIP" from already location-only parts, e.g. a hold-alert snapshot the
+ * server stored for an Operator (marshmallow_private.opr_safe_hold_snapshot), which
+ * carries city/state/zip_code but no location_label. Same format as the server label.
+ */
+export function locationLabelFromParts(parts: { city?: string | null; state?: string | null; zip_code?: string | null }): string | null {
+  const clean = (value: string | null | undefined) => (typeof value === "string" && value.trim() ? value.trim() : null);
+  const stateZip = [clean(parts.state), clean(parts.zip_code)].filter(Boolean).join(" ");
+  return [clean(parts.city), stateZip || null].filter(Boolean).join(", ") || null;
+}
+
 export interface LocationParts { city: string | null; state: string | null; zip: string | null }
 
 /** Splits "City, ST 12345" / "ST 12345" / "12345" back into parts. */

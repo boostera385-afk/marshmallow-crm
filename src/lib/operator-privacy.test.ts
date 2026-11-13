@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLocationOnlyOperator, parseLocationLabel, redactLeadForOperator, withOperatorLocation } from "./operator-privacy";
+import { isLocationOnlyOperator, locationLabelFromParts, parseLocationLabel, redactLeadForOperator, withOperatorLocation } from "./operator-privacy";
 
 const lead = {
   id: "lead-1", customer_name: "Jane Sample", service_type: "Plumbing",
@@ -48,5 +48,18 @@ describe("Operator location-only view", () => {
     [null, { city: null, state: null, zip: null }],
   ])("reads the label %j", (label, parts) => {
     expect(parseLocationLabel(label)).toEqual(parts);
+  });
+});
+
+describe("locationLabelFromParts", () => {
+  it("builds the server's City, ST ZIP format and round-trips through the parser", () => {
+    const label = locationLabelFromParts({ city: " Coral Springs ", state: "FL", zip_code: "33071" });
+    expect(label).toBe("Coral Springs, FL 33071");
+    expect(parseLocationLabel(label)).toEqual({ city: "Coral Springs", state: "FL", zip: "33071" });
+  });
+  it("handles missing parts and empty input", () => {
+    expect(locationLabelFromParts({ city: null, state: "FL", zip_code: "33071" })).toBe("FL 33071");
+    expect(locationLabelFromParts({ city: "Miami", state: null, zip_code: null })).toBe("Miami");
+    expect(locationLabelFromParts({ city: " ", state: null, zip_code: undefined })).toBeNull();
   });
 });

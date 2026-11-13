@@ -37,5 +37,7 @@ export function operatorQuoteSummary(lead: OperatorQuoteLead): string | null {
   const parts: string[] = ["Quoted"];
   if (half != null) parts.push(`Labor ${money(half)}`);
   if (hasMaterials) parts.push(`Materials ${money(materials as number)}`);
-  return parts.length > 1 ? parts.join(" · ") : null;
+  // "Quoted" alone still tells the Operator the job's terms, as it does for opr_admin;
+  // labor/materials are appended only when recorded (never inferred from quote text).
+  return parts.join(" · ");
 }

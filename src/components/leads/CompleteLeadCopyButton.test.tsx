@@ -56,6 +56,20 @@ describe("complete lead copy action", () => {
     expect(copied).not.toContain("$150 private note");
   });
 
+  it("copies Quoted for a plain opr even when no labor is recorded yet", async () => {
+    auth.role = "opr";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(<CompleteLeadCopyButton lead={{
+      service_details: "Repair", quote: "$150 private note", terms: "quoted", labor_amount: null, material_amount: null,
+    } as Lead} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Complete Details" }));
+    await screen.findByRole("button", { name: "Copied" });
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain("Quote: Quoted");
+    expect(copied).not.toContain("$150 private note");
+  });
+
   it("copies only City, ST ZIP for an Operator once the lead is redacted", async () => {
     const { redactLeadForOperator } = await import("@/lib/operator-privacy");
     auth.role = "opr";

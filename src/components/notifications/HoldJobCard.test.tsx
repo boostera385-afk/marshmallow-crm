@@ -61,6 +61,17 @@ describe("Marshmallow read-only hold card", () => {
     }
   });
 
+  it("keeps City, State and ZIP from a server-redacted snapshot for a plain opr viewer", () => {
+    const redacted = { ...alertFixture, snapshot: { ...alertFixture.snapshot, customer_phone: null, customer_landline: null, address: null,
+      tech_name: null, tech_number: null, city: "Coral Springs", state: "FL", zip_code: "33071" } };
+    const { container } = render(<HoldJobCard alert={redacted} role="opr" onAcknowledge={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Complete card" }));
+    expect(screen.getByText("Location")).toBeInTheDocument();
+    expect(container).toHaveTextContent("Coral Springs, FL, 33071");
+    expect(screen.queryByText("Address")).toBeNull();
+    for (const secret of ["Test Customer", "10 Main St", "5550100000", "Test Tech"]) expect(container).not.toHaveTextContent(secret);
+  });
+
   it("keeps the full snapshot, including the quote, for opr_admin", () => {
     const quoted = { ...alertFixture, snapshot: { ...alertFixture.snapshot, quote: "$150" } };
     render(<HoldJobCard alert={quoted} role="opr_admin" onAcknowledge={vi.fn()} />);

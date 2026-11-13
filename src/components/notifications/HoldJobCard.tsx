@@ -3,7 +3,7 @@ import { PauseCircle, ChevronDown, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CompleteLeadCopyButton from "@/components/leads/CompleteLeadCopyButton";
 import { HOLD_REASON_LABELS, type HoldAlert } from "@/lib/operator-workflow";
-import { redactLeadForOperator } from "@/lib/operator-privacy";
+import { locationLabelFromParts, redactLeadForOperator } from "@/lib/operator-privacy";
 import type { AppRole } from "@/types";
 
 interface Props {
@@ -23,10 +23,19 @@ export default function HoldJobCard({ alert, onAcknowledge, onDismiss, saving = 
   // same asymmetry that already exists elsewhere. The snapshot has no structured
   // labor/materials fields to build the operator-safe quote summary from, so the
   // Quote row is dropped for a plain Operator rather than shown raw.
-  const lead = redactLeadForOperator(alert.snapshot, role);
+  // The server already stores an Operator's snapshot with City/State/ZIP only and
+  // no location_label, so derive the label from those parts; otherwise the redaction
+  // would blank the location the Operator is allowed to see.
+  const snapshot = alert.snapshot;
+  const lead = redactLeadForOperator(
+    role === "opr" ? { ...snapshot, location_label: locationLabelFromParts(snapshot) } : snapshot,
+    role,
+  );
   const rows = [
     ["Customer", lead.customer_name], ["Phone", lead.customer_phone], ["Landline", lead.customer_landline],
-    ["Service", lead.service_type], ["Service Details", lead.service_details], ["Address", lead.address],
+    ["Service", lead.service_type], ["Service Details", lead.service_details],
+    // For a plain Operator the redacted address is just the location label, shown below.
+    ...(role === "opr" ? [] : [["Address", lead.address]]),
     ["Location", [lead.city, lead.state, lead.zip_code].filter(Boolean).join(", ")],
     ["Schedule Requirement", lead.customer_schedule_requirements],
     ["Scheduled For", [lead.scheduled_date, lead.scheduled_time_start, lead.scheduled_time_end].filter(Boolean).join(" · ")],
