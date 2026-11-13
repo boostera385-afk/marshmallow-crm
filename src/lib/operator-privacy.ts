@@ -8,9 +8,12 @@ import type { AppRole } from "@/types";
  *
  * The location comes from the server-computed `location_label` field
  * (migration 20261203000000_opr_location_only), which never contains street text.
- * Hold-alert snapshots are redacted on the server. Lead rows are still readable by
- * Operators in the database, so every Operator screen must pass leads through
- * redactLeadForOperator before rendering.
+ * Hold-alert snapshots are redacted on the server, and since migration
+ * 20261216000000_operator_safe_leads_api a plain Operator can no longer read
+ * `leads` directly at all (src/lib/operator-safe-leads.ts calls the SECURITY
+ * DEFINER function that nulls these fields at the source). This client-side
+ * redaction stays as defense in depth — every Operator screen must still pass
+ * leads through redactLeadForOperator before rendering.
  */
 export function isLocationOnlyOperator(role: AppRole | null | undefined): boolean {
   return role === "opr";

@@ -1,4 +1,5 @@
-import { redactLeadForOperator, withOperatorLocation } from "@/lib/operator-privacy";
+import { redactLeadForOperator, withOperatorLocation, isLocationOnlyOperator } from "@/lib/operator-privacy";
+import { fetchOperatorSafeLeads } from "@/lib/operator-safe-leads";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { selectWithAiTagColumn } from "@/lib/lead-optional-columns";
@@ -324,6 +325,29 @@ export default function LeadsPage() {
     const startedAt = Date.now();
     if (!isBackground) setLoading(true);
 
+    // A plain Operator cannot read `leads` directly (RESTRICTIVE policy, see
+    // migration 20261216000000) — the server-side safe projection already
+    // returns their complete, small visible set in one call, so the paged
+    // index read below does not apply to this role.
+    if (isLocationOnlyOperator(role)) {
+      try {
+        const full = await fetchOperatorSafeLeads();
+        if (gen !== leadsLoadGenRef.current) return;
+        setLeads(full);
+        if (!isBackground) setLoading(false);
+        leadsCursorRef.current = leadsCursor(full);
+        markFullLoad(`${role}:${user.id}`, startedAt);
+        markVisibilityCheck(`${role}:${user.id}`, startedAt);
+        void writeLeadsCache(`${role}:${user.id}`, full, startedAt);
+      } catch (err) {
+        if (gen !== leadsLoadGenRef.current) return;
+        toast.error(err instanceof Error ? err.message : "Failed to load leads");
+        setLeads([]);
+        if (!isBackground) setLoading(false);
+      }
+      return;
+    }
+
     // Page through the WHOLE table — PostgREST caps a single response at 1000
     // rows, so we keep fetching pages until one comes back short. Every lead is
     // loaded (no cap), and the list is only shown once the full set is in hand,
@@ -378,6 +402,12 @@ export default function LeadsPage() {
    */
   const fetchLeadChanges = useCallback(async () => {
     if (!user || !role) return;
+    // The Operator-safe set is small and already complete each call; no delta
+    // cursor is worth maintaining for it.
+    if (isLocationOnlyOperator(role)) {
+      await fetchLeads(true);
+      return;
+    }
     const cursor = leadsCursorRef.current;
     if (!cursor || needsFullReconcile(getLastFullLoad(`${role}:${user.id}`), Date.now(), isServerLoadRaised())) {
       await fetchLeads(true);
@@ -538,7 +568,13 @@ export default function LeadsPage() {
     };
 
     // Timer turns skip while the server is overloaded; returning to the tab still refreshes.
-    const intervalId = setInterval(() => { if (!isBackgroundPollPaused()) refresh(); }, 60000);
+    // A plain Operator has no realtime channel at all (see the subscription
+    // effect above), so this is their only refresh path and runs much more
+    // often — their visible set is tiny (untagged urgent leads only).
+    const intervalId = setInterval(
+      () => { if (!isBackgroundPollPaused()) refresh(); },
+      isLocationOnlyOperator(role) ? 15000 : 60000,
+    );
     const onVisibility = () => {
       if (document.visibilityState === "visible") refresh();
     };
@@ -564,6 +600,10 @@ export default function LeadsPage() {
   // Realtime subscription for leads table updates & Activate Customer chime
   useEffect(() => {
     if (!user || !role) return;
+    // A plain Operator's RESTRICTIVE policy on `leads` also blocks realtime's
+    // RLS check, so this channel would never deliver anything for them —
+    // polling (fetchLeadChanges, below) is their refresh path instead.
+    if (isLocationOnlyOperator(role)) return;
 
     // Shared per-tab leads channel (src/lib/realtime.ts): same events, instantly.
     const unsubscribe = subscribeToLeadChanges(
@@ -745,6 +785,15 @@ export default function LeadsPage() {
   const [pageRowsLoading, setPageRowsLoading] = useState(false);
 
   const loadPagedLeadRows = useCallback(async (ids: string[]) => {
+    // The Operator-safe set already carries every column the card needs
+    // (fetchLeads/fetchLeadChanges above) — no second fetch, and no direct
+    // `leads` read, which this role's RESTRICTIVE policy would deny anyway.
+    if (isLocationOnlyOperator(role)) {
+      const map: Record<string, Lead> = {};
+      for (const lead of leads) if (ids.includes(lead.id)) map[lead.id] = lead;
+      setPageRows(map);
+      return;
+    }
     setPageRowsLoading(true);
     try {
       const { data, error } = await selectWithAiTagColumn(withOperatorLocation(LEAD_LIST_COLUMNS, role), (columns) => supabase
@@ -763,7 +812,7 @@ export default function LeadsPage() {
     } finally {
       setPageRowsLoading(false);
     }
-  }, [role]);
+  }, [role, leads]);
 
   // Re-hydrate on page change, keeping the previous rows in state so pagination
   // never paints a half-loaded card.
@@ -961,6 +1010,32 @@ export default function LeadsPage() {
 
   const refreshUrgentTable = useCallback(async () => {
     if (!user || !role) return;
+
+    // A plain Operator cannot read `leads` directly, and their main list
+    // (fetchLeads/fetchLeadChanges above) is already exactly this urgent/
+    // untagged set via get_operator_safe_leads(), with every hidden column
+    // already null — reuse it instead of a second query. No AI-status badge
+    // (lead_ai_statuses) for this role; it is a display-only triage aid, not
+    // business-critical, and not worth a second round trip for.
+    if (isLocationOnlyOperator(role)) {
+      const next: UrgentRow[] = leads
+        .filter((l) => l.status === "urgent_job")
+        .sort((a, b) => (b.urgent_at ?? "").localeCompare(a.urgent_at ?? "") || (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+        .map((l) => ({
+          id: l.id, job_id: l.job_id, customer_name: l.customer_name, customer_phone: l.customer_phone,
+          service_type: l.service_type, city: l.city, state: l.state, address: l.address, zip_code: l.zip_code,
+          urgent_at: l.urgent_at, created_at: l.created_at, customer_schedule_requirements: l.customer_schedule_requirements,
+          terms: l.terms, location_label: l.location_label,
+        }));
+      setUrgentTableLeads((prev) => {
+        if (prev.length === next.length && prev.every((p, i) => p.id === next[i].id && p.urgent_at === next[i].urgent_at && p.terms === next[i].terms)) {
+          return prev;
+        }
+        return next;
+      });
+      return;
+    }
+
     let q = supabase
       .from("leads")
       .select(withOperatorLocation(URGENT_TABLE_COLUMNS, role) + ", lead_ai_statuses(status, checked_at)")
@@ -985,7 +1060,7 @@ export default function LeadsPage() {
       }
       return next;
     });
-  }, [user, role]);
+  }, [user, role, leads]);
   refreshUrgentRef.current = refreshUrgentTable;
 
   // Most recent AI-status check across the urgent leads — shown as a freshness
@@ -1014,6 +1089,9 @@ export default function LeadsPage() {
 
   const [urgentNeedsCxReply, setUrgentNeedsCxReply] = useState<UrgentRow[]>([]);
 
+  // A plain Operator's rows always have customer_phone = null (see
+  // get_operator_safe_leads()), so the `continue` below naturally skips every
+  // one of them — this indicator is unavailable for that role, not broken.
     const checkCxReplies = useCallback(async () => {
     if (urgentTableLeads.length === 0) {
       setUrgentNeedsCxReply([]);

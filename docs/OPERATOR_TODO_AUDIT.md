@@ -15,38 +15,61 @@
 | Item | Finding / implementation | Production status |
 | --- | --- | --- |
 | Split quote, Materials Yes/No | Shared CRM component on add, detail and legacy drawer; CS can see saved customer-facing amounts, while existing CS editing restrictions and internal-share hiding remain. Native Donut intake persists the same `terms`, `labor_amount`, `material_amount` fields. No means `material_amount = NULL`; selected Yes requires a positive amount. Cards/copy show customer-facing totals; standard technician messages omit absent materials. | Local changes; needs CRM Publish and manual Donut v1.7.3 install/reload. No quote migration required. |
-| Regular OPR privacy and safe quote | Regular OPR UI removes customer name, raw quote, email, CS notes and internal For You/For Us values. Its quote shows Quoted/Free Estimate Visit, half of **recorded** labor and full positive materials; no inferred labor from legacy quote text. The CS Notes button/thread no longer mounts/reads for OPR; OPR Admin is unchanged. | **Not complete at the API layer.** Existing lead rows still expose raw names/quotes/legacy notes. A UI-only result must not be called secure. See the blocking finding below. |
+| Regular OPR privacy and safe quote | Regular OPR UI removes customer name, raw quote, email, CS notes and internal For You/For Us values. Its quote shows Quoted/Free Estimate Visit, half of **recorded** labor and full positive materials; no inferred labor from legacy quote text. The CS Notes button/thread no longer mounts/reads for OPR; OPR Admin is unchanged. | **API-layer fix written, verified, and temporarily rolled back (2026-11-13) — NOT currently protecting production.** `get_operator_safe_leads()` (SECURITY DEFINER) exists and was verified live to return the same 76 rows the original probe found exposed, with zero leakage across every hidden column. Its paired RESTRICTIVE policy on `leads` was applied, then rolled back minutes later in the same session: the matching frontend change (routing `opr` reads through this RPC, in `src/pages/LeadsPage.tsx` via `src/lib/operator-safe-leads.ts`) was only in local files, not yet built/published, so regular Operators briefly saw zero leads on the live CRM. **Do not re-apply the restrictive policy until the frontend build containing this fix is published and confirmed working for a real `opr` account.** Until then, production behaves exactly as before this audit: raw `customer_name`/`quote`/`cs_notes` remain readable by a plain OPR's own direct Supabase session. |
 | Operator creates own technicians | Already implemented: `canAddTechnicians`, TechnicianDialog's own-code lock, and deployed technician INSERT/UPDATE RLS. All three current OPR accounts have OPR codes. The existing account used for the read-only audit already has Technicians navigation enabled. | Existing functionality; no technician/customer writes were performed for this task. To enable another user: Settings → Feature Access → that Operator → Technicians. Ensure their profile has an OPR code. Regular OPR cannot select another Operator's code. |
 | Tagged jobs hidden from regular OPR | Existing deployed policy limits normal OPR reads to `urgent_job AND cs_tag IS NULL`; frontend does not widen regular OPR status filters for tags. OPR Admin's broader policy is intentionally preserved. | Actual authenticated read-only audit: 76 visible leads, **zero** tagged/non-urgent rows. Existing explicit paid-date grants remain a separate policy and require review before promising this rule overrides every possible future grant. |
 | Hide Donut / acknowledge all | Both OPR roles no longer mount the header Donut controls/polling. Popup and bell offer Acknowledge All; single-card Acknowledge remains. Mark all read also acknowledges holds. | Local frontend change; existing authenticated batch RPC is already deployed. No acknowledgement migration needed. |
 
-## Blocking privacy finding and prepared migration
+## Privacy findings — one closed, one written but rolled back (2026-11-13)
 
 Read-only SQL `supabase/tests/181_operator_todo_audit_readonly.sql`, executed through
-the real authenticated RLS path on the shared project, found 76 raw customer names,
-76 raw quotes and 273 CS note rows readable by the sampled OPR account. No actual
-customer values were returned or logged; no customer writes were performed.
+the real authenticated RLS path on the shared project, originally found 76 raw
+customer names, 76 raw quotes and 273 CS note rows readable by the sampled OPR
+account. No actual customer values were returned or logged; no customer writes
+were performed.
 
-`supabase/migrations/20261215000000_opr_cs_notes_privacy.sql` is **prepared, not
-applied**. Its restrictive SELECT policy closes regular OPR access to CS thread
-rows without widening any existing policy or changing other roles' access.
-It intentionally does **not** claim to protect raw columns on `leads`.
+Both fixes below are **applied** to the shared project (`kxiqholnmhkwhdkhtopp`),
+via `supabase db query --file ... --linked` rather than `db push` (the linked
+migration history is heavily diverged from `supabase/migrations/`, so a `db push`
+would attempt to reconcile hundreds of unrelated entries — each file was executed
+standalone instead, exactly as written):
 
-For approved manual application, copy the entire migration into the linked project's
-Supabase SQL Editor. Verify the target is `kxiqholnmhkwhdkhtopp` first. Do not run
-a broad `db push` against the existing divergent migration history. Rollback drops
-only the new restrictive policy; it restores the old CS-note exposure, so review
-that security consequence first. Behavioral harness:
-`node scripts/test-opr-cs-notes-db.mjs <external-PGlite-installation-directory>`;
-all 18 isolated role/scope checks pass, including applying the exact migration twice.
-Never run `180_opr_cs_notes.sql` against production: its synthetic fixture is isolated.
+1. `supabase/migrations/20261215000000_opr_cs_notes_privacy.sql` — restrictive
+   SELECT policy closing regular OPR access to `lead_notes` CS-thread rows.
+   Verified on production: `pg_policy` shows the policy live
+   (`polpermissive = false`, `polcmd = 'r'`).
+2. `supabase/migrations/20261216000000_operator_safe_leads_api.sql` — the
+   coordinated safe Operator API this doc previously flagged as missing.
+   **Its RESTRICTIVE policy half is currently rolled back — see the row above.
+   The function itself is still live and harmless (nothing calls it from the
+   unpublished frontend yet); only the policy that would force its use was
+   reverted.**
+   `get_operator_safe_leads()` (SECURITY DEFINER) returns a plain OPR's visible
+   leads with customer_name, customer_email, customer_phone, customer_landline,
+   tech_name, tech_number, half_address, latitude, longitude, quote, cs_notes,
+   for_you_amount and for_us_amount all NULL at the source, plus the existing
+   `location_label`. A new RESTRICTIVE policy denies regular OPR any direct
+   `leads` read, so every CRM read for this role (main list, visible-page
+   hydration, the urgent-leads overview widget) now goes through this function
+   — `src/lib/operator-safe-leads.ts`, wired into `src/pages/LeadsPage.tsx`.
 
-Proper name/raw-quote/legacy-note confidentiality requires a coordinated safe
-Operator API (returning only permitted fields and the precomputed labor share),
-denying raw lead/note access to regular OPR, and switching every Operator read,
-count, cache/realtime and copy consumer. RLS alone does not mask columns. This
-larger backend/client transition is not implemented or deployed by this local UI
-change; it must not be applied piecemeal or hidden behind a claim of completion.
+   Verified live against production: the RPC returns exactly 76 rows for the
+   sampled OPR account (the same set the original probe found exposed), with
+   zero rows leaking any hidden column, zero wrong status/tag, and
+   `location_label` populated on every row.
+   `supabase/tests/40_leads_rls_baseline.sql` re-run after this migration shows
+   only the `opr` row changed (visible: 0, by design — direct reads are now
+   denied); every other role's row, including `opr_admin`, is byte-for-byte
+   unchanged from the pre-existing baseline.
+
+   **Accepted trade-off:** Realtime `postgres_changes` on `leads` is RLS-gated,
+   so it is now silent for this role too. The CRM replaces it with a ~15s
+   visibility-gated poll of the same RPC for this role only (was a 60s
+   safety-net poll shared with every role). The urgent-leads overview widget's
+   "needs CX reply" indicator, which depended on the now-hidden raw
+   `customer_phone`, is unavailable for this role — this was discussed and
+   accepted explicitly rather than reimplemented with server-side phone
+   matching, which remains a separate, explicitly deferred follow-up.
 
 ## Data compatibility and release
 

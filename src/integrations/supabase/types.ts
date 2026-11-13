@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.4"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       activity_logs: {
@@ -3197,6 +3222,73 @@ export type Database = {
       get_lead_copy_access: { Args: never; Returns: boolean }
       get_lead_copy_settings: { Args: never; Returns: Json }
       get_operator_hold_alerts: { Args: never; Returns: Json }
+      get_operator_safe_leads: {
+        Args: never
+        Returns: {
+          address: string
+          amount: number
+          assigned_cs: string
+          booked_at: string
+          cancellation_reason: string
+          city: string
+          coverage_area_label: string
+          coverage_checked_at: string
+          coverage_level: string
+          coverage_tech_count: number
+          created_at: string
+          created_by: string
+          created_by_name: string
+          cs_notes: string
+          cs_tag: string
+          cs_tag_source: string
+          customer_email: string
+          customer_landline: string
+          customer_name: string
+          customer_phone: string
+          customer_schedule_requirements: string
+          direction: string
+          expected_completion_date: string
+          for_us_amount: number
+          for_you_amount: number
+          general_notes: string
+          half_address: string
+          id: string
+          job_id: string
+          labor_amount: number
+          last_edited_at: string
+          last_edited_by: string
+          last_edited_by_name: string
+          latitude: number
+          location_label: string
+          longitude: number
+          manual_entry: boolean
+          material_amount: number
+          nearby_areas: Json
+          number_name: string
+          org_id: string
+          payment_amount: number
+          payment_screenshot_url: string
+          processor_notes: string
+          quote: string
+          quote_requested_by: string
+          reference_name: string
+          scheduled_date: string
+          scheduled_time_end: string
+          scheduled_time_start: string
+          service_details: string
+          service_type: string
+          show_quote_to_opr: boolean
+          source_url: string
+          state: string
+          status: string
+          tech_name: string
+          tech_number: string
+          terms: string
+          updated_at: string
+          urgent_at: string
+          zip_code: string
+        }[]
+      }
       get_opr_codes_summary: {
         Args: never
         Returns: {
@@ -3870,6 +3962,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: [

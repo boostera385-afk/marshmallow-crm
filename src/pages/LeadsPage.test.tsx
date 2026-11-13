@@ -6,6 +6,7 @@ import LeadsPage from "./LeadsPage";
 import { LEADS_DELTA_LIMIT, LEADS_FULL_RECONCILE_MS, LEADS_VISIBILITY_CHECK_MS, resetLeadsSyncState } from "@/lib/leads-sync";
 import { OVERLOAD_BASE_COOLDOWN_MS, OVERLOAD_TRIP_COUNT, recordOverloadResponse, resetOverloadGuard, setServerLoadLevel } from "@/lib/overload-guard";
 import { supabase } from "@/integrations/supabase/client";
+import { subscribeToLeadChanges } from "@/lib/realtime";
 import type { ComponentProps } from "react";
 import type LeadCard from "@/components/leads/LeadCard";
 
@@ -79,6 +80,18 @@ function respond(read: Read) {
   if (read.table === "leads" && byIds) {
     return Promise.resolve({ data: (byIds.args[1] as string[]).map((id) => ({ id, status: "new", created_at: "2026-11-01T00:00:00.000Z" })), error: null });
   }
+  // A plain Operator's RESTRICTIVE policy denies direct `leads` reads — every
+  // read above is unreachable for that role in the real app. This simulates
+  // the server-side safe projection (get_operator_safe_leads()) it uses instead.
+  if (read.table === "rpc:get_operator_safe_leads") {
+    // "new" here (not the real RPC's actual "urgent_job") only to avoid
+    // exercising the unrelated nearby-urgent proximity path in this test file.
+    const data = Array.from({ length: state.totalLeads }, (_, i) => ({
+      id: `lead-${i}`, status: "new", cs_tag: null,
+      created_at: "2026-11-01T00:00:00.000Z", updated_at: "2026-11-09T12:00:00.000Z",
+    }));
+    return Promise.resolve({ data, error: null });
+  }
   return Promise.resolve({ data: [], error: null, count: 0 });
 }
 
@@ -101,7 +114,7 @@ vi.mock("@/integrations/supabase/client", () => {
   return {
     supabase: {
       from: builder,
-      rpc: () => builder("rpc"),
+      rpc: (fn: string) => builder(`rpc:${fn}`),
       channel,
       removeChannel: () => Promise.resolve(),
       functions: { invoke: () => Promise.resolve({ data: null, error: null }) },
@@ -128,6 +141,10 @@ vi.mock("@/lib/leadsCache", () => ({
   writeLeadsCache: async (key: string, leads: unknown[], savedAt?: number) => { state.cacheWrites.push({ key, count: leads.length, savedAt }); },
 }));
 vi.mock("@/lib/zipCentroids", () => ({ preloadZipDataset: () => Promise.resolve() }));
+vi.mock("@/lib/realtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/realtime")>();
+  return { ...actual, subscribeToLeadChanges: vi.fn(actual.subscribeToLeadChanges) };
+});
 vi.mock("sonner", () => ({ toast: { error: state.toastError, success: vi.fn(), info: vi.fn() } }));
 // Record the card's existing fallback contract: without page metadata it starts
 // notes, an exact photo count, photo paths, and a pending cancellation on mount.
@@ -173,6 +190,7 @@ beforeEach(() => {
   state.pendingMetadata = [];
   state.metadataRows = {};
   state.metadataErrors = {};
+  vi.mocked(subscribeToLeadChanges).mockClear();
   localStorage.removeItem("leadsViewMode");
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 });
@@ -489,5 +507,51 @@ describe("Leads page: leads that leave the user's view", () => {
     }
     expect(idReads()).toHaveLength(0);
     expect(deltaReads().length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe("Leads page: plain Operator safe reads", () => {
+  const rpcReads = () => state.reads.filter((r) => r.table === "rpc:get_operator_safe_leads");
+
+  it("loads through the safe RPC instead of any direct `leads` read, for opr", async () => {
+    state.role = "opr";
+    state.totalLeads = 3;
+    await mount();
+    expect(rpcReads()).toHaveLength(1);
+    expect(fullReads()).toHaveLength(0);
+    expect(deltaReads()).toHaveLength(0);
+    expect(screen.queryAllByTestId("lead-card")).toHaveLength(3); // rendered straight from the RPC rows, no second hydration read
+    expect(state.cacheWrites).toEqual([{ key: "opr:user-1", count: 3, savedAt: Date.now() - 10 }]);
+  });
+
+  it("does not open the realtime `leads` channel for opr", async () => {
+    state.role = "opr";
+    await mount();
+    expect(subscribeToLeadChanges).not.toHaveBeenCalled();
+  });
+
+  it("opens the realtime `leads` channel for every other role", async () => {
+    state.role = "admin";
+    await mount();
+    expect(subscribeToLeadChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-polls the safe RPC every ~15s for opr, not the 60s shared with every other role", async () => {
+    state.role = "opr";
+    state.totalLeads = 1;
+    await mount();
+    state.reads = [];
+    await advance(15_000);
+    expect(rpcReads().length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not re-poll a non-Operator role at 15s (60s cadence instead)", async () => {
+    state.role = "admin";
+    state.cache = freshCache();
+    await mount();
+    state.reads = [];
+    await advance(15_000);
+    expect(deltaReads()).toHaveLength(0);
+    expect(fullReads()).toHaveLength(0);
   });
 });
