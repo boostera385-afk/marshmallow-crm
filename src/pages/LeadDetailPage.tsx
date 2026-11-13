@@ -54,6 +54,8 @@ import { getChangeableStatuses, canChangeStatus } from "@/lib/constants";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
+import QuoteBreakdownFields from "@/components/leads/QuoteBreakdownFields";
+import { hasMaterialCharge, validateQuoteBreakdown } from "@/lib/quote-breakdown";
 import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import StatusBadge from "@/components/leads/StatusBadge";
 import LeadCoverageBadge from "@/components/leads/LeadCoverageBadge";
@@ -215,6 +217,7 @@ export default function LeadDetailPage() {
     terms: "" as "" | "free_estimate" | "quoted",
     labor_amount: "",
     material_amount: "",
+    materials_included: false,
     for_you_amount: "",
     for_us_amount: "",
 
@@ -314,6 +317,7 @@ export default function LeadDetailPage() {
       terms: lead.terms || "",
       labor_amount: lead.labor_amount != null ? String(lead.labor_amount) : "",
       material_amount: lead.material_amount != null ? String(lead.material_amount) : "",
+      materials_included: hasMaterialCharge(lead.material_amount),
       for_you_amount: lead.for_you_amount != null ? String(lead.for_you_amount) : "",
       for_us_amount: lead.for_us_amount != null ? String(lead.for_us_amount) : "",
 
@@ -710,6 +714,10 @@ export default function LeadDetailPage() {
   };
 
   const handleSave = async () => {
+    if (!hideProcessorDetails || isNew) {
+      const quoteError = validateQuoteBreakdown({ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included });
+      if (quoteError) { toast.error(quoteError); return; }
+    }
     if (!user) return;
     if (isOpr) {
       toast.error("Operators cannot edit leads");
@@ -814,14 +822,14 @@ export default function LeadDetailPage() {
 
       tech_name: !hideProcessorDetails ? form.tech_name || null : (originalLead?.tech_name ?? null),
       tech_number: !hideProcessorDetails ? form.tech_number || null : (originalLead?.tech_number ?? null),
-      terms: !hideProcessorDetails ? form.terms || null : (originalLead?.terms ?? null),
+      terms: !hideProcessorDetails || isNew ? form.terms || null : (originalLead?.terms ?? null),
       labor_amount:
-        !hideProcessorDetails
-          ? parseAmount(form.labor_amount)
+        !hideProcessorDetails || isNew
+          ? (form.terms === "quoted" ? parseAmount(form.labor_amount) : null)
           : (originalLead?.labor_amount ?? null),
       material_amount:
-        !hideProcessorDetails
-          ? parseAmount(form.material_amount)
+        !hideProcessorDetails || isNew
+          ? (form.terms === "quoted" && form.materials_included ? parseAmount(form.material_amount) : null)
           : (originalLead?.material_amount ?? null),
       for_you_amount:
         !hideProcessorDetails
@@ -1204,7 +1212,7 @@ export default function LeadDetailPage() {
     <div className="space-y-1.5">
       <Label className={labelClass}>{label}</Label>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Select value={form[`${prefix}_hour` as keyof typeof form]} onValueChange={(v) => update(`${prefix}_hour`, v)}>
+        <Select value={form[`${prefix}_hour`]} onValueChange={(v) => update(`${prefix}_hour`, v)}>
           <SelectTrigger className="h-10 w-[72px] border-border/60 bg-background/90">
             <SelectValue />
           </SelectTrigger>
@@ -1220,7 +1228,7 @@ export default function LeadDetailPage() {
         <span className="text-muted-foreground/50">:</span>
 
         <Select
-          value={form[`${prefix}_minute` as keyof typeof form]}
+          value={form[`${prefix}_minute`]}
           onValueChange={(v) => update(`${prefix}_minute`, v)}
         >
           <SelectTrigger className="h-10 w-[72px] border-border/60 bg-background/90">
@@ -1235,7 +1243,7 @@ export default function LeadDetailPage() {
           </SelectContent>
         </Select>
 
-        <Select value={form[`${prefix}_ampm` as keyof typeof form]} onValueChange={(v) => update(`${prefix}_ampm`, v)}>
+        <Select value={form[`${prefix}_ampm`]} onValueChange={(v) => update(`${prefix}_ampm`, v)}>
           <SelectTrigger className="h-10 w-[76px] border-border/60 bg-background/90">
             <SelectValue />
           </SelectTrigger>
@@ -1554,7 +1562,7 @@ export default function LeadDetailPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className={labelClass}>Quote</Label>
+                  <Label className={labelClass}>Quote Notes</Label>
                   <Input
                     value={form.quote}
                     onChange={(e) => update("quote", e.target.value)}
@@ -1618,6 +1626,8 @@ export default function LeadDetailPage() {
               )}
             </CollapsibleContent>
           </Collapsible>
+
+          <QuoteBreakdownFields readOnly={hideProcessorDetails && !isNew} value={{ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included }} onChange={(value) => setForm((previous) => ({ ...previous, terms: value.terms, labor_amount: value.laborAmount, material_amount: value.materialAmount, materials_included: value.includesMaterials }))} />
 
           {!hideProcessorDetails && (
             <Collapsible open={processorOpen} onOpenChange={setProcessorOpen}>
@@ -1688,52 +1698,16 @@ export default function LeadDetailPage() {
                   )}
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label className={labelClass}>Terms</Label>
-                  <Select value={form.terms} onValueChange={(v) => update("terms", v)} disabled={isOpr}>
-                    <SelectTrigger className={fieldClass}>
-                      <SelectValue placeholder="Select terms..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="free_estimate">Free Estimate Visit</SelectItem>
-                      <SelectItem value="quoted">Quoted</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
 
                 {form.terms === "quoted" && (
                   <div className="crm-lead-card-soft rounded-[22px] p-4 space-y-3 shadow-[0_18px_28px_-24px_rgba(59,130,246,0.12)] dark:shadow-none">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground/60">
-                      Quoted Details
+                      Internal Technician Share
                     </p>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div className="space-y-1.5">
-                        <Label className={labelClass}>Customer Labor ($)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={form.labor_amount}
-                          onChange={(e) => update("labor_amount", e.target.value)}
-                          className={fieldClass}
-                          readOnly={isOpr}
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className={labelClass}>Materials ($)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={form.material_amount}
-                          onChange={(e) => update("material_amount", e.target.value)}
-                          className={fieldClass}
-                          readOnly={isOpr}
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className={labelClass}>For You ($ incl. material)</Label>
+                        <Label className={labelClass}>{form.materials_included ? "For You ($ incl. material)" : "For You ($)"}</Label>
                         <Input
                           type="number"
                           step="0.01"

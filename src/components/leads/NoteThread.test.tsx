@@ -55,6 +55,22 @@ afterEach(() => {
 });
 
 describe("note polling request optimization", () => {
+  it("never fetches or displays a CS thread for regular OPR, while OPR Admin keeps access", async () => {
+    state.role = "opr";
+    const { rerender } = render(<NoteThread leadId="lead-1" noteType="cs" label="CS notes" />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_001); });
+    expect(state.reads).toHaveLength(0);
+    expect(screen.queryByText("CS notes")).not.toBeInTheDocument();
+    state.role = "opr_admin";
+    rerender(<NoteThread leadId="lead-1" noteType="cs" label="CS notes" />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(state.reads).toHaveLength(1);
+    // The thread heading is static; the note bubble enters with a motion opacity
+    // transition that fake timers do not drive. Render presence is what proves
+    // the fetched content is displayed, while the heading proves the thread.
+    expect(screen.getByText("CS notes")).toBeVisible();
+    expect(screen.getByText("Initial synthetic note")).toBeInTheDocument();
+  });
   it("pauses hidden polling, immediately catches up on return and keeps the 15-second visible cadence", async () => {
     render(<NoteThread leadId="lead-1" noteType="cs" label="CS notes" />);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });

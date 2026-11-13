@@ -21,6 +21,16 @@ afterEach(() => {
 });
 
 describe("complete lead copy action", () => {
+  it("copies CS-visible labor and optional materials even when legacy quote notes are empty", async () => {
+    auth.role = "customer_service";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(<CompleteLeadCopyButton lead={{ terms: "quoted", labor_amount: 200, material_amount: null, quote: "" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Complete Details" }));
+    await screen.findByRole("button", { name: "Copied" });
+    expect(writeText.mock.calls[0][0]).toContain("Quote: Quoted · Labor $200.00");
+    expect(writeText.mock.calls[0][0]).not.toMatch(/parts|materials/i);
+  });
   it("shows the enabled-by-default copy action with the full quote for opr_admin", async () => {
     auth.role = "opr_admin";
     const writeText = vi.fn().mockResolvedValue(undefined);

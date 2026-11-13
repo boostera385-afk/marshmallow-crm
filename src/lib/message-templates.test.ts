@@ -80,10 +80,11 @@ describe("technician message by terms (original wording restored)", () => {
     );
   });
 
-  it("shows $0 for amounts that are not filled in, as before", () => {
+  it("omits materials when no charge exists instead of inventing a $0 materials charge", () => {
     const text = message(lead({ labor_amount: null, material_amount: null, for_you_amount: null, for_us_amount: null }));
-    expect(text).toContain("Customer is agreed to pay ($0) total labor\n($0) FOR MATERIALS");
-    expect(text).toContain("For you: $0 labor including material\nFor us: $0 from total labor");
+    expect(text).toContain("Customer is agreed to pay ($0) total labor");
+    expect(text).not.toMatch(/material|parts/i);
+    expect(text).toContain("For you: $0 labor\nFor us: $0 from total labor");
   });
 
   it("uses the built-in message for leads with no terms", () => {

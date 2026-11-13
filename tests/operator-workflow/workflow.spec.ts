@@ -13,6 +13,7 @@ const savedLead = {
   scheduled_time_end: "15:00:00", created_by: USER_ID, created_at: "2026-10-12T05:00:00Z", updated_at: "2026-10-12T05:00:00Z",
   tech_name: "Synthetic Tech", tech_number: "5550100001", cs_tag: null, quote: "PRIVATE QUOTE", show_quote_to_opr: false,
   latitude: 25.76, longitude: -80.19, coverage_level: "good", coverage_tech_count: 12,
+  location_label: "Miami, FL 33101",
 };
 const snapshot = { ...savedLead, status: "scheduled", quote: null };
 
@@ -298,6 +299,94 @@ async function mockSession(page: Page, role: "admin" | "processor" | "customer_s
     }));
     localStorage.setItem("auth_verified_user_id", id);
   }, { id: USER_ID });
+}
+
+test("Operator Todo: CS sees split customer quote but not internal technician shares", async ({ page }) => {
+  await mockSession(page, "customer_service");
+  const quoted = { ...savedLead, terms: "quoted", labor_amount: 200, material_amount: 60, for_you_amount: 777, for_us_amount: 888 };
+  await page.route("**/rest/v1/leads*", (route) => route.fulfill({ json: route.request().headers().accept?.includes("application/vnd.pgrst.object+json") ? quoted : [quoted] }));
+  await page.goto(`/leads/${JOB_ID}`);
+  const quote = page.getByRole("region", { name: "Quote breakdown" });
+  await expect(quote.getByText("Labor Section", { exact: true })).toBeVisible();
+  await expect(quote.getByText("$200.00", { exact: true })).toBeVisible();
+  await expect(quote.getByText("$60.00", { exact: true })).toBeVisible();
+  await expect(quote.getByRole("spinbutton")).toHaveCount(0);
+  await expect(page.getByText("Internal Technician Share", { exact: true })).toHaveCount(0);
+  await page.goto("/leads");
+  await expect(page.getByText("Quoted · Labor $200.00 · Parts/Materials $60.00", { exact: true })).toBeVisible();
+});
+
+test("Operator Todo: Admin Materials No saves null and keeps labor unchanged", async ({ page }) => {
+  await mockSession(page, "admin");
+  let quoted: Record<string, unknown> = { ...savedLead, number_name: "Synthetic Line", terms: "quoted", labor_amount: 200, material_amount: 60 };
+  const writes: Record<string, unknown>[] = [];
+  await page.route("**/rest/v1/leads*", async (route) => {
+    if (route.request().method() === "PATCH") { writes.push(route.request().postDataJSON()); quoted = { ...quoted, ...writes.at(-1) }; }
+    await route.fulfill({ json: route.request().headers().accept?.includes("application/vnd.pgrst.object+json") ? quoted : [quoted] });
+  });
+  await page.goto(`/leads/${JOB_ID}`);
+  const quote = page.getByRole("region", { name: "Quote breakdown" });
+  await quote.getByRole("combobox", { name: "Parts/Materials charges?" }).click();
+  await page.getByRole("option", { name: "No", exact: true }).click();
+  await expect(quote.getByRole("spinbutton", { name: "Parts/Materials ($)", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Save Lead", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0]).toMatchObject({ labor_amount: 200, material_amount: null });
+});
+
+for (const role of ["opr", "opr_admin"] as const) {
+  test(`Operator Todo: ${role} has no Donut button; regular OPR sees only safe quote and no CS notes`, async ({ page }) => {
+    await mockSession(page, role);
+    const quoted = { ...savedLead, terms: "quoted", labor_amount: 200, material_amount: 60, show_quote_to_opr: true };
+    await page.route("**/rest/v1/leads*", (route) => route.fulfill({ json: route.request().headers().accept?.includes("application/vnd.pgrst.object+json") ? quoted : [quoted] }));
+    await page.goto("/leads");
+    await expect(page.getByText("MM-123", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Donut extension version and update instructions" })).toHaveCount(0);
+    if (role === "opr") {
+      await expect(page.getByText("Quoted · Labor $100.00 · Materials $60.00", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "CS", exact: true })).toHaveCount(0);
+      await expect(page.getByText("Synthetic Customer", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("PRIVATE QUOTE", { exact: true })).toHaveCount(0);
+    } else {
+      await expect(page.getByText("Synthetic Customer", { exact: true }).first()).toBeVisible();
+      await expect(page.getByRole("button", { name: "CS", exact: true }).first()).toBeVisible();
+    }
+  });
+
+  test(`Operator Todo: ${role} acknowledges one hold then all remaining holds in one batch`, async ({ page }) => {
+    await mockSession(page, role);
+    const holds = Array.from({ length: 4 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index + 10).padStart(12, "0")}`, lead_id: JOB_ID,
+      revision: REVISION_ID, reason: "scheduled", snapshot: { ...snapshot, job_id: `MM-HOLD-${index}` },
+      read: false, created_at: "2026-11-13T07:00:00Z",
+    }));
+    const actions: Record<string, unknown>[] = [];
+    await page.route("**/rest/v1/rpc/get_operator_hold_alerts", (route) => route.fulfill({ json: { observed_at: "2026-11-13T07:01:00Z", unread_count: holds.filter((item) => !item.read).length, alerts: holds } }));
+    await page.route("**/rest/v1/rpc/acknowledge_operator_hold_alert", async (route) => {
+      const args = route.request().postDataJSON(); actions.push(args);
+      const pairs = args.p_alerts || [{ id: args.p_id, revision: args.p_revision }];
+      let count = 0;
+      for (const hold of holds) if (!hold.read && pairs.some((pair: { id: string; revision: string }) => pair.id === hold.id && pair.revision === hold.revision)) { hold.read = true; count++; }
+      await route.fulfill({ json: count });
+    });
+    await page.goto("/leads");
+    const popup = page.getByRole("complementary", { name: "Operator job hold notifications" });
+    await expect(popup.getByRole("article")).toHaveCount(3);
+    await popup.getByRole("button", { name: "Acknowledge", exact: true }).first().click();
+    await expect.poll(() => holds.filter((item) => item.read).length).toBe(1);
+    if (role === "opr_admin") {
+      await expect(popup.getByRole("button", { name: "Acknowledge All", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Notifications", exact: true }).click();
+      await page.getByRole("button", { name: "Mark all read", exact: true }).click();
+    } else {
+      await popup.getByRole("button", { name: "Acknowledge All", exact: true }).click();
+    }
+    await expect(popup).not.toBeVisible();
+    expect(holds.every((item) => item.read)).toBe(true);
+    expect(actions).toHaveLength(2);
+    expect(actions[0].p_alerts).toBeNull();
+    expect(actions[1].p_alerts).toHaveLength(3);
+  });
 }
 
 for (const surface of ["card", "detail"] as const) {

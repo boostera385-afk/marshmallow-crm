@@ -37,6 +37,7 @@ export const holdInboxSchema = z.object({
   alerts: z.array(holdAlertSchema),
 });
 export type HoldAlert = z.infer<typeof holdAlertSchema>;
+export type HoldInbox = z.infer<typeof holdInboxSchema>;
 export type HoldSnapshot = z.infer<typeof holdSnapshotSchema>;
 export const HOLD_REASON_LABELS: Record<HoldAlert["reason"], string> = {
   ready_to_schedule: "Ready to Schedule",
@@ -79,7 +80,42 @@ export async function acknowledgeHoldAlert(alert: Pick<HoldAlert, "id" | "revisi
   })) > 0;
 }
 export async function acknowledgeHoldInbox(alerts: Pick<HoldAlert, "id" | "revision">[]) {
-  await call("acknowledge_operator_hold_alert", {
+  if (!alerts.length) return 0;
+  return z.number().int().nonnegative().parse(await call("acknowledge_operator_hold_alert", {
     p_id: null, p_revision: null, p_alerts: alerts.map(({ id, revision }) => ({ id, revision })),
-  });
+  }));
+}
+
+const HOLD_REVISION_PAGE_SIZE = 1000;
+const holdRevisionsSchema = z.array(holdAlertSchema.pick({ id: true, revision: true }));
+
+/** One explicit action, one revision-checked batch write. The normal inbox is
+ * capped at 100 cards; read only ids/revisions on demand if more are pending.
+ * Never fetch customer snapshots for this action or acknowledge a later revision.
+ */
+export async function acknowledgeAllHoldAlerts(userId: string, inbox: HoldInbox) {
+  let revisions = inbox.alerts.filter((alert) => !alert.read).map(({ id, revision }) => ({ id, revision }));
+  if (inbox.unread_count > revisions.length) {
+    revisions = [];
+    let cursor: string | undefined;
+    for (;;) {
+      let query = supabase.from("lead_hold_alerts").select("id, revision")
+        .eq("user_id", userId).eq("read", false).lte("created_at", inbox.observed_at)
+        .order("id", { ascending: true }).limit(HOLD_REVISION_PAGE_SIZE);
+      if (cursor) query = query.gt("id", cursor);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      const page = holdRevisionsSchema.parse(data).map(({ id, revision }) => {
+        if (!id || !revision) throw new Error("Invalid hold alert revision");
+        return { id, revision };
+      });
+      revisions.push(...page);
+      if (page.length < HOLD_REVISION_PAGE_SIZE) break;
+      const next = page[page.length - 1].id;
+      if (next === cursor) throw new Error("Hold alert pagination did not advance. Please refresh and retry.");
+      cursor = next;
+    }
+  }
+  const applied = await acknowledgeHoldInbox(revisions);
+  return { requested: revisions.length, applied };
 }

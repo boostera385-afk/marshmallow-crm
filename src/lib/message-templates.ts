@@ -81,9 +81,9 @@ Customer Address: {customer_address}
 Service: {service_details}
 
 Customer is agreed to pay ($\{labor_amount_or_zero}) total labor
-($\{material_amount_or_zero}) FOR MATERIALS
+{materials_line}
 
-For you: $\{for_you_amount_or_zero} labor including material
+For you: $\{for_you_amount_or_zero} labor{labor_material_suffix}
 For us: $\{for_us_amount_or_zero} from total labor
 
 Job Scheduled for: {technician_schedule}
@@ -143,7 +143,7 @@ export const EDITABLE_TEMPLATE_INFO: Record<EditableTemplateKey, { label: string
 
 export const TEMPLATE_PLACEHOLDERS: Record<EditableTemplateKey, string[]> = {
   technician_message: ["customer_number", "customer_name", "customer_phone", "customer_address", "service_details", "schedule", "technician_schedule", "reference_line", "reference_block", "quote", "tech_name"],
-  technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "materials_line", "labor_material_suffix", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
   technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "technician_schedule", "reference_block", "quote", "tech_name"],
   check_template: ["tech_name", "service", "service_details", "area", "city", "state", "schedule_requirement", "quote"],
 };
@@ -244,5 +244,13 @@ export const renderLeadTemplate = (
     for_us_amount_or_zero: String(lead.for_us_amount ?? 0),
   };
 
-  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key: string) => values[key] ?? "");
+  const hasMaterials = lead.material_amount != null && Number.isFinite(lead.material_amount) && lead.material_amount > 0;
+  values.materials_line = hasMaterials ? `($${lead.material_amount}) FOR MATERIALS` : "";
+  values.labor_material_suffix = hasMaterials ? " including material" : "";
+  // Also support the former built-in text if it was saved in Settings. Do not
+  // delete arbitrary custom lines (which may contain other customer details).
+  const selected = hasMaterials ? template : template.split("\n")
+    .filter((line) => line.trim() !== "(${material_amount_or_zero}) FOR MATERIALS")
+    .map((line) => line.replace("labor including material", "labor")).join("\n");
+  return selected.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key: string) => values[key] ?? "").replace(/\n{3,}/g, "\n\n");
 };

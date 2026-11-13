@@ -3,6 +3,7 @@ import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildCompleteLeadCopyText, copyTextToClipboard, type LeadCopyDetails } from "@/lib/lead-copy";
 import { operatorQuoteSummary } from "@/lib/operator-quote";
+import { customerQuoteSummary } from "@/lib/quote-breakdown";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -28,7 +29,10 @@ export default function CompleteLeadCopyButton({ lead, className }: CompleteLead
     // Estimate terms, half the labor amount and full materials (operator-quote.ts).
     // opr_admin is unrestricted here, same as everywhere else this asymmetry exists.
     const operatorSummary = role === "opr" ? operatorQuoteSummary(lead) : null;
-    const copyLead = role === "opr" ? { ...lead, quote: operatorSummary } : lead;
+    const summary = role === "opr" ? operatorSummary : customerQuoteSummary(lead);
+    const notes = lead.quote?.trim();
+    const quote = role === "opr" ? operatorSummary : [summary, notes && notes !== summary ? notes : null].filter(Boolean).join("\n");
+    const copyLead = { ...lead, quote };
     const includeQuote = role === "opr" ? operatorSummary != null : !isOperatorRole(role) || lead.show_quote_to_opr !== false;
     try {
       await copyTextToClipboard(buildCompleteLeadCopyText(copyLead, includeQuote));

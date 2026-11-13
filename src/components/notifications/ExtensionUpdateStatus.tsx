@@ -7,8 +7,16 @@ import { Button } from "@/components/ui/button";
 import InstallExtensionDialog from "@/components/leads/InstallExtensionDialog";
 import { useExtensionRelease } from "@/hooks/useExtensionRelease";
 import { detectInstalledExtension, formatExtensionReleaseDate, isNewerExtension } from "@/lib/extension-release";
+import { isOperatorRole } from "@/lib/access";
 
 export default function ExtensionUpdateStatus() {
+  const { user, role } = useAuth();
+  // Do not mount release polling, detection or install/update dialogs for Operators.
+  if (!user || !role || isOperatorRole(role)) return null;
+  return <VisibleExtensionUpdateStatus />;
+}
+
+function VisibleExtensionUpdateStatus() {
   const { user, role, canAccess } = useAuth();
   const [open, setOpen] = useState(false);
   const { data: release } = useExtensionRelease();
@@ -30,6 +38,7 @@ export default function ExtensionUpdateStatus() {
       duration: 15000, action: { label: "Update instructions", onClick: () => setOpen(true) },
     });
     try { localStorage.setItem(key, "shown"); } catch { /* The persistent status button remains available. */ }
+    return () => { toast.dismiss(key); };
   }, [user, release, installed, isPending, eligible, outdated]);
 
   return <>

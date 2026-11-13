@@ -69,10 +69,10 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
   const canViewThread = useMemo(() => {
     if (isAdmin) return true;
     if (noteType === "general") return true;
-    if (noteType === "cs") return isCS || isCsAdmin || isProcessor || isOpr;
+    if (noteType === "cs") return role !== "opr" && (isCS || isCsAdmin || isProcessor || isOpr);
     if (noteType === "opr") return isProcessor || isOpr;
     return isProcessor;
-  }, [isAdmin, isCS, isCsAdmin, isProcessor, isOpr, noteType]);
+  }, [isAdmin, isCS, isCsAdmin, isProcessor, isOpr, role, noteType]);
 
   const canWriteThread = useMemo(() => {
     if (isAdmin) return true;

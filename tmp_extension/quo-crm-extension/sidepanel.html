@@ -354,11 +354,22 @@
               </div>
 
               <div id="quote-field" class="form-cell form-cell--quote" hidden>
-                <label class="cell-label">Quote Amount</label>
-                <div class="input-wrap input-wrap--currency">
-                  <span class="currency-symbol">$</span>
-                  <input type="text" name="quote" class="form-input form-input--currency" placeholder="0.00" />
-                </div>
+                <fieldset>
+                  <legend class="cell-label">Labor Section</legend>
+                  <label class="cell-label" for="quote-labor">Customer Labor ($)</label>
+                  <input id="quote-labor" type="number" name="laborAmount" min="0" step="0.01" class="form-input" placeholder="0.00" />
+                </fieldset>
+                <fieldset>
+                  <legend class="cell-label">Parts/Materials Section</legend>
+                  <label class="cell-label" for="quote-materials-choice">Parts/Materials charges?</label>
+                  <select id="quote-materials-choice" name="materialsIncluded" class="form-input"><option value="no">No</option><option value="yes">Yes</option></select>
+                  <div id="materials-amount-field" hidden>
+                    <label class="cell-label" for="quote-materials">Parts/Materials ($)</label>
+                    <input id="quote-materials" type="number" name="materialAmount" min="0.01" step="0.01" class="form-input" placeholder="0.00" />
+                  </div>
+                </fieldset>
+                <label class="cell-label" for="quote-notes">Quote Notes</label>
+                <input id="quote-notes" type="text" name="quote" class="form-input" placeholder="Additional quote details (optional)" />
               </div>
             </div>
 
@@ -508,6 +519,7 @@
     </div>
 
     <script src="supabase.js"></script>
+    <script src="quote-breakdown.js"></script>
     <script src="sidepanel.js"></script>
     <script src="release-status.js"></script>
     <script src="technician-workflow.js"></script>

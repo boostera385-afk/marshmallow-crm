@@ -89,6 +89,7 @@ import { saveLeadTag } from "@/lib/lead-tag-actions";
 import AiTagBadge from "@/components/leads/AiTagBadge";
 import { canSeeTechDetails, isOperatorRole } from "@/lib/access";
 import { operatorQuoteSummary } from "@/lib/operator-quote";
+import { customerQuoteSummary } from "@/lib/quote-breakdown";
 import BookingDateTimeDialog, { formatBookingCompact, isBookingExpired } from "./BookingDateTimeDialog";
 import AssignLeadToOperatorDialog from "./AssignLeadToOperatorDialog";
 import ActivateCustomerNoteDialog from "./ActivateCustomerNoteDialog";
@@ -948,7 +949,7 @@ function LeadCard({
           wrap: true,
         },
         ]
-      : []),
+      : [{ key: "customer_quote", label: "Quote", value: customerQuoteSummary(lead) ?? "", icon: DollarSign, wrap: true }]),
     // CS Admins never see technician details.
     ...(canSeeTechDetails(role)
       ? [
@@ -1856,7 +1857,7 @@ function LeadCard({
             hasNotes: hasNotes.general,
           })}
 
-          {(isCS || isCsAdmin || isProcessor || isAdmin || isOpr) &&
+          {role !== "opr" && (isCS || isCsAdmin || isProcessor || isAdmin || isOpr) &&
             renderCollapsible({
               open: csOpen,
               setOpen: setCsOpen,

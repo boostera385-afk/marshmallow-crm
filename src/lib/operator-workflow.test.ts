@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { acknowledgeHoldAlert, acknowledgeHoldInbox, fetchHoldInbox, fetchLeadCopyAccess, resolveLeadCopyAccess, setLeadCopyPermission } from "./operator-workflow";
-const mocks = vi.hoisted(() => ({ rpc: vi.fn() }));
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: mocks.rpc } }));
-beforeEach(() => mocks.rpc.mockReset());
+import { acknowledgeAllHoldAlerts, acknowledgeHoldAlert, acknowledgeHoldInbox, fetchHoldInbox, fetchLeadCopyAccess, resolveLeadCopyAccess, setLeadCopyPermission, type HoldInbox } from "./operator-workflow";
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: mocks.rpc, from: mocks.from } }));
+beforeEach(() => { mocks.rpc.mockReset(); mocks.from.mockReset(); });
 
 describe("copy access precedence", () => {
   it.each(["opr", "opr_admin"] as const)("enables %s by default", (role) => {
@@ -15,6 +15,63 @@ describe("copy access precedence", () => {
   it("retains Admin access and denies anonymous access", () => {
     expect(resolveLeadCopyAccess("admin", false, false)).toBe(true);
     expect(resolveLeadCopyAccess(null)).toBe(false);
+  });
+});
+
+describe("one-click complete hold acknowledgement", () => {
+  const inbox: HoldInbox = { observed_at: "2026-11-13T07:00:00Z", unread_count: 0, alerts: [] };
+  const revision = (index: number) => ({ id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, revision: "00000000-0000-4000-8000-000000000999" });
+  const mockPages = (pages: { data: unknown; error: { message: string } | null }[]) => {
+    const reads: Record<string, unknown>[] = [];
+    mocks.from.mockImplementation(() => {
+      const read: Record<string, unknown> = {};
+      reads.push(read);
+      const query = {
+        select: (value: string) => { read.select = value; return query; },
+        eq: (key: string, value: unknown) => { read[key] = value; return query; },
+        lte: (key: string, value: unknown) => { read[key] = value; return query; },
+        gt: (key: string, value: unknown) => { read[`after_${key}`] = value; return query; },
+        order: (key: string) => { read.order = key; return query; },
+        limit: (value: number) => { read.limit = value; return query; },
+        then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => Promise.resolve(pages.shift()).then(resolve, reject),
+      };
+      return query;
+    });
+    return reads;
+  };
+
+  it("does no read or write for an empty inbox", async () => {
+    expect(await acknowledgeAllHoldAlerts("user-1", inbox)).toEqual({ requested: 0, applied: 0 });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it("reuses loaded revisions for the common case, with one batch write", async () => {
+    const alerts = [{ ...revision(1), read: false }, { ...revision(2), read: true }] as HoldInbox["alerts"];
+    mocks.rpc.mockResolvedValue({ data: 1, error: null });
+    expect(await acknowledgeAllHoldAlerts("user-1", { ...inbox, unread_count: 1, alerts })).toEqual({ requested: 1, applied: 1 });
+    expect(mocks.from).not.toHaveBeenCalled();
+    expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith("acknowledge_operator_hold_alert", { p_id: null, p_revision: null, p_alerts: [revision(1)] });
+  });
+
+  it("covers more than 100 cards and 1000 rows without reading any snapshots or writing per alert", async () => {
+    const first = Array.from({ length: 1000 }, (_, index) => revision(index + 1));
+    const second = [revision(1001), revision(1002)];
+    const reads = mockPages([{ data: first, error: null }, { data: second, error: null }]);
+    mocks.rpc.mockResolvedValue({ data: 1002, error: null });
+    expect(await acknowledgeAllHoldAlerts("user-1", { ...inbox, unread_count: 1002 })).toEqual({ requested: 1002, applied: 1002 });
+    expect(reads).toEqual([
+      { select: "id, revision", user_id: "user-1", read: false, created_at: inbox.observed_at, order: "id", limit: 1000 },
+      { select: "id, revision", user_id: "user-1", read: false, created_at: inbox.observed_at, order: "id", limit: 1000, after_id: first[999].id },
+    ]);
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc.mock.calls[0][1].p_alerts).toEqual([...first, ...second]);
+  });
+
+  it("makes no acknowledgement write if the complete snapshot read fails", async () => {
+    mockPages([{ data: null, error: { message: "Read denied" } }]);
+    await expect(acknowledgeAllHoldAlerts("user-1", { ...inbox, unread_count: 101 })).rejects.toThrow("Read denied");
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 });
 

@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import { playAssignmentSound } from '@/lib/notification-sound';
 import { isOperatorRole, canAccessNotifications } from '@/lib/access';
 import { useHoldInbox } from '@/hooks/useOperatorWorkflow';
-import { acknowledgeHoldAlert, acknowledgeHoldInbox, HOLD_REASON_LABELS, type HoldAlert } from '@/lib/operator-workflow';
+import { HOLD_REASON_LABELS } from '@/lib/operator-workflow';
+import { useHoldAlertActions } from '@/hooks/useHoldAlertActions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import HoldJobCard from './HoldJobCard';
 import { subscribeToNotifications, realtimeBus } from '@/lib/realtime';
@@ -106,7 +107,9 @@ export default function NotificationBell() {
   const unreadCount = (countScope === scope ? regularUnreadCount : 0) + (isOperatorRole(role) ? holdInbox.data?.unread_count ?? 0 : 0);
   const [selectedHoldId, setSelectedHoldId] = useState<string | null>(null);
   const selectedHold = holdAlerts.find((alert) => alert.id === selectedHoldId);
-  const [acknowledgingHold, setAcknowledgingHold] = useState(false);
+  const holdActions = useHoldAlertActions();
+  const [markingAllRead, setMarkingAllRead] = useState(false);
+  const markAllLock = useRef(false);
   const [open, setOpen] = useState(false);
   const shownCancellationPopups = useRef(new Set<string>());
 
@@ -269,41 +272,32 @@ export default function NotificationBell() {
   }, [fetchNotifications, navigate, role, user]);
 
   const markAllRead = async () => {
-    if (!user) return;
-
-    // Scoped to what this user can actually see, so an operator cannot silently clear alerts
-    // for leads that were filtered out of their bell. No `read` filter: rows where `read` is
-    // NULL also count as unread here and would otherwise be impossible to clear.
-    const assignedLeadIdList = await operatorLeadScope();
-
-    const result = await applyOperatorScope(
-      supabase.from('notifications').update({ read: true }).eq('user_id', user.id),
-      assignedLeadIdList,
-    );
-    if (result.error) {
-      toast.error('Could not mark notifications read');
-      return;
-    }
-    if (isOperatorRole(role) && holdInbox.data) {
-      try {
-        await acknowledgeHoldInbox(holdInbox.data.alerts.filter((alert) => !alert.read));
-        await holdInbox.refetch();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Could not acknowledge hold alerts');
-      }
-    }
-    await fetchNotifications();
-  };
-
-  const acknowledgeSelectedHold = async (alert: HoldAlert) => {
-    setAcknowledgingHold(true);
+    if (!user || markAllLock.current || holdActions.isPending) return;
+    markAllLock.current = true;
+    setMarkingAllRead(true);
     try {
-      if (!await acknowledgeHoldAlert(alert)) toast.info('This job changed again. Review the latest alert.');
-      await holdInbox.refetch();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not acknowledge hold alert');
+      // Acquire the shared hold-mutation gate immediately, so a popup click
+      // cannot race ahead while ordinary-notification scope is being read.
+      if (isOperatorRole(role) && holdInbox.data) await holdActions.acknowledgeAll(holdInbox.data);
+      if (currentScope.current !== scope) return;
+      // Ordinary notifications retain their existing recipient/assignment scope.
+      const assignedLeadIdList = await operatorLeadScope();
+      if (currentScope.current !== scope) return;
+      const result = await applyOperatorScope(
+        supabase.from('notifications').update({ read: true }).eq('user_id', user.id),
+        assignedLeadIdList,
+      );
+      if (result.error) {
+        toast.error('Could not mark notifications read');
+        return;
+      }
+      if (currentScope.current !== scope) return;
+      if (currentScope.current === scope) await fetchNotifications();
+    } catch {
+      if (currentScope.current === scope) toast.error('Could not mark notifications read');
     } finally {
-      setAcknowledgingHold(false);
+      markAllLock.current = false;
+      setMarkingAllRead(false);
     }
   };
 
@@ -350,8 +344,8 @@ export default function NotificationBell() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
           <h4 className="text-sm font-semibold">Notifications</h4>
           {unreadCount > 0 && (
-            <Button variant="ghost" size="sm" className="h-7 text-[11px] gap-1 text-primary" onClick={markAllRead}>
-              <CheckCheck className="h-3 w-3" /> {(holdInbox.data?.unread_count ?? 0) > holdAlerts.filter((alert) => !alert.read).length ? 'Mark shown read' : 'Mark all read'}
+            <Button variant="ghost" size="sm" className="h-7 text-[11px] gap-1 text-primary" onClick={markAllRead} disabled={markingAllRead || holdActions.isPending}>
+              <CheckCheck className="h-3 w-3" /> {markingAllRead ? 'Marking read…' : 'Mark all read'}
             </Button>
           )}
         </div>
@@ -359,6 +353,15 @@ export default function NotificationBell() {
           <div role="alert" className="space-y-2 border-b px-4 py-3 text-xs text-destructive">
             <p>Job hold alerts unavailable. {holdInbox.error.message}</p>
             <Button variant="outline" size="sm" onClick={() => { void refetchHoldInbox(); }}>Retry hold alerts</Button>
+          </div>
+        )}
+        {isOperatorRole(role) && (holdInbox.data?.unread_count ?? 0) > 0 && (
+          <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
+            <span className="text-xs font-medium">Hold This Job</span>
+            <Button variant="outline" size="sm" className="h-7 gap-1 text-[11px]" disabled={markingAllRead || holdActions.isPending || holdInbox.isError}
+              onClick={() => { void holdActions.acknowledgeAll(holdInbox.data); }}>
+              <CheckCheck className="h-3 w-3" /> Acknowledge All
+            </Button>
           </div>
         )}
         <div className="max-h-80 overflow-y-auto overscroll-contain">
@@ -409,8 +412,8 @@ export default function NotificationBell() {
           <DialogTitle>Hold This Job</DialogTitle>
           <DialogDescription>Read-only job card from the saved transition. Acknowledgement does not change the job.</DialogDescription>
         </DialogHeader>
-        {selectedHold && <HoldJobCard key={selectedHold.revision} alert={selectedHold} role={role} expanded saving={acknowledgingHold}
-          onAcknowledge={(alert) => { void acknowledgeSelectedHold(alert); }} />}
+        {selectedHold && <HoldJobCard key={selectedHold.revision} alert={selectedHold} role={role} expanded saving={holdActions.isPending || markingAllRead}
+          onAcknowledge={holdActions.acknowledgeOne} />}
       </DialogContent>
     </Dialog>
     </>

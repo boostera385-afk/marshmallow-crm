@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Donut",
-  "version": "1.7.1",
+  "version": "1.7.3",
   "description": "Capture selected text from quo.com chats and create CRM leads without leaving the page. by Pastry Marketing.",
   "permissions": [
     "storage",

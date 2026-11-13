@@ -31,6 +31,8 @@ import { logActivity } from "@/lib/activity";
 import { showsUrgentCheck } from "@/lib/urgent-verification";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
+import QuoteBreakdownFields from "./QuoteBreakdownFields";
+import { validateQuoteBreakdown } from "@/lib/quote-breakdown";
 import { motion, AnimatePresence } from "framer-motion";
 import NumberNameCombobox from "./NumberNameCombobox";
 import MultiDateTimePicker from "./MultiDateTimePicker";
@@ -85,6 +87,7 @@ const initialFormState = {
   terms: "" as "" | "free_estimate" | "quoted",
   labor_amount: "",
   material_amount: "",
+  materials_included: false,
   for_you_amount: "",
   for_us_amount: "",
   cs_notes: "",
@@ -248,6 +251,8 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
       return;
     }
 
+    const quoteError = validateQuoteBreakdown({ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included });
+    if (quoteError) { toast.error(quoteError); return; }
     setLoading(true);
 
     const jobId = generateJobId();
@@ -304,8 +309,8 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
       tech_name: form.tech_name || null,
       tech_number: form.tech_number || null,
       terms: form.terms || null,
-      labor_amount: form.labor_amount ? parseFloat(form.labor_amount) : null,
-      material_amount: form.material_amount ? parseFloat(form.material_amount) : null,
+      labor_amount: form.terms === "quoted" && form.labor_amount ? parseFloat(form.labor_amount) : null,
+      material_amount: form.terms === "quoted" && form.materials_included && form.material_amount ? parseFloat(form.material_amount) : null,
       for_you_amount: form.for_you_amount ? parseFloat(form.for_you_amount) : null,
       for_us_amount: form.for_us_amount ? parseFloat(form.for_us_amount) : null,
     };
@@ -421,7 +426,7 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
     <div className="space-y-1.5">
       <Label className={labelClass}>{label}</Label>
       <div className="flex items-center gap-1.5">
-        <Select value={form[`${prefix}_hour` as keyof typeof form]} onValueChange={(v) => update(`${prefix}_hour`, v)}>
+        <Select value={form[`${prefix}_hour`]} onValueChange={(v) => update(`${prefix}_hour`, v)}>
           <SelectTrigger className="h-10 w-[66px] rounded-xl border-border/60 bg-background shadow-sm">
             <SelectValue />
           </SelectTrigger>
@@ -437,7 +442,7 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
         <span className="text-muted-foreground/50">:</span>
 
         <Select
-          value={form[`${prefix}_minute` as keyof typeof form]}
+          value={form[`${prefix}_minute`]}
           onValueChange={(v) => update(`${prefix}_minute`, v)}
         >
           <SelectTrigger className="h-10 w-[66px] rounded-xl border-border/60 bg-background shadow-sm">
@@ -452,7 +457,7 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
           </SelectContent>
         </Select>
 
-        <Select value={form[`${prefix}_ampm` as keyof typeof form]} onValueChange={(v) => update(`${prefix}_ampm`, v)}>
+        <Select value={form[`${prefix}_ampm`]} onValueChange={(v) => update(`${prefix}_ampm`, v)}>
           <SelectTrigger className="h-10 w-[70px] rounded-xl border-border/60 bg-background shadow-sm">
             <SelectValue />
           </SelectTrigger>
@@ -673,11 +678,11 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className={labelClass}>Quote</Label>
+                    <Label className={labelClass}>Quote Notes</Label>
                     <Input
                       value={form.quote}
                       onChange={(e) => update("quote", e.target.value)}
-                      placeholder="Quote amount or details"
+                      placeholder="Additional quote details (optional)"
                       className={fieldClass}
                     />
                   </div>
@@ -727,7 +732,12 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
             ),
           })}
 
-          {!isCS &&
+          <QuoteBreakdownFields value={{ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included }} onChange={(value) => {
+            setShouldResetOnClose(false);
+            setForm((previous) => ({ ...previous, terms: value.terms, labor_amount: value.laborAmount, material_amount: value.materialAmount, materials_included: value.includesMaterials }));
+          }} />
+
+          {!createsAsCs &&
             renderCollapsible({
               openState: processorOpen,
               setOpenState: setProcessorOpen,
@@ -759,18 +769,6 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label className={labelClass}>Terms</Label>
-                    <Select value={form.terms} onValueChange={(v) => update("terms", v)}>
-                      <SelectTrigger className={fieldClass}>
-                        <SelectValue placeholder="Select terms..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="free_estimate">Free Estimate Visit</SelectItem>
-                        <SelectItem value="quoted">Quoted</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
 
                   <AnimatePresence initial={false}>
                     {form.terms === "quoted" && (
@@ -783,36 +781,12 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
                       >
                         <div className="rounded-2xl border border-border/50 bg-muted/[0.18] p-4">
                           <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground/60">
-                            Quoted Details
+                            Internal Technician Share
                           </p>
 
                           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-1.5">
-                              <Label className={labelClass}>Customer Labor ($)</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={form.labor_amount}
-                                onChange={(e) => update("labor_amount", e.target.value)}
-                                placeholder="0.00"
-                                className={fieldClass}
-                              />
-                            </div>
-
-                            <div className="space-y-1.5">
-                              <Label className={labelClass}>Materials ($)</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={form.material_amount}
-                                onChange={(e) => update("material_amount", e.target.value)}
-                                placeholder="0.00"
-                                className={fieldClass}
-                              />
-                            </div>
-
-                            <div className="space-y-1.5">
-                              <Label className={labelClass}>For You ($ incl. material)</Label>
+                              <Label className={labelClass}>{form.materials_included ? "For You ($ incl. material)" : "For You ($)"}</Label>
                               <Input
                                 type="number"
                                 step="0.01"

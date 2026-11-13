@@ -99,6 +99,9 @@ const EDITABLE_FIELDS = [
   "leadStatus",
   "terms",
   "quote",
+  "laborAmount",
+  "materialsIncluded",
+  "materialAmount",
   "scheduleRequirement"
 ];
 
@@ -799,6 +802,11 @@ async function handleFormInput(event) {
     [target.name]: value
   };
 
+  if (target.name === "materialsIncluded" && value === "no") {
+    payload.materialAmount = "";
+    if (form.materialAmount) form.materialAmount.value = "";
+  }
+
   if (target.name === "terms" && value !== "quoted") {
     payload.quote = "";
     if (form.quote) {
@@ -1212,6 +1220,9 @@ function renderDraft(draft) {
     "referenceName",
     "serviceDetails",
     "quote",
+    "laborAmount",
+    "materialsIncluded",
+    "materialAmount",
     "scheduleRequirement"
   ];
 
@@ -1276,6 +1287,8 @@ function renderDraft(draft) {
 function updateQuoteFieldVisibility(terms) {
   if (!quoteField) return;
   quoteField.hidden = terms !== "quoted";
+  const materialsField = document.getElementById("materials-amount-field");
+  if (materialsField) materialsField.hidden = terms !== "quoted" || currentDraft?.materialsIncluded !== "yes";
 }
 
 function queueAddressSuggestions(rawValue) {

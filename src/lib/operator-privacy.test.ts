@@ -24,10 +24,10 @@ describe("Operator location-only view", () => {
     expect(safe).toMatchObject({
       address: "Coral Springs, FL 33071", city: "Coral Springs", state: "FL", zip_code: "33071",
       half_address: null, latitude: null, longitude: null, customer_phone: null, customer_landline: null, tech_name: null, tech_number: null,
-      customer_name: null, service_type: "Plumbing", quote: "$200",
+      customer_name: null, service_type: "Plumbing", quote: null,
     });
     const text = JSON.stringify(safe);
-    for (const secret of ["Jane Sample", "123 Main St", "5550100000", "5550109999", "5550108888", "Sam Tech", "Kistler", "26.27"]) expect(text).not.toContain(secret);
+    for (const secret of ["Jane Sample", "123 Main St", "5550100000", "5550109999", "5550108888", "Sam Tech", "Kistler", "26.27", "$200"]) expect(text).not.toContain(secret);
     expect(lead.customer_phone).toBe("5550100000"); // the original object is not modified
   });
 

@@ -7,10 +7,10 @@ import type { HoldAlert } from "@/lib/operator-workflow";
 import HoldJobPopup from "./HoldJobPopup";
 import { NotificationPopupProvider } from "./popup-slot";
 
-const state = vi.hoisted(() => ({ role: "opr" as AppRole, user: { id: "test-user" }, alerts: [] as HoldAlert[], acknowledge: vi.fn() }));
+const state = vi.hoisted(() => ({ role: "opr" as AppRole, user: { id: "test-user" }, alerts: [] as HoldAlert[], acknowledge: vi.fn(), acknowledgeAll: vi.fn() }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => state }));
 vi.mock("@/hooks/useOperatorWorkflow", () => ({ useHoldInbox: () => ({ data: { alerts: state.alerts, unread_count: state.alerts.length } }) }));
-vi.mock("@/lib/operator-workflow", () => ({ acknowledgeHoldAlert: state.acknowledge }));
+vi.mock("@/lib/operator-workflow", () => ({ acknowledgeHoldAlert: state.acknowledge, acknowledgeAllHoldAlerts: state.acknowledgeAll }));
 vi.mock("./HoldJobCard", () => ({ default: ({ alert, onAcknowledge, onDismiss, saving }: { alert: HoldAlert; onAcknowledge: (alert: HoldAlert) => void; onDismiss?: (alert: HoldAlert) => void; saving: boolean }) =>
   <article aria-label={`Hold This Job ${alert.snapshot.job_id}`}><p>{alert.revision}</p><button disabled={saving} onClick={() => onAcknowledge(alert)}>Acknowledge</button>{onDismiss && <button onClick={() => onDismiss(alert)}>Hide {alert.snapshot.job_id}</button>}</article> }));
 vi.mock("sonner", () => ({ toast: { info: vi.fn(), error: vi.fn() } }));
@@ -31,8 +31,10 @@ function renderPopup() {
 beforeEach(() => {
   vi.clearAllMocks();
   state.role = "opr";
+  state.user = { id: "test-user" };
   state.alerts = [current];
   state.acknowledge.mockResolvedValue(true);
+  state.acknowledgeAll.mockResolvedValue({ requested: 1, applied: 1 });
 });
 afterEach(() => { cleanup(); clients.splice(0).forEach((client) => client.clear()); });
 describe("Operator hold popup delivery", () => {
@@ -61,8 +63,8 @@ describe("Operator hold popup delivery", () => {
     const { client } = renderPopup();
     const invalidate = vi.spyOn(client, "invalidateQueries");
     fireEvent.click(await screen.findByRole("button", { name: "Acknowledge" }));
-    await waitFor(() => expect(toast.info).toHaveBeenCalledWith("This job changed again. Review the latest alert before acknowledging."));
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["operator-hold-alerts"] });
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith("Some jobs changed again. Review the latest alerts before acknowledging."));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["operator-hold-alerts", "test-user", "opr"] });
   });
   it("hides without acknowledging, then resurfaces a newer revision", async () => {
     const { client, rerender } = renderPopup();
@@ -77,5 +79,40 @@ describe("Operator hold popup delivery", () => {
     state.role = "customer_service";
     renderPopup();
     expect(screen.queryByRole("complementary")).toBeNull();
+  });
+  it.each(["opr", "opr_admin"] as const)("offers one-click all and individual acknowledgement for %s", async (role) => {
+    state.role = role;
+    state.alerts = Array.from({ length: 5 }, (_, index) => ({ ...current, id: `alert-${index}`, revision: `revision-${index}` }));
+    renderPopup();
+    const all = await screen.findByRole("button", { name: "Acknowledge All" });
+    expect(screen.getAllByRole("button", { name: /^Acknowledge$/ })).toHaveLength(3);
+    fireEvent.click(all);
+    await waitFor(() => expect(state.acknowledgeAll).toHaveBeenCalledTimes(1));
+    expect(state.acknowledgeAll).toHaveBeenCalledWith("test-user", expect.objectContaining({ alerts: state.alerts }));
+    expect(state.acknowledge).not.toHaveBeenCalled();
+  });
+
+  it("guards repeated and individual clicks while a batch is pending", async () => {
+    let finish!: (result: { requested: number; applied: number }) => void;
+    state.acknowledgeAll.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    renderPopup();
+    const all = await screen.findByRole("button", { name: "Acknowledge All" });
+    fireEvent.click(all);
+    fireEvent.click(all);
+    await waitFor(() => expect(state.acknowledgeAll).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: /^Acknowledge$/ })).toBeDisabled();
+    finish({ requested: 1, applied: 1 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Acknowledge All" })).toBeEnabled());
+  });
+
+  it("keeps batch failures retryable and refreshes the recipient's saved state", async () => {
+    state.acknowledgeAll.mockRejectedValueOnce(new Error("Offline"));
+    const { client } = renderPopup();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    fireEvent.click(await screen.findByRole("button", { name: "Acknowledge All" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Could not acknowledge: Offline"));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["operator-hold-alerts", "test-user", "opr"] });
+    fireEvent.click(screen.getByRole("button", { name: "Acknowledge All" }));
+    await waitFor(() => expect(state.acknowledgeAll).toHaveBeenCalledTimes(2));
   });
 });

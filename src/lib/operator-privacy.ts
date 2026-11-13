@@ -39,7 +39,7 @@ export function parseLocationLabel(label: string | null | undefined): LocationPa
 }
 
 /** Fields an Operator must never see, beyond the location (rewritten below). */
-const HIDDEN_FIELDS = ["half_address", "latitude", "longitude", "customer_name", "customer_phone", "customer_landline", "tech_name", "tech_number"] as const;
+const HIDDEN_FIELDS = ["half_address", "latitude", "longitude", "customer_name", "customer_email", "customer_phone", "customer_landline", "tech_name", "tech_number", "cs_notes", "quote", "for_you_amount", "for_us_amount"] as const;
 
 type LeadLike = {
   address?: string | null; city?: string | null; state?: string | null; zip_code?: string | null;

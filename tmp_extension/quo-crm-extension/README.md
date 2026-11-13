@@ -45,7 +45,10 @@ Donut is not in the Chrome Web Store.
    - **Chat Pictures → Pick** collects the chat's images, with a preview viewer.
 3. Add Service Details, Reference and Schedule Note, then choose:
    - **Lead Status:** Default, Urgent, Quote Pending to Send or Quote Sent.
-   - **Estimate / Quote:** Free Estimate, or Quoted with a Quote Amount.
+   - **Estimate / Quote:** Free Estimate Visit, or Quoted with a **Labor Section**
+     and **Parts/Materials Section**. Choose Yes only when parts/materials have a
+     positive charge; No clears the amount and saves no materials charge.
+     **Quote Notes** preserves additional wording, not a guessed labor amount.
 4. Click **Create Lead**.
 
 Rules that match the CRM:
@@ -56,6 +59,9 @@ Rules that match the CRM:
   empties it.
 - An in-flight guard and a reserved job ID stop retries from creating duplicate
   leads. A photo upload failure after a successful save is reported separately.
+  Quote fields are part of that retry identity. Finish/reconcile an uncertain
+  old-version submission before installing an update; do not clear it to retry
+  a lead that may already have been saved.
 - **Quote Pending to Send** from a CS user files a quote approval request
   (`request_quote_approval`); the lead is created as Waiting Complete Details.
   Admin and CS Admin set the status directly.

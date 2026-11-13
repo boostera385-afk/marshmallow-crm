@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const background = readFileSync("tmp_extension/quo-crm-extension/background.js", "utf8").replace(/\r\n/g, "\n");
 const panel = readFileSync("tmp_extension/quo-crm-extension/sidepanel.js", "utf8");
+const DonutQuote = runInNewContext(readFileSync("tmp_extension/quo-crm-extension/quote-breakdown.js", "utf8") + "; globalThis.DonutQuote");
 
 describe("Donut shared-flow regression checks", () => {
   it("uses the same authenticated address function and keeps returned unit details", async () => {
@@ -50,8 +51,8 @@ describe("Donut shared-flow regression checks", () => {
     expect(save).toHaveBeenCalledTimes(1);
   });
 
-  it("recovers the same saved lead without reuploading photos and retains its ID until acknowledgement", async () => {
-    const draft = { customerName: "Fixture Customer", customerNumber: "4155550123", customerAddress: "", serviceName: "Cleaning", serviceDetails: "Fixture service", scheduleRequirement: "", quote: "", terms: "", leadStatus: "default", sourceUrl: "", numberName: "", referenceName: "", photos: ["https://example.com/photo.png"] };
+  it.each(["yes", "no"])("saves split quote with materials %s and recovers the same lead without reuploading photos", async (materialsIncluded) => {
+    const draft = { customerName: "Fixture Customer", customerNumber: "4155550123", customerAddress: "", serviceName: "Cleaning", serviceDetails: "Fixture service", scheduleRequirement: "", quote: "", terms: "quoted", laborAmount: "200", materialsIncluded, materialAmount: "60", leadStatus: "default", sourceUrl: "", numberName: "", referenceName: "", photos: ["https://example.com/photo.png"] };
     const lead = { id: "fixture-lead", customer_phone: draft.customerNumber, customer_name: draft.customerName };
     const storage: Record<string, string> = {};
     let linkedPhoto = false;
@@ -72,6 +73,7 @@ describe("Donut shared-flow regression checks", () => {
       },
     };
     const handler = background.slice(background.indexOf("async function saveLeadDraft("), background.indexOf("/**\n * Run the conversation check"));
+    const insert = vi.fn(() => insertQuery);
     const save = runInNewContext(`${handler}; saveLeadDraft`, {
       getDraft: async () => draft, getUserProfile: async () => ({ role: "admin" }),
       getSettings: async () => ({ apiBaseUrl: "https://crm.example" }),
@@ -79,13 +81,14 @@ describe("Donut shared-flow regression checks", () => {
       PENDING_JOB_KEY: "job", PENDING_DRAFT_KEY: "identity", LEAD_INSERT_TIMEOUT_MS: 45000,
       generateJobId: () => "fixture-job", reserveJobId: async (job: string, identity: string) => { storage.job = job; storage.identity = identity; },
       releaseJobId: release, findLeadByJobId: find, comparePhones: (a: string, b: string) => a === b,
-      normalizeLeadStatus: () => "default", normalizeLeadTerms: () => null, AbortController, setTimeout, clearTimeout,
+      normalizeLeadStatus: () => "default", normalizeLeadTerms: () => "quoted", DonutQuote, AbortController, setTimeout, clearTimeout,
       fetch: async () => ({ ok: true, headers: { get: () => "image/png" }, blob: async () => new Blob(["fixture"]) }),
       supabaseClient: { auth: { getUser: async () => ({ data: { user: { id: "fixture-user" } } }) },
-        from: (table: string) => table === "leads" ? { insert: () => insertQuery } : photoQuery,
+        from: (table: string) => table === "leads" ? { insert } : photoQuery,
         storage: { from: () => ({ upload }) } },
     });
     expect((await save()).success).toBe(true);
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ terms: "quoted", labor_amount: 200, material_amount: materialsIncluded === "yes" ? 60 : null }));
     expect((await save()).success).toBe(true);
     expect(find).toHaveBeenCalledWith("fixture-job", "fixture-user");
     expect(upload).toHaveBeenCalledTimes(1);

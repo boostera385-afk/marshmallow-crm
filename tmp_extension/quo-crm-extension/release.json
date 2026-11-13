@@ -1,7 +1,7 @@
 {
   "name": "Donut",
-  "version": "1.7.1",
-  "releasedAt": "2026-11-02T08:45:00.613Z",
-  "summary": "Documentation only: the bundled README now describes how Donut actually works (CRM sign-in, Census address lookup, approvals, urgent check, Technician Intelligence, photo handoff, updates). No behavior changes.",
-  "sourceSha256": "981081197adae6bf2ba54221c736ce379cc679519fa3ed5fac8ae0b13638556d"
+  "version": "1.7.3",
+  "releasedAt": "2026-11-13T08:40:05.956Z",
+  "summary": "Split quoted labor and optional parts/materials; preserve quote approval and retry safeguards.",
+  "sourceSha256": "cfdd57dac0e439a1737269845674b575d61066002be80556e49faf395f96ff52"
 }

@@ -1,4 +1,4 @@
-importScripts("supabase.js");
+importScripts("supabase.js", "quote-breakdown.js");
 
 const SUPABASE_URL = "https://kxiqholnmhkwhdkhtopp.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4aXFob2xubWhrd2hka2h0b3BwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxNjU0OTcsImV4cCI6MjA4ODc0MTQ5N30.yDiNd6Sl2jWbkNN0Wf5cjClVJKoQXAd8q8kkBUWep7o";
@@ -49,6 +49,9 @@ const DEFAULT_DRAFT = {
   leadStatus: "default",
   terms: "",
   quote: "",
+  laborAmount: "",
+  materialsIncluded: "no",
+  materialAmount: "",
   scheduleRequirement: "",
   source: "quo.com",
   sourceUrl: "",
@@ -318,6 +321,13 @@ async function updateDraft(partialDraft) {
 
   if (partialDraft && partialDraft.quote !== undefined) {
     partialDraft.quote = String(partialDraft.quote || "");
+  }
+  for (const field of ["laborAmount", "materialAmount"]) {
+    if (partialDraft && partialDraft[field] !== undefined) partialDraft[field] = String(partialDraft[field] ?? "");
+  }
+  if (partialDraft && partialDraft.materialsIncluded !== undefined) {
+    partialDraft.materialsIncluded = partialDraft.materialsIncluded === "yes" ? "yes" : "no";
+    if (partialDraft.materialsIncluded === "no") partialDraft.materialAmount = "";
   }
 
   const next = {
@@ -645,7 +655,8 @@ async function saveLeadDraft() {
 
   // Reuse a reserved job id across retries. leads.job_id is unique, so a repeat
   // attempt can only ever re-find this lead, never create a second one.
-  const identity = JSON.stringify([draft.customerName.trim(), draft.customerNumber.trim(), draft.customerAddress.trim(), draft.serviceName.trim(), draft.serviceDetails.trim(), draft.scheduleRequirement.trim(), draft.quote.trim(), draft.terms, draft.leadStatus, draft.sourceUrl.trim(), draft.photos]);
+  const quoteFields = DonutQuote.fields(draft);
+  const identity = JSON.stringify([draft.customerName.trim(), draft.customerNumber.trim(), draft.customerAddress.trim(), draft.serviceName.trim(), draft.serviceDetails.trim(), draft.scheduleRequirement.trim(), draft.quote.trim(), draft.terms, draft.leadStatus, draft.sourceUrl.trim(), draft.photos, quoteFields]);
   const stored = await chrome.storage.local.get([PENDING_JOB_KEY, PENDING_DRAFT_KEY]);
   if (stored[PENDING_JOB_KEY] && stored[PENDING_DRAFT_KEY] && stored[PENDING_DRAFT_KEY] !== identity) {
     throw new Error("A different draft still has a pending submission. Check the saved lead and clear this form before creating another.");
@@ -731,6 +742,7 @@ async function saveLeadDraft() {
   if (leadTerms === "quoted" && draft.quote.trim()) {
     insertData.quote = draft.quote.trim();
   }
+  Object.assign(insertData, quoteFields);
 
   const insertController = new AbortController();
   const insertTimer = setTimeout(() => insertController.abort(), LEAD_INSERT_TIMEOUT_MS);
