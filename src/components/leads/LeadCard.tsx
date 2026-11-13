@@ -88,7 +88,6 @@ import { countTechs } from "@/lib/lead-techs";
 import { saveLeadTag } from "@/lib/lead-tag-actions";
 import AiTagBadge from "@/components/leads/AiTagBadge";
 import { canSeeTechDetails, isOperatorRole } from "@/lib/access";
-import { operatorQuoteSummary } from "@/lib/operator-quote";
 import { customerQuoteSummary } from "@/lib/quote-breakdown";
 import BookingDateTimeDialog, { formatBookingCompact, isBookingExpired } from "./BookingDateTimeDialog";
 import AssignLeadToOperatorDialog from "./AssignLeadToOperatorDialog";
@@ -937,18 +936,10 @@ function LeadCard({
       icon: Phone,
       wrap: false,
     },
-    // Plain Operators never see the free-text quote, the full labor amount, or the
-    // For You/For Us split — only the terms, half the labor, and materials if any.
-    ...(role === "opr"
-      ? [
-        {
-          key: "operator_quote",
-          label: "Quote",
-          value: operatorQuoteSummary(lead) ?? "",
-          icon: DollarSign,
-          wrap: true,
-        },
-        ]
+    // Operators see the same customer-facing quote as everyone else, unless an admin
+    // hid it from Operators for this lead. The For You/For Us split is never shown here.
+    ...(role === "opr" && lead.show_quote_to_opr === false
+      ? []
       : [{ key: "customer_quote", label: "Quote", value: customerQuoteSummary(lead) ?? "", icon: DollarSign, wrap: true }]),
     // CS Admins never see technician details.
     ...(canSeeTechDetails(role)
