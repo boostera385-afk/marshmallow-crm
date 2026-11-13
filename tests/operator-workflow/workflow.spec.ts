@@ -231,7 +231,7 @@ test.describe("Lead metadata batching", () => {
   });
 });
 
-async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", options: { copyAllowed?: boolean; hold?: boolean; photos?: boolean } = {}) {
+async function mockSession(page: Page, role: "admin" | "processor" | "customer_service" | "opr" | "opr_admin", options: { copyAllowed?: boolean; hold?: boolean; photos?: boolean } = {}) {
   let holdRead = false;
   let permission = options.copyAllowed ?? true;
   const roleDefaults = ["processor", "customer_service", "cs_admin", "opr", "opr_admin"].map((item) => ({ role: item, allowed: true }));
@@ -298,6 +298,56 @@ async function mockSession(page: Page, role: "admin" | "opr" | "opr_admin", opti
     }));
     localStorage.setItem("auth_verified_user_id", id);
   }, { id: USER_ID });
+}
+
+for (const surface of ["card", "detail"] as const) {
+  for (const denied of [false, true]) {
+    test(`Partial payment: Processor ${surface} ${denied ? "reports a denied request" : "requests Admin approval without setting Partial Paid"}`, async ({ page }) => {
+      await mockSession(page, "processor");
+      const requests: Record<string, unknown>[] = [];
+      const updates: Record<string, unknown>[] = [];
+      await page.route("**/rest/v1/lead_payment_requests*", async (route) => {
+        if (route.request().method() !== "POST") return route.fulfill({ json: null });
+        requests.push(route.request().postDataJSON());
+        if (denied) return route.fulfill({ status: 403, json: { message: "Synthetic payment denial", code: "42501" } });
+        await route.fulfill({ json: { id: ALERT_ID, ...requests[0] } });
+      });
+      await page.route("**/rest/v1/leads*", async (route) => {
+        if (route.request().method() === "PATCH") updates.push(route.request().postDataJSON());
+        const lead = { ...savedLead, ...(updates.at(-1) ?? {}) };
+        await route.fulfill({ json: route.request().headers().accept?.includes("application/vnd.pgrst.object+json") ? lead : [lead] });
+      });
+      await page.goto(surface === "card" ? "/leads" : `/leads/${JOB_ID}`);
+      await page.getByRole("combobox").filter({ hasText: /^Urgent Job$/ }).first().click();
+      await page.getByRole("option", { name: "Partial Paid", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Request Partial Paid Approval" });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("spinbutton").fill("25.50");
+      await dialog.getByRole("textbox").fill("Deposit received");
+      await dialog.getByRole("button", { name: "Send request" }).click();
+      if (denied) {
+        await expect(page.getByText("Synthetic payment denial", { exact: true }).first()).toBeVisible();
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByRole("spinbutton")).toHaveValue("25.50");
+        await expect(dialog.getByRole("textbox")).toHaveValue("Deposit received");
+        expect(updates).toEqual([]);
+      } else {
+        await expect(dialog).not.toBeVisible();
+        expect(updates).toHaveLength(1);
+        expect(updates[0].status).toBe("payment_requested");
+      }
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({ request_type: "partial_paid", amount: 25.5, comment: "Deposit received", requested_by_role: "processor" });
+    });
+  }
+
+  test(`Partial payment: Customer Service cannot select it on ${surface}`, async ({ page }) => {
+    await mockSession(page, "customer_service");
+    await page.goto(surface === "card" ? "/leads" : `/leads/${JOB_ID}`);
+    await page.getByRole("combobox").filter({ hasText: /^Urgent Job$/ }).first().click();
+    await expect(page.getByRole("option", { name: "Partial Paid", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: "Paid", exact: true })).toHaveCount(0);
+  });
 }
 
 for (const role of ["opr", "opr_admin"] as const) {

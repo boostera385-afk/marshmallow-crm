@@ -231,7 +231,6 @@ const STATUS_CHANGE_ACCESS: Record<AppRole, LeadStatus[]> = {
     "quote_change",
     "needs_reschedule",
     "cancelled",
-    "partial_paid",
     "pending_to_send",
     "post_visit_confirmation",
   ],

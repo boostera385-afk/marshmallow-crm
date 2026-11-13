@@ -3,6 +3,16 @@ import { getDefaultVisibleStatuses } from "@/lib/access";
 import { ALL_LEAD_STATUSES, STATUS_LABELS, canChangeStatus } from "@/lib/constants";
 import { LEAD_STATUS_CONFIG } from "@/types";
 
+describe("payment outcome status choices", () => {
+  it("only offers payment outcomes to Admin and Processor", () => {
+    for (const role of ["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin"]) {
+      for (const status of ["paid", "partial_paid"] as const) {
+        expect(canChangeStatus(role, status)).toBe(role === "admin" || role === "processor");
+      }
+    }
+  });
+});
+
 describe("post-visit confirmation status", () => {
   it("is a real status with a label", () => {
     expect(ALL_LEAD_STATUSES).toContain("post_visit_confirmation");

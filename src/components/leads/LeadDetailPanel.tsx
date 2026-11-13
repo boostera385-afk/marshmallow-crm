@@ -68,6 +68,7 @@ import {
 } from "@/lib/cancellation-requests";
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
+import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 
@@ -177,6 +178,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
   const [saved, setSaved] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentRequestType, setPaymentRequestType] = useState<PaymentRequestType>("paid");
   const [cancelRequestOpen, setCancelRequestOpen] = useState(false);
   const [cancelRequestLoading, setCancelRequestLoading] = useState(false);
   const [adminCancelOpen, setAdminCancelOpen] = useState(false);
@@ -301,7 +303,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
       toast.error("You do not have permission to set that status");
       return;
     }
-    if (key === "status" && value === "paid") {
+    if (key === "status" && (value === "paid" || value === "partial_paid")) {
+      setPaymentRequestType(value);
       setPaymentOpen(true);
       return;
     }
@@ -455,87 +458,88 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
     }
   };
 
-  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null) => {
+  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment?: string) => {
+    if (!user || !lead || paymentLoading) return;
     setPaymentLoading(true);
-    const currentUserName = profile?.full_name || user?.email || "Unknown user";
-    let screenshotUrl: string | null = null;
-
-    if (screenshotFile) {
-      const optimizedScreenshot = await optimizeImageForUpload(screenshotFile);
-      const ext = optimizedScreenshot.name.split(".").pop();
-      const path = `payments/${leadId}_${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("lead-photos").upload(path, optimizedScreenshot);
-      if (!uploadError) {
+    try {
+      if (role === "processor") {
+        await createPaymentRequest({
+          lead,
+          userId: user.id,
+          userName: profile?.full_name || user.email || "Unknown user",
+          requesterRole: role,
+          requestType: paymentRequestType,
+          amount,
+          comment,
+          screenshotFile,
+        });
+        setForm((prev) => ({ ...prev, status: "payment_requested" }));
+        setPaymentOpen(false);
+        queryClient.invalidateQueries({ queryKey: ["lead", leadId] });
+        queryClient.invalidateQueries({ queryKey: ["leads"] });
+        onUpdate();
+        toast.success(`${PAYMENT_REQUEST_TYPE_LABELS[paymentRequestType]} request sent for Admin approval`);
+        return;
+      }
+      const currentUserName = profile?.full_name || user.email || "Unknown user";
+      let screenshotUrl: string | null = null;
+      if (screenshotFile) {
+        const optimizedScreenshot = await optimizeImageForUpload(screenshotFile);
+        const ext = optimizedScreenshot.name.split(".").pop();
+        const path = `payments/${leadId}_${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage.from("lead-photos").upload(path, optimizedScreenshot);
+        if (uploadError) throw uploadError;
         screenshotUrl = path;
       }
-    }
 
-    setForm((prev) => ({
-      ...prev,
-      status: "paid" as LeadStatus,
-      amount,
-      payment_amount: amount,
-      payment_screenshot_url: screenshotUrl,
-    }));
-
-    let paymentQuery = supabase
-      .from("leads")
-      .update({
-        status: "paid",
+      await updateLeadById(leadId, {
+        status: paymentRequestType,
         amount,
         payment_amount: amount,
         payment_screenshot_url: screenshotUrl,
-        last_edited_by: user?.id,
+        cs_tag: null,
+        last_edited_by: user.id,
         last_edited_by_name: currentUserName,
         last_edited_at: new Date().toISOString(),
-      })
-      .eq("id", leadId);
-
-    if (role === "customer_service" && user) {
-      paymentQuery = paymentQuery.eq("created_by", user.id);
-    }
-
-    const { error } = await paymentQuery;
-
-    setPaymentLoading(false);
-    setPaymentOpen(false);
-
-    if (error) {
-      toast.error(error.message);
-    } else {
-      if (user && lead) {
-        await logActivity(user.id, "payment_recorded", "lead", leadId, {
-          target_name: lead.job_id,
-          customer_name: lead.customer_name,
-          job_id: lead.job_id,
-          amount,
-          status_from: lead.status,
-          status_to: "paid",
-          screenshot_uploaded: !!screenshotUrl,
-          changes: {
-            status: {
-              before: lead.status,
-              after: "paid",
-            },
-            payment_amount: {
-              before: lead.payment_amount ?? null,
-              after: amount,
-            },
-            payment_screenshot_url: {
-              before: lead.payment_screenshot_url ?? null,
-              after: screenshotUrl ?? null,
-            },
-            amount: {
-              before: lead.amount ?? null,
-              after: amount,
-            },
+      });
+      setPaymentOpen(false);
+      setForm((prev) => ({ ...prev, status: paymentRequestType, amount, payment_amount: amount, payment_screenshot_url: screenshotUrl }));
+      await logActivity(user.id, "payment_recorded", "lead", leadId, {
+        target_name: lead.job_id,
+        customer_name: lead.customer_name,
+        job_id: lead.job_id,
+        amount,
+        status_from: lead.status,
+        status_to: paymentRequestType,
+        screenshot_uploaded: !!screenshotUrl,
+        changes: {
+          status: {
+            before: lead.status,
+            after: paymentRequestType,
           },
-        });
-      }
+          payment_amount: {
+            before: lead.payment_amount ?? null,
+            after: amount,
+          },
+          payment_screenshot_url: {
+            before: lead.payment_screenshot_url ?? null,
+            after: screenshotUrl ?? null,
+          },
+          amount: {
+            before: lead.amount ?? null,
+            after: amount,
+          },
+        },
+      });
 
-      toast.success("Payment recorded");
+      toast.success(`Payment recorded & status updated to ${PAYMENT_REQUEST_TYPE_LABELS[paymentRequestType]}`);
       queryClient.invalidateQueries({ queryKey: ["lead", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
       onUpdate();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to record payment");
+    } finally {
+      setPaymentLoading(false);
     }
   };
 
@@ -1364,6 +1368,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
           onConfirm={handlePaymentConfirm}
           loading={paymentLoading}
           mode={isProcessor ? "request" : "direct"}
+          requestType={paymentRequestType}
         />
 
         <CancellationRequestSheet

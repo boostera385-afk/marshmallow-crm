@@ -80,7 +80,7 @@ import {
   createCancellationRequest,
   fetchPendingCancellationRequest,
 } from "@/lib/cancellation-requests";
-import { createPaymentRequest } from "@/lib/payment-requests";
+import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import type { LeadCancellationRequest } from "@/types";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { getAssignableLeadTags, isQuotationMaster } from "@/lib/lead-tags";
@@ -747,6 +747,7 @@ function LeadCard({
   const [oprPinned, setOprPinned] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentRequestType, setPaymentRequestType] = useState<PaymentRequestType>("paid");
   const [cancelRequestOpen, setCancelRequestOpen] = useState(false);
   const [cancelRequestLoading, setCancelRequestLoading] = useState(false);
   const [cancelReviewLoading, setCancelReviewLoading] = useState(false);
@@ -1055,7 +1056,8 @@ function LeadCard({
       return;
     }
 
-    if (newStatus === "paid") {
+    if (newStatus === "paid" || newStatus === "partial_paid") {
+      setPaymentRequestType(newStatus);
       setPaymentOpen(true);
       return;
     }
@@ -1195,24 +1197,27 @@ function LeadCard({
     if (!user) return;
     setPaymentLoading(true);
     try {
+      const typeLabel = PAYMENT_REQUEST_TYPE_LABELS[paymentRequestType];
+
       if (isProcessor) {
-        // Processor -> send Paid approval request (Admin must approve)
+        // Processor -> send a request (Admin must approve) for either outcome
         await createPaymentRequest({
           lead,
           userId: user.id,
           userName: profile?.full_name || user.email || "Unknown user",
           requesterRole: role,
+          requestType: paymentRequestType,
           amount,
           comment,
           screenshotFile,
         });
-        toast.success("Paid request sent for Admin approval");
+        toast.success(`${typeLabel} request sent for Admin approval`);
         setPaymentOpen(false);
         onRefresh();
         return;
       }
 
-      // Admin (or any other bypass) -> mark Paid directly
+      // Admin (or any other bypass) -> mark Paid/Partial Paid directly
       let screenshotUrl: string | null = null;
       if (screenshotFile) {
         const optimizedScreenshot = await optimizeImageForUpload(screenshotFile);
@@ -1230,7 +1235,7 @@ function LeadCard({
       const { error } = await supabase
         .from("leads")
         .update({
-          status: "paid" as LeadStatus,
+          status: paymentRequestType as LeadStatus,
           amount,
           payment_amount: amount,
           payment_screenshot_url: screenshotUrl,
@@ -1252,10 +1257,10 @@ function LeadCard({
         job_id: lead.job_id,
         amount,
         status_from: lead.status,
-        status_to: "paid",
+        status_to: paymentRequestType,
       });
 
-      toast.success("Payment recorded & status updated to Paid");
+      toast.success(`Payment recorded & status updated to ${typeLabel}`);
       setPaymentOpen(false);
       onRefresh();
     } catch (err: unknown) {
@@ -2097,6 +2102,7 @@ function LeadCard({
           onConfirm={handlePaymentConfirm}
           loading={paymentLoading}
           mode={isProcessor ? "request" : "direct"}
+          requestType={paymentRequestType}
         />
 
         <CancellationRequestSheet

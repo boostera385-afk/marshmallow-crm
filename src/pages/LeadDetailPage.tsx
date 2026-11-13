@@ -54,6 +54,7 @@ import { getChangeableStatuses, canChangeStatus } from "@/lib/constants";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
+import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import StatusBadge from "@/components/leads/StatusBadge";
 import LeadCoverageBadge from "@/components/leads/LeadCoverageBadge";
 import { geocodeAndPersistLeadAddress } from "@/lib/lead-address-geocoding";
@@ -155,6 +156,7 @@ export default function LeadDetailPage() {
 
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentRequestType, setPaymentRequestType] = useState<PaymentRequestType>("paid");
   const [cancelRequestOpen, setCancelRequestOpen] = useState(false);
   const [cancelRequestLoading, setCancelRequestLoading] = useState(false);
   const [adminCancelOpen, setAdminCancelOpen] = useState(false);
@@ -514,7 +516,8 @@ export default function LeadDetailPage() {
       return;
     }
 
-    if (key === "status" && value === "paid") {
+    if (key === "status" && (value === "paid" || value === "partial_paid")) {
+      setPaymentRequestType(value);
       setPaymentOpen(true);
       return;
     }
@@ -571,15 +574,36 @@ export default function LeadDetailPage() {
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
   };
 
-  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null) => {
-    if (!leadId || !user) {
+  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment?: string) => {
+    if (!leadId || !user || !originalLead) {
       toast.error("Save the lead first before recording payment");
       setPaymentOpen(false);
       return;
     }
 
     setPaymentLoading(true);
+    const typeLabel = PAYMENT_REQUEST_TYPE_LABELS[paymentRequestType];
     try {
+      if (isProcessor) {
+        // Processor -> send a request (Admin must approve) for either outcome.
+        // Mirrors LeadCard.tsx's handlePaymentConfirm.
+        await createPaymentRequest({
+          lead: originalLead,
+          userId: user.id,
+          userName: profile?.full_name || user.email || "Unknown user",
+          requesterRole: role,
+          requestType: paymentRequestType,
+          amount,
+          comment,
+          screenshotFile,
+        });
+        setPaymentOpen(false);
+        setForm((prev) => ({ ...prev, status: "payment_requested" }));
+        await fetchLead();
+        toast.success(`${typeLabel} request sent for Admin approval`);
+        return;
+      }
+
       let screenshotUrl: string | null = null;
 
       if (screenshotFile) {
@@ -594,7 +618,7 @@ export default function LeadDetailPage() {
       }
 
       await updateLeadById(leadId, {
-        status: "paid",
+        status: paymentRequestType,
         amount,
         payment_amount: amount,
         payment_screenshot_url: screenshotUrl,
@@ -607,13 +631,13 @@ export default function LeadDetailPage() {
       setPaymentOpen(false);
       setForm((prev) => ({
         ...prev,
-        status: "paid",
+        status: paymentRequestType,
         amount: String(amount),
         payment_screenshot_url: screenshotUrl || prev.payment_screenshot_url,
       }));
 
       await fetchLead();
-      toast.success("Payment recorded & status updated to Paid");
+      toast.success(`Payment recorded & status updated to ${typeLabel}`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to record payment");
     } finally {
@@ -2029,6 +2053,8 @@ export default function LeadDetailPage() {
         onOpenChange={setPaymentOpen}
         onConfirm={handlePaymentConfirm}
         loading={paymentLoading}
+        mode={isProcessor ? "request" : "direct"}
+        requestType={paymentRequestType}
       />
 
       <CancellationRequestSheet

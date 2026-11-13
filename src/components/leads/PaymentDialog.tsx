@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DollarSign, Upload } from 'lucide-react';
+import { PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from '@/lib/payment-requests';
 
 interface Props {
   open: boolean;
@@ -14,14 +15,28 @@ interface Props {
   onConfirm: (amount: number, screenshotFile: File | null, comment?: string) => void;
   loading?: boolean;
   mode?: 'direct' | 'request';
+  /** Which outcome this dialog is recording/requesting. Defaults to 'paid'. */
+  requestType?: PaymentRequestType;
 }
 
-export default function PaymentDialog({ open, onOpenChange, onConfirm, loading, mode = 'direct' }: Props) {
+export default function PaymentDialog({ open, onOpenChange, onConfirm, loading, mode = 'direct', requestType = 'paid' }: Props) {
   const isRequest = mode === 'request';
+  const isPartial = requestType === 'partial_paid';
+  const typeLabel = PAYMENT_REQUEST_TYPE_LABELS[requestType];
   const [amount, setAmount] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [comment, setComment] = useState('');
+
+  // A failed save leaves the dialog open: keep its amount/evidence for retry.
+  // Only an acknowledged save or an explicit close discards the draft.
+  useEffect(() => {
+    if (open) return;
+    setAmount('');
+    setFile(null);
+    setPreview(null);
+    setComment('');
+  }, [open]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
@@ -39,10 +54,6 @@ export default function PaymentDialog({ open, onOpenChange, onConfirm, loading, 
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) return;
     onConfirm(parsedAmount, file, comment.trim() || undefined);
-    setAmount('');
-    setFile(null);
-    setPreview(null);
-    setComment('');
   };
 
   return (
@@ -53,18 +64,20 @@ export default function PaymentDialog({ open, onOpenChange, onConfirm, loading, 
             <div className="w-8 h-8 rounded-lg bg-[hsl(var(--success)/0.08)] flex items-center justify-center">
               <DollarSign className="h-4 w-4 text-[hsl(var(--success))]" />
             </div>
-            {isRequest ? 'Request Paid Approval' : 'Payment Confirmation'}
+            {isRequest ? `Request ${typeLabel} Approval` : `${typeLabel} Confirmation`}
           </DialogTitle>
           <DialogDescription>
             {isRequest
-              ? 'This lead will move to Paid Approval Pending until an Admin approves it.'
+              ? `This lead will move to Payment Approval Pending until an Admin approves it as ${typeLabel}.`
               : 'Enter the payment amount and optionally upload a payment screenshot.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label className="text-[11px] font-medium text-muted-foreground/60">Amount Paid *</Label>
+            <Label className="text-[11px] font-medium text-muted-foreground/60">
+              {isPartial ? 'Partial Amount Paid *' : 'Amount Paid *'}
+            </Label>
             <div className="relative">
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
               <Input
@@ -122,7 +135,7 @@ export default function PaymentDialog({ open, onOpenChange, onConfirm, loading, 
             disabled={!amount || parseFloat(amount) <= 0 || loading}
             className="bg-[hsl(var(--success))] hover:bg-[hsl(var(--success)/0.9)] text-[hsl(var(--success-foreground))]"
           >
-            {loading ? 'Saving...' : isRequest ? 'Send request' : 'Confirm Payment'}
+            {loading ? 'Saving...' : isRequest ? 'Send request' : `Confirm ${typeLabel}`}
           </Button>
         </DialogFooter>
       </DialogContent>

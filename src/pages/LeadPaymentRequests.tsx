@@ -20,6 +20,7 @@ import StatusBadge from "@/components/leads/StatusBadge";
 import {
   canReviewPaymentRequest,
   reviewPaymentRequest,
+  PAYMENT_REQUEST_TYPE_LABELS,
   type LeadPaymentRequest,
 } from "@/lib/payment-requests";
 import { PAYMENT_PAGE_LEAD_COLUMNS, type PaymentPageLead } from "@/lib/request-page-leads";
@@ -166,7 +167,8 @@ export default function LeadPaymentRequests() {
         reviewerRole: role,
         action,
       });
-      toast.success(action === "approved" ? "Lead marked Paid" : "Paid request rejected");
+      const typeLabel = PAYMENT_REQUEST_TYPE_LABELS[row.request_type];
+      toast.success(action === "approved" ? `Lead marked ${typeLabel}` : `${typeLabel} request rejected`);
       queryClient.invalidateQueries({ queryKey: ["lead-payment-requests-page"] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       queryClient.invalidateQueries({ queryKey: ["pending-payment-requests-count"] });
@@ -209,7 +211,7 @@ export default function LeadPaymentRequests() {
             <DollarSign className="h-4 w-4 text-emerald-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold tracking-[-0.035em]">Paid Approval Pending</h1>
+            <h1 className="text-2xl font-semibold tracking-[-0.035em]">Payment Approval Pending</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {requests.length} pending request{requests.length === 1 ? "" : "s"}
             </p>
@@ -253,7 +255,7 @@ export default function LeadPaymentRequests() {
       ) : requests.length === 0 && approvedSuggestions.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground">
-            No pending Paid requests.
+            No pending payment requests.
           </CardContent>
         </Card>
       ) : (
@@ -271,6 +273,9 @@ export default function LeadPaymentRequests() {
                         {lead && <StatusBadge status={lead.status} size="sm" />}
                         <span className="rounded-full border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">
                           {lead?.job_id || row.lead_id}
+                        </span>
+                        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                          {PAYMENT_REQUEST_TYPE_LABELS[row.request_type]} request
                         </span>
                       </div>
 
@@ -320,7 +325,7 @@ export default function LeadPaymentRequests() {
                             onClick={() => handleApprove(row)}
                           >
                             <CheckCircle2 className="h-4 w-4" />
-                            Approve & mark paid
+                            Approve & mark {PAYMENT_REQUEST_TYPE_LABELS[row.request_type].toLowerCase()}
                           </Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>

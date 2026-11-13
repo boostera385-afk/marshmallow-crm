@@ -9,6 +9,15 @@ export const PAYMENT_REQUEST_STATUS: LeadStatus = "payment_requested" as LeadSta
 
 export type PaymentRequestStatus = "pending" | "approved" | "rejected";
 
+/** Which final status an approved request applies. Defaults to 'paid' for
+ * every request row created before this type existed. */
+export type PaymentRequestType = "paid" | "partial_paid";
+
+export const PAYMENT_REQUEST_TYPE_LABELS: Record<PaymentRequestType, string> = {
+  paid: "Paid",
+  partial_paid: "Partial Paid",
+};
+
 export interface LeadPaymentRequest {
   id: string;
   lead_id: string;
@@ -16,6 +25,7 @@ export interface LeadPaymentRequest {
   requested_by: string | null;
   requested_by_name?: string | null;
   requested_by_role: AppRole;
+  request_type: PaymentRequestType;
   amount: number;
   screenshot_path: string | null;
   comment: string | null;
@@ -34,6 +44,7 @@ type CreateArgs = {
   userId: string;
   userName?: string | null;
   requesterRole: AppRole;
+  requestType: PaymentRequestType;
   amount: number;
   comment?: string | null;
   screenshotFile?: File | null;
@@ -54,6 +65,7 @@ type ReviewArgs = {
 
 const table = () => supabase.from("lead_payment_requests");
 
+/** Same gate for both a Paid request and a Partial Paid request. */
 export const canCreatePaymentRequest = (role?: AppRole | null) => role === "processor";
 
 export const canReviewPaymentRequest = (role: AppRole | null | undefined, request?: LeadPaymentRequest | null) => {
@@ -93,12 +105,13 @@ export async function createPaymentRequest({
   userId,
   userName,
   requesterRole,
+  requestType,
   amount,
   comment,
   screenshotFile,
 }: CreateArgs): Promise<LeadPaymentRequest> {
   if (!canCreatePaymentRequest(requesterRole)) {
-    throw new Error("Only Processors can request Paid approval");
+    throw new Error(`Only Processors can request ${PAYMENT_REQUEST_TYPE_LABELS[requestType]} approval`);
   }
   if (!(amount > 0)) throw new Error("Amount is required");
 
@@ -107,7 +120,7 @@ export async function createPaymentRequest({
     .eq("lead_id", lead.id)
     .eq("status", "pending")
     .maybeSingle();
-  if (existing) throw new Error("A pending Paid request already exists for this lead");
+  if (existing) throw new Error("A pending payment request already exists for this lead");
 
   let screenshotPath: string | null = null;
   if (screenshotFile) {
@@ -125,6 +138,7 @@ export async function createPaymentRequest({
       requested_by: userId,
       requested_by_name: userName || null,
       requested_by_role: requesterRole,
+      request_type: requestType,
       amount,
       screenshot_path: screenshotPath,
       comment: comment?.trim() || null,
@@ -133,7 +147,7 @@ export async function createPaymentRequest({
     .select("*")
     .single();
 
-  if (error) throw error;
+  if (error) throw new Error(error.message || "Failed to create payment request");
 
   await updateLeadById(lead.id, {
     status: PAYMENT_REQUEST_STATUS,
@@ -150,6 +164,7 @@ export async function createPaymentRequest({
     customer_name: lead.customer_name,
     job_id: lead.job_id,
     requested_by_role: requesterRole,
+    request_type: requestType,
     amount,
     comment: comment || null,
     screenshot_path: screenshotPath,
@@ -170,7 +185,7 @@ export async function reviewPaymentRequest({
   reviewNote,
 }: ReviewArgs) {
   if (!canReviewPaymentRequest(reviewerRole, request)) {
-    throw new Error("Only Admins can review Paid requests");
+    throw new Error(`Only Admins can review ${PAYMENT_REQUEST_TYPE_LABELS[request.request_type]} requests`);
   }
 
   const now = new Date().toISOString();
@@ -182,11 +197,15 @@ export async function reviewPaymentRequest({
       review_note: reviewNote?.trim() || null,
     } as never)
     .eq("id", request.id);
-  if (requestError) throw requestError;
+  if (requestError) throw new Error(requestError.message || "Failed to review payment request");
+
+  // request_type decides the outcome status: 'paid' requests always resolved
+  // to 'paid' before this type existed, so a missing/legacy value defaults to it.
+  const outcomeStatus: LeadStatus = request.request_type === "partial_paid" ? "partial_paid" : "paid";
 
   if (action === "approved") {
     await updateLeadById(lead.id, {
-      status: "paid" as LeadStatus,
+      status: outcomeStatus,
       amount: request.amount,
       payment_amount: request.amount,
       payment_screenshot_url: request.screenshot_path,
@@ -216,9 +235,10 @@ export async function reviewPaymentRequest({
       customer_name: lead.customer_name,
       job_id: lead.job_id,
       requested_by_role: request.requested_by_role,
+      request_type: request.request_type,
       amount: request.amount,
       review_note: reviewNote || null,
-      status_to: action === "approved" ? "paid" : request.previous_status,
+      status_to: action === "approved" ? outcomeStatus : request.previous_status,
     },
   );
 }
