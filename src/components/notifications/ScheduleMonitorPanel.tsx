@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { backgroundInterval } from "@/lib/overload-guard";
 
+import { formatDateTime } from "@/lib/date-time-format";
 const selectClass = "h-10 w-full rounded-md border bg-background px-3 text-sm";
 const MODE_LABELS: Record<ScheduleMonitorMode, string> = {
   off: "Off",
@@ -49,9 +50,9 @@ function MonitorJob({ job, refresh }: { job: ScheduleMonitorRow; refresh: () => 
     <details><summary className="cursor-pointer text-sm font-medium text-primary">Details</summary>
       <div className="mt-2 space-y-2">
         <p className="whitespace-pre-wrap text-sm text-muted-foreground">Schedule: {job.schedule_requirements || "not saved"}</p>
-        {job.waiting_since && <p className="text-xs text-muted-foreground">Waiting since {new Date(job.waiting_since).toLocaleString()}. Only messages and calls after this count.</p>}
-        {job.evidence && <div className="rounded-lg border bg-muted/30 p-3"><p className="text-xs font-medium">Latest message or call · {job.evidence.message_time ? new Date(job.evidence.message_time).toLocaleString() : "time unavailable"}</p><blockquote className="mt-1 whitespace-pre-wrap break-words text-sm">{job.evidence.text || "No text (call event)"}</blockquote></div>}
-        {job.checked_at && <p className="text-xs text-muted-foreground">Last AI check: {new Date(job.checked_at).toLocaleString()}</p>}
+        {job.waiting_since && <p className="text-xs text-muted-foreground">Waiting since {formatDateTime(job.waiting_since)}. Only messages and calls after this count.</p>}
+        {job.evidence && <div className="rounded-lg border bg-muted/30 p-3"><p className="text-xs font-medium">Latest message or call · {job.evidence.message_time ? formatDateTime(job.evidence.message_time) : "time unavailable"}</p><blockquote className="mt-1 whitespace-pre-wrap break-words text-sm">{job.evidence.text || "No text (call event)"}</blockquote></div>}
+        {job.checked_at && <p className="text-xs text-muted-foreground">Last AI check: {formatDateTime(job.checked_at)}</p>}
         {job.evidence && <>
           <Label htmlFor={`reason-${job.lead_id}`}>Reason to check again</Label>
           <Textarea id={`reason-${job.lead_id}`} maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} />
@@ -91,7 +92,7 @@ export default function ScheduleMonitorPanel() {
         : !query.data ? <p role="status">Loading…</p> : <>
           <p className="text-sm">Saved setting: <strong>{MODE_LABELS[query.data.mode]}</strong> · {query.data.daily_checks}/{query.data.daily_limit} AI checks today</p>
           {query.data.ingestion_paused && <p role="status" className="text-sm text-destructive">Quo ingestion is paused. No checks or tag changes run; the customer must text again after it resumes.</p>}
-          {query.data.cooldown_until && Date.parse(query.data.cooldown_until) > Date.now() && <p role="status" className="text-sm">AI provider cooldown until {new Date(query.data.cooldown_until).toLocaleString()}. No tag changes during cooldown.</p>}
+          {query.data.cooldown_until && Date.parse(query.data.cooldown_until) > Date.now() && <p role="status" className="text-sm">AI provider cooldown until {formatDateTime(query.data.cooldown_until)}. No tag changes during cooldown.</p>}
           {draftRevision && draftRevision !== query.data.changed_at && <p role="alert" className="text-sm text-destructive">Another Admin changed this setting. Your draft is kept; discard it to see the latest setting before turning the AI on. Off always works.</p>}
           <div><Label htmlFor="monitor-mode">Mode</Label><select id="monitor-mode" className={selectClass} value={mode ?? query.data.mode} onChange={(event) => { setDraftRevision((previous) => previous ?? query.data.changed_at); setMode(event.target.value as ScheduleMonitorMode); }}>
             {(Object.keys(MODE_LABELS) as ScheduleMonitorMode[]).map((key) => <option key={key} value={key}>{MODE_LABELS[key]}</option>)}</select></div>

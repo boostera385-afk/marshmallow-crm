@@ -70,6 +70,8 @@ import { heroTitle, premiumEase, cardGridContainer, cardGridItem } from "@/lib/m
 import { formatDistanceToNow } from "date-fns";
 import { urgentAiStatusClass } from "@/lib/urgent-ai-status";
 
+import { formatDateTime } from "@/lib/date-time-format";
+import { formatClockTime } from "@/lib/time-value";
 const PAGE_SIZES = [20, 40, 60, 100];
 
 interface ProfileRow {
@@ -1275,7 +1277,7 @@ export default function LeadsPage() {
           if (!noteSummaryByLead[note.lead_id]) {
             noteSummaryByLead[note.lead_id] = { general: "", cs: "", processor: "" };
           }
-          noteSummaryByLead[note.lead_id][key as keyof typeof noteSummaryByLead[string]] += `[${new Date(note.created_at || "").toLocaleString()}] ${note.user_name || "Unknown"}: ${note.content}\n\n`;
+          noteSummaryByLead[note.lead_id][key as keyof typeof noteSummaryByLead[string]] += `[${formatDateTime(note.created_at || "")}] ${note.user_name || "Unknown"}: ${note.content}\n\n`;
         });
 
         historyRows.forEach((log) => {
@@ -1298,7 +1300,7 @@ export default function LeadsPage() {
             actionText = "created the lead";
           }
           
-          historyByLead[log.target_id] += `[${new Date(log.created_at || "").toLocaleString()}] ${log.user_name || "Unknown"} ${actionText}\n`;
+          historyByLead[log.target_id] += `[${formatDateTime(log.created_at || "")}] ${log.user_name || "Unknown"} ${actionText}\n`;
         });
 
       const exportRows = leadIdsToExport.map((id) => {
@@ -1311,7 +1313,7 @@ export default function LeadsPage() {
           "Customer Phone": lead?.customer_phone,
             "Customer Landline": lead?.customer_landline || "",
             "Customer Address": lead?.address,
-            "Date Created": lead?.created_at ? new Date(lead.created_at).toLocaleString() : "",
+            "Date Created": lead?.created_at ? formatDateTime(lead.created_at) : "",
             "Direction": lead?.direction || "",
             "Number Name": lead?.number_name || "",
             "Source URL": lead?.source_url || "",
@@ -1322,19 +1324,19 @@ export default function LeadsPage() {
             "For You Amount": lead?.for_you_amount || "",
             "For Us Amount": lead?.for_us_amount || "",
             "Scheduled Date": lead?.scheduled_date || "",
-            "Last Edited At": lead?.last_edited_at ? new Date(lead.last_edited_at).toLocaleString() : "",
+            "Last Edited At": lead?.last_edited_at ? formatDateTime(lead.last_edited_at) : "",
             "System ID": lead?.id || "",
             "Customer Email": lead?.customer_email || "",
             "City": lead?.city || "",
             "State": lead?.state || "",
             "Zip Code": lead?.zip_code || "",
             "Half Address": lead?.half_address || "",
-            "Scheduled Time Start": lead?.scheduled_time_start || "",
-            "Scheduled Time End": lead?.scheduled_time_end || "",
+            "Scheduled Time Start": formatClockTime(lead?.scheduled_time_start),
+            "Scheduled Time End": formatClockTime(lead?.scheduled_time_end),
             "Expected Completion Date": lead?.expected_completion_date || "",
-            "Booked At": lead?.booked_at ? new Date(lead.booked_at).toLocaleString() : "",
-            "Urgent At": lead?.urgent_at ? new Date(lead.urgent_at).toLocaleString() : "",
-            "Updated At": lead?.updated_at ? new Date(lead.updated_at).toLocaleString() : "",
+            "Booked At": lead?.booked_at ? formatDateTime(lead.booked_at) : "",
+            "Urgent At": lead?.urgent_at ? formatDateTime(lead.urgent_at) : "",
+            "Updated At": lead?.updated_at ? formatDateTime(lead.updated_at) : "",
             "Last Edited By": lead?.last_edited_by_name || lead?.editor_name || lead?.last_edited_by || "",
             "Assigned CS": lead?.assigned_cs || "",
             "Quote Requested By": lead?.quote_requested_by || "",
@@ -1614,7 +1616,7 @@ export default function LeadsPage() {
           </div>
           <div className="flex items-center gap-3">
             {aiStatusLastChecked && (
-              <span className="hidden text-[11px] text-muted-foreground sm:inline" title={aiStatusLastChecked.toLocaleString()}>
+              <span className="hidden text-[11px] text-muted-foreground sm:inline" title={formatDateTime(aiStatusLastChecked)}>
                 Updated {formatDistanceToNow(aiStatusLastChecked, { addSuffix: true })}
               </span>
             )}

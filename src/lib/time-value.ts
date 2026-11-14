@@ -22,3 +22,18 @@ export function formatTimeValue({ hour12, minute, pm }: TimeParts): string {
 }
 
 export const formatTimeLabel = ({ hour12, minute, pm }: TimeParts) => `${hour12}:${String(minute).padStart(2, "0")} ${pm ? "PM" : "AM"}`;
+
+/**
+ * A saved time of day ("15:00", "15:00:00") as 12-hour text ("3:00 PM").
+ * Empty for no time; text that is not a time is returned unchanged.
+ */
+export function formatClockTime(value: string | null | undefined): string {
+  if (!value) return "";
+  const parts = parseTime(value);
+  return parts ? formatTimeLabel(parts) : value;
+}
+
+/** "3:00 PM - 5:00 PM", one side alone when the other is missing, "" for neither. */
+export function formatClockRange(start: string | null | undefined, end: string | null | undefined, separator = " - "): string {
+  return [formatClockTime(start), formatClockTime(end)].filter(Boolean).join(separator);
+}

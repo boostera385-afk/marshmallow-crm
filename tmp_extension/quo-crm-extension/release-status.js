@@ -4,7 +4,7 @@
   const status = document.getElementById("donut-release-status");
   const notice = document.getElementById("donut-update-notice");
   const formatDate = (value) => new Intl.DateTimeFormat(undefined, {
-    year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"
+    year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short"
   }).format(new Date(value));
   status.textContent = `Donut v${version}`;
   try {

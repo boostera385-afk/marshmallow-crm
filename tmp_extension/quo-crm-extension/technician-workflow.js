@@ -68,7 +68,7 @@
       text(result.summary);
       text(`${result.messagesReviewed} messages · ${result.chatSource || "CRM mirror"}${result.historyLimited ? " · Limited recent-history sample" : ""}`);
       if (result.jobCounts.error) text(result.jobCounts.error);
-      for (const item of result.evidence || []) text(`${item.source}: ${item.quote}${item.message_time ? ` (${new Date(item.message_time).toLocaleString()})` : ""}`, "blockquote");
+      for (const item of result.evidence || []) text(`${item.source}: ${item.quote}${item.message_time ? ` (${new Date(item.message_time).toLocaleString(undefined, { hour12: true })})` : ""}`, "blockquote");
       feedback.textContent = result.error || (result.messagesReviewed ? "Review complete. Confirm evidence and save your reviewed labels, or open the full workflow for next actions." : "No chat evidence was available. Missing history does not establish misconduct.");
       text("Your reviewed labels (saved only when you click Save):", "strong");
       const reviewed = stored.assessments?.[0]?.labels ?? (result.error ? [] : result.labels);

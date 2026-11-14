@@ -1,8 +1,8 @@
 {
   "name": "Donut",
-  "version": "1.7.3",
-  "releasedAt": "2026-11-13T08:40:05.956Z",
-  "summary": "Split quoted labor and optional parts/materials; preserve quote approval and retry safeguards.",
-  "sourceSha256": "cfdd57dac0e439a1737269845674b575d61066002be80556e49faf395f96ff52",
-  "packageSha256": "140965abe618d93d9917c9f379e6eff368ab39deb3e83dc762169fec3ea9470c"
+  "version": "1.7.4",
+  "releasedAt": "2026-11-14T10:45:45.710Z",
+  "summary": "Dates and times show in 12-hour AM/PM format",
+  "sourceSha256": "cdc5cbf704c757e6b1041106015e1d72f663b992565c69e53d8e9579fb3eaf1a",
+  "packageSha256": "615cac94b64b7db0eb0c4bf47801289f3f82b87a3a9831cc73dbefa91ecf20aa"
 }

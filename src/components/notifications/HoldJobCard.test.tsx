@@ -24,6 +24,12 @@ describe("Marshmallow read-only hold card", () => {
     expect(container).toHaveTextContent("Coral Springs, FL, 33071");
     for (const secret of ["10 Main St", "5550100000", "Test Tech", "5550100001"]) expect(container).not.toHaveTextContent(secret);
   });
+  it("shows the scheduled window in 12-hour AM/PM time", () => {
+    const { container } = render(<HoldJobCard alert={alertFixture} onAcknowledge={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Complete card" }));
+    expect(container).toHaveTextContent("2026-10-16 · 1:00 PM - 3:00 PM");
+    expect(container).not.toHaveTextContent("13:00");
+  });
   it("labels the CX schedule-confirmation hold reason", () => {
     render(<HoldJobCard alert={{ ...alertFixture, reason: "waiting_schedule_confirmation" }} onAcknowledge={vi.fn()} />);
     expect(screen.getByText("Urgent Job → Waiting for CX for Schedule Confirmation")).toBeInTheDocument();

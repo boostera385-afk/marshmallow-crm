@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+import { formatDateTime } from "@/lib/date-time-format";
 export interface NearbyArea {
   geoid?: string | null;
   name: string;
@@ -423,7 +424,7 @@ export default function NearbyAreasList({
             })}
           </ol>
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Generated {new Date(visible!.generated_at).toLocaleString()}
+            Generated {formatDateTime(visible!.generated_at)}
             {centerLabel ? <> · Center: {centerLabel}</> : null}
             {visible?.population_vintage ? <> · Population {visible.population_vintage}</> : null}
           </p>

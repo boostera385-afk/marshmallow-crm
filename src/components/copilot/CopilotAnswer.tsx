@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { CopilotResult } from "@/lib/copilot-api";
 import CopilotLogo from "./CopilotLogo";
 
+import { formatTimeOfDay } from "@/lib/date-time-format";
 export default function CopilotAnswer({ result, expanded, pending, onOpen, onBrief, onDraft }: {
   result: CopilotResult; expanded: boolean; pending: boolean; onOpen: (href: string) => void;
   onBrief: (id: string) => void; onDraft: (id: string) => void;
@@ -31,7 +32,7 @@ export default function CopilotAnswer({ result, expanded, pending, onOpen, onBri
       {canCopy && <Button size="sm" variant="ghost" aria-label="Copy answer" onClick={async () => { try { await navigator.clipboard.writeText(result.text); setCopied(true); setCopyError(""); } catch { setCopied(false); setCopyError("Clipboard unavailable. Select the answer and copy manually."); } }}>{copied ? <Check className="h-3.5 w-3.5"/> : <Copy className="h-3.5 w-3.5"/>}<span className="ml-1 text-xs">{copied ? "Copied" : "Copy answer"}</span></Button>}
       <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Answer was helpful" aria-pressed={feedback === "helpful"} onClick={() => setFeedback(feedback === "helpful" ? null : "helpful")}><ThumbsUp className="h-3.5 w-3.5"/></Button>
       <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Answer was not helpful" aria-pressed={feedback === "not_helpful"} onClick={() => setFeedback(feedback === "not_helpful" ? null : "not_helpful")}><ThumbsDown className="h-3.5 w-3.5"/></Button>
-      <p className="ml-auto text-[10px] text-muted-foreground">Checked {new Date(result.refreshedAt).toLocaleTimeString()} · Review source for current details.</p>
+      <p className="ml-auto text-[10px] text-muted-foreground">Checked {formatTimeOfDay(result.refreshedAt)} · Review source for current details.</p>
     </div>
     {feedback && <p role="status" className="text-[11px] text-muted-foreground">Feedback marked for this session only; nothing was sent or saved.</p>}
     {copyError && <p role="status" className="text-xs text-destructive">{copyError}</p>}

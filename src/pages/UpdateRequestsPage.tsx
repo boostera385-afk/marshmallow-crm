@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
+import { formatDateTime } from "@/lib/date-time-format";
+import { formatClockRange } from "@/lib/time-value";
 interface Props { kind: UpdateRequestKind }
 
 export default function UpdateRequestsPage({ kind }: Props) {
@@ -122,18 +124,18 @@ export default function UpdateRequestsPage({ kind }: Props) {
             <div><dt className="text-xs text-muted-foreground">Service</dt><dd>{customer.service_type || "Not provided"}</dd><dd className="whitespace-pre-wrap">{customer.service_details}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Address</dt><dd>{[customer.address, customer.city, customer.state, customer.zip_code].filter(Boolean).join(", ") || "Not provided"}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Agreed schedule</dt><dd className="whitespace-pre-wrap">{customer.customer_schedule_requirements || "Not provided"}</dd>
-              {customer.scheduled_date && <dd>{customer.scheduled_date} {[customer.scheduled_time_start, customer.scheduled_time_end].filter(Boolean).join(" – ")}</dd>}</div>
+              {customer.scheduled_date && <dd>{customer.scheduled_date} {formatClockRange(customer.scheduled_time_start, customer.scheduled_time_end, " – ")}</dd>}</div>
             {request.technician && <div><dt className="text-xs text-muted-foreground">Technician</dt><dd>{request.technician.tech_name || "Not assigned"}{request.technician.tech_number ? ` · ${formatUSPhone(request.technician.tech_number)}` : ""}</dd><dd>{request.technician.status || ""} {request.technician.terms || ""}</dd></div>}
           </dl>
           <div className="space-y-2 rounded-xl bg-primary/5 p-3" aria-label="Update conversation">
             {thread.map((entry, index) => <div key={`${entry.at}-${index}`} className={entry.type === "response" ? "border-l-2 border-emerald-500/50 pl-3" : "border-l-2 border-primary/40 pl-3"}>
-              <p className="text-xs font-semibold text-muted-foreground">{entry.type === "response" ? "Response" : "Question"}{entry.by_name ? ` · ${entry.by_name}` : ""} · <time dateTime={entry.at}>{new Date(entry.at).toLocaleString()}</time></p>
+              <p className="text-xs font-semibold text-muted-foreground">{entry.type === "response" ? "Response" : "Question"}{entry.by_name ? ` · ${entry.by_name}` : ""} · <time dateTime={entry.at}>{formatDateTime(entry.at)}</time></p>
               <p className="mt-0.5 whitespace-pre-wrap break-words text-sm">{entry.text}</p>
             </div>)}
           </div>
           <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm" role="status">
             {request.acknowledged_at
-              ? `${request.resolved_by_name ? `Resolved by ${request.resolved_by_name}` : "Previously acknowledged"} · ${new Date(request.acknowledged_at).toLocaleString()}`
+              ? `${request.resolved_by_name ? `Resolved by ${request.resolved_by_name}` : "Previously acknowledged"} · ${formatDateTime(request.acknowledged_at)}`
               : request.status === "pending" ? "Awaiting responder · not yet resolved"
               : `Pending resolution by ${request.owner_name || request.requester_name || "unassigned owner — Admin reassignment needed"}`}
           </div>

@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Lead } from "@/types";
 import { formatLeadSchedule } from "@/lib/lead-copy";
 
+import { formatClockRange } from "@/lib/time-value";
 export type MessageTemplateKey = "technician_message" | "technician_reminder";
 
 export const DEFAULT_MESSAGE_TEMPLATES: Record<MessageTemplateKey, string> = {
@@ -203,7 +204,7 @@ export const renderLeadTemplate = (
   extras: Record<string, string> = {},
 ) => {
   const schedule = formatLeadSchedule(lead);
-  const scheduleTime = [lead.scheduled_time_start, lead.scheduled_time_end].filter(Boolean).join("-");
+  const scheduleTime = formatClockRange(lead.scheduled_time_start, lead.scheduled_time_end);
   const values: Record<string, string> = {
     customer_number: normalize(extras.customer_number),
     reference_name: normalize(extras.reference_name || lead.reference_name),

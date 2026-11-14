@@ -35,6 +35,13 @@ async function rpc(db: CopilotRpcClient, name: string, args?: Record<string, unk
   return data;
 }
 const text = (value: unknown) => typeof value === "string" ? value : value === null || value === undefined ? "" : String(value);
+/** A saved time of day ("15:00:00") as 12-hour text ("3:00 PM"); anything else unchanged. */
+const clock12 = (value: unknown) => {
+  const raw = text(value); const match = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(raw);
+  if (!match || Number(match[1]) > 23) return raw;
+  const hours = Number(match[1]);
+  return `${hours % 12 || 12}:${match[2]} ${hours >= 12 ? "PM" : "AM"}`;
+};
 const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 const bounded = (value: unknown) => { const s = text(value); return s.length > 650 ? `${s.slice(0, 650)}… (open record for full details)` : s; };
 
@@ -59,7 +66,7 @@ export async function runCopilotQuery(db: CopilotRpcClient, ask: CopilotAsk, acc
       { label: "Phone", value: bounded(row.customer_phone) },
       { label: "Service details", value: bounded(row.service_details) }, { label: "Address", value: [row.address, row.city, row.state, row.zip_code].map(text).filter(Boolean).join(", ") },
       { label: "Schedule requirement", value: bounded(row.customer_schedule_requirements) },
-      ...(access.sections.includes("schedule") ? [{ label: "Scheduled", value: [row.scheduled_date, row.scheduled_time_start].map(text).filter(Boolean).join(" ") }] : []),
+      ...(access.sections.includes("schedule") ? [{ label: "Scheduled", value: [text(row.scheduled_date), clock12(row.scheduled_time_start)].filter(Boolean).join(" ") }] : []),
       ...(row.quote != null ? [{ label: "Quote", value: bounded(row.quote) }] : []),
       ...(access.role !== "cs_admin" && row.tech_name ? [{ label: "Technician", value: [row.tech_name, row.tech_number].map(text).filter(Boolean).join(" · ") }] : []),
     ] }];
@@ -93,7 +100,7 @@ export async function runCopilotQuery(db: CopilotRpcClient, ask: CopilotAsk, acc
         { label: "Phone", value: bounded(row.customer_phone) }, { label: "Service details", value: bounded(row.service_details) },
         { label: "Address", value: [row.address, row.city, row.state, row.zip_code].map(text).filter(Boolean).join(", ") },
         { label: "Schedule requirement", value: bounded(row.customer_schedule_requirements) },
-        { label: "Scheduled", value: [row.scheduled_date, row.scheduled_time_start].map(text).filter(Boolean).join(" ") },
+        { label: "Scheduled", value: [text(row.scheduled_date), clock12(row.scheduled_time_start)].filter(Boolean).join(" ") },
       ];
       // Defence in depth: SQL has already redacted restricted fields.
       if (row.quote !== null && row.quote !== undefined) fields.push({ label: "Quote", value: bounded(row.quote) });

@@ -101,6 +101,7 @@ import LeadCoverageBadge from "./LeadCoverageBadge";
 import UrgentAICheckDialog from "./UrgentAICheckDialog";
 import { showsUrgentCheck } from "@/lib/urgent-verification";
 
+import { formatDateTime as formatDateTime12h } from "@/lib/date-time-format";
 interface LeadCardProps {
   lead: Lead;
   profiles: Record<string, string>;
@@ -140,7 +141,7 @@ const NOTE_INDICATOR_START_AT = new Date("2026-06-12T12:01:26.000Z").getTime();
 function formatDateTime(value?: string | null) {
   if (!value) return null;
   try {
-    return new Date(value).toLocaleString();
+    return formatDateTime12h(value);
   } catch {
     return value;
   }

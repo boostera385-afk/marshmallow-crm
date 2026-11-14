@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
 
+import { formatDateTime } from "@/lib/date-time-format";
 const NOTE_POLL_MS = 15000;
 
 interface LeadNote {
@@ -362,7 +363,7 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                       {getName(note)}
                     </span>
                     <span className="text-[9px] text-muted-foreground/40">
-                      {new Date(note.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {formatDateTime(note.created_at, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </span>
                     {canEdit(note) && !isEditing && (
                       <button

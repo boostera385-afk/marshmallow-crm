@@ -266,7 +266,7 @@ export function formatEasternTime(
     });
   } catch (err) {
     console.error("Error formatting Eastern Time", err);
-    return date.toLocaleTimeString();
+    return date.toLocaleTimeString([], { hour12: true });
   }
 }
 
