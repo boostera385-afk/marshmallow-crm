@@ -56,6 +56,21 @@ describe("complete lead copy action", () => {
     expect(copied).not.toContain("$150 private note");
   });
 
+  it("copies the server's half labor as-is for a plain opr (never halved again)", async () => {
+    auth.role = "opr";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    // Shape returned by get_operator_safe_leads() after 20261219000000: no full labor.
+    render(<CompleteLeadCopyButton lead={{
+      service_details: "Repair", quote: null, terms: "quoted", labor_amount: null, operator_labor_amount: 100, material_amount: 40,
+    } as unknown as Lead} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Complete Details" }));
+    await screen.findByRole("button", { name: "Copied" });
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain("Quote: Quoted · Labor $100.00 · Parts/Materials $40.00");
+    expect(copied).not.toContain("$50.00");
+  });
+
   it("copies Quoted for a plain opr even when no labor is recorded yet", async () => {
     auth.role = "opr";
     const writeText = vi.fn().mockResolvedValue(undefined);

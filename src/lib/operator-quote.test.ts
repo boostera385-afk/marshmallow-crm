@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { operatorQuoteFormValue, operatorQuoteSummary, operatorVisibleLabor } from "./operator-quote";
+import { operatorLaborForDisplay, operatorQuoteFormValue, operatorQuoteSummary, operatorVisibleLabor } from "./operator-quote";
 
 describe("Operator-safe quote summary (business rule 2026-11-13)", () => {
   it("halves the labor amount and rounds to the cent", () => {
@@ -73,5 +73,24 @@ describe("Operator quote section on the lead page (business rule 2026-11-14)", (
   it("hides the whole section when an admin hid the quote from Operators", () => {
     expect(operatorQuoteFormValue(value, false)).toBeNull();
     expect(operatorQuoteFormValue(value, true)).not.toBeNull();
+  });
+});
+
+describe("half labor sent by the database (20261219000000)", () => {
+  it("shows the server's half as-is and never halves it again", () => {
+    expect(operatorQuoteSummary({ terms: "quoted", labor_amount: null, operator_labor_amount: 100, material_amount: 40 }))
+      .toBe("Quoted · Labor $100.00 · Parts/Materials $40.00");
+    expect(operatorLaborForDisplay({ labor_amount: null, operator_labor_amount: 50 })).toBe(50);
+  });
+  it("shows no labor when the server sent none, even if a full figure were present", () => {
+    expect(operatorLaborForDisplay({ labor_amount: 200, operator_labor_amount: null })).toBeNull();
+    expect(operatorQuoteSummary({ terms: "quoted", labor_amount: null, operator_labor_amount: null })).toBe("Quoted");
+  });
+  it("before the migration (no column) halves the full labor on screen", () => {
+    expect(operatorLaborForDisplay({ labor_amount: 200 })).toBe(100);
+  });
+  it("an older CRM build after the migration shows Quoted, never the full or a quartered amount", () => {
+    // What the pre-change summary computes from the new response (labor_amount null).
+    expect(operatorVisibleLabor(null)).toBeNull();
   });
 });

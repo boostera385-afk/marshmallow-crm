@@ -21,9 +21,25 @@ const money = (amount: number) => `$${amount.toFixed(2)}`;
 export type OperatorQuoteLead = {
   terms?: Lead["terms"];
   labor_amount?: Lead["labor_amount"];
+  /** Half the labor, computed by get_operator_safe_leads() (20261219000000). */
+  operator_labor_amount?: number | null;
   material_amount?: Lead["material_amount"];
   show_quote_to_opr?: boolean | null;
 };
+
+/**
+ * The labor figure an Operator is shown. Since 20261219000000 the server sends
+ * only the half (operator_labor_amount) and no labor_amount, so it is used as-is
+ * and never halved again. Before that migration is applied the column is absent
+ * and the full labor_amount is halved here instead.
+ */
+export function operatorLaborForDisplay(lead: Pick<OperatorQuoteLead, "labor_amount" | "operator_labor_amount">): number | null {
+  if ("operator_labor_amount" in lead) {
+    const half = lead.operator_labor_amount;
+    return half == null || !Number.isFinite(Number(half)) ? null : Number(half);
+  }
+  return operatorVisibleLabor(lead.labor_amount);
+}
 
 /** null when there is nothing an Operator may be told about the quote yet. */
 export function operatorQuoteSummary(lead: OperatorQuoteLead): string | null {
@@ -31,7 +47,7 @@ export function operatorQuoteSummary(lead: OperatorQuoteLead): string | null {
   if (lead.terms === "free_estimate") return "Free Estimate Visit";
   if (lead.terms !== "quoted") return null;
 
-  const half = operatorVisibleLabor(lead.labor_amount);
+  const half = operatorLaborForDisplay(lead);
   const materials = lead.material_amount;
   const hasMaterials = materials != null && Number.isFinite(materials) && materials > 0;
 
