@@ -154,6 +154,8 @@ export interface Lead {
   creator_name?: string;
   editor_name?: string;
   show_quote_to_opr?: boolean | null;
+  /** Plain Operators only: half the labor, from get_operator_safe_leads(); their labor_amount is null. */
+  operator_labor_amount?: number | null;
 }
 
 

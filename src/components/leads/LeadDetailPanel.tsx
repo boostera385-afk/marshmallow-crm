@@ -69,7 +69,8 @@ import {
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "./QuoteBreakdownFields";
-import { hasMaterialCharge, validateQuoteBreakdown } from "@/lib/quote-breakdown";
+import { hasMaterialCharge, validateQuoteBreakdown, type QuoteFormValue } from "@/lib/quote-breakdown";
+import { operatorQuoteFormValue } from "@/lib/operator-quote";
 import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
@@ -701,6 +702,9 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
   const isProcessor = role === "processor";
   const isOpr = isOperatorRole(role);
   const isAdmin = role === "admin";
+  // A plain Operator sees half the labor and parts/materials only (operator-quote.ts).
+  const formQuote: QuoteFormValue = { terms: form.terms || "", laborAmount: String(form.labor_amount ?? ""), materialAmount: String(form.material_amount ?? ""), includesMaterials: Boolean(form.materials_included) };
+  const quoteSection = role === "opr" ? operatorQuoteFormValue(formQuote, lead?.show_quote_to_opr) : formQuote;
   const isCsAdmin = role === "cs_admin";
   const hasQuickChatAccess = canAccess("quick_chat");
   const hasTechQuickChatAccess = canAccess("tech_quick_chat");
@@ -1069,7 +1073,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
             </div>
           </motion.div>
 
-          <QuoteBreakdownFields readOnly={isOpr}value={{ terms: form.terms || "", laborAmount: String(form.labor_amount ?? ""), materialAmount: String(form.material_amount ?? ""), includesMaterials: Boolean(form.materials_included) }} onChange={(value) => setForm((previous) => ({ ...previous, terms: value.terms || null, labor_amount: parseAmountInput(value.laborAmount), material_amount: parseAmountInput(value.materialAmount), materials_included: value.includesMaterials }))} />
+          {quoteSection && <QuoteBreakdownFields readOnly={isOpr} value={quoteSection} onChange={(value) => setForm((previous) => ({ ...previous, terms: value.terms || null, labor_amount: parseAmountInput(value.laborAmount), material_amount: parseAmountInput(value.materialAmount), materials_included: value.includesMaterials }))} />}
 
           {!hideProcessorDetails && (
             <motion.div
