@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Lead } from "@/types";
 import { formatLeadSchedule } from "@/lib/lead-copy";
-
 import { formatClockRange } from "@/lib/time-value";
+
 export type MessageTemplateKey = "technician_message" | "technician_reminder";
 
 export const DEFAULT_MESSAGE_TEMPLATES: Record<MessageTemplateKey, string> = {
@@ -18,6 +18,7 @@ Job Scheduled for: {schedule}
 {reference_line}`,
   technician_reminder: `Hi {tech_name}, This is the Automated Reminder, You have to visit the following customer today between {schedule_time}, Please Text back by "Yes" so we can update our system that you will head over
 
+Customer #{customer_number}
 Customer Name: {customer_name}
 Customer Number: {customer_phone}
 Customer Address: {customer_address}`,
