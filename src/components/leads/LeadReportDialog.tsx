@@ -177,7 +177,7 @@ export default function LeadReportDialog({ open, onOpenChange }: LeadReportDialo
       const csvRows = rawLeads.map((lead) => {
         const creatorName = (lead.created_by ? profiles[lead.created_by] || `User (${lead.created_by.slice(0, 8)})` : null) || lead.created_by_name || "Deleted user";
         const dateStr = lead.created_at
-          ? format(new Date(lead.created_at), "yyyy-MM-dd HH:mm:ss")
+          ? format(new Date(lead.created_at), "yyyy-MM-dd hh:mm:ss a")
           : "";
         return [
           dateStr,

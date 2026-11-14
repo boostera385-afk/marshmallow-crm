@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { LEAD_STATUS_CONFIG, CS_TAG_LABELS, type Lead, type LeadStatus, type CsTag } from "@/types";
 import { formatUSPhone } from "@/lib/phone";
 
+import { formatDateTime } from "@/lib/date-time-format";
 export const TARGET_SPREADSHEET_URL =
   "https://docs.google.com/spreadsheets/d/1zGnzG0ovA2ICiUNoOVgVjleVt0CDeN1yCfHEx83ucxs/edit?gid=0#gid=0";
 
@@ -227,7 +228,7 @@ export async function fetchAllLeadsWithDetails(): Promise<GoogleSheetLeadRow[]> 
           noteSummaryByLead[note.lead_id] = { cs: "", processor: "", opr: "" };
         }
         const author = note.user_name || note.user_id || "Unknown";
-        const time = note.created_at ? new Date(note.created_at).toLocaleString() : "";
+        const time = note.created_at ? formatDateTime(note.created_at) : "";
         const line = time ? `[${time}] ${author}: ${note.content}` : `${author}: ${note.content}`;
 
         if (note.note_type === "cs") {

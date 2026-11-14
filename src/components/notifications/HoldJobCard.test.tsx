@@ -24,6 +24,12 @@ describe("Marshmallow read-only hold card", () => {
     expect(container).toHaveTextContent("Coral Springs, FL, 33071");
     for (const secret of ["10 Main St", "5550100000", "Test Tech", "5550100001"]) expect(container).not.toHaveTextContent(secret);
   });
+  it("shows the scheduled window in 12-hour AM/PM time", () => {
+    const { container } = render(<HoldJobCard alert={alertFixture} onAcknowledge={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Complete card" }));
+    expect(container).toHaveTextContent("2026-10-16 · 1:00 PM - 3:00 PM");
+    expect(container).not.toHaveTextContent("13:00");
+  });
   it("labels the CX schedule-confirmation hold reason", () => {
     render(<HoldJobCard alert={{ ...alertFixture, reason: "waiting_schedule_confirmation" }} onAcknowledge={vi.fn()} />);
     expect(screen.getByText("Urgent Job → Waiting for CX for Schedule Confirmation")).toBeInTheDocument();
@@ -49,15 +55,14 @@ describe("Marshmallow read-only hold card", () => {
     expect(screen.getByText("Acknowledged")).toBeInTheDocument();
   });
 
-  it("redacts customer and technician details for a plain opr viewer but shows the quote", () => {
-    const quoted = { ...alertFixture, snapshot: { ...alertFixture.snapshot, quote: "$150 quote" } };
+  it("redacts the snapshot client-side for a plain opr viewer, including the quote", () => {
+    const quoted = { ...alertFixture, snapshot: { ...alertFixture.snapshot, quote: "$150 private" } };
     render(<HoldJobCard alert={quoted} role="opr" onAcknowledge={vi.fn()} />);
     expect(screen.getByText("MM-123")).toBeInTheDocument();
     expect(screen.queryByText("Test Customer")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Complete card" }));
-    expect(screen.getByText("Quote")).toBeInTheDocument();
-    expect(screen.getByText("$150 quote")).toBeInTheDocument();
-    for (const secret of ["Test Customer", "10 Main St", "5550100000", "Test Tech", "5550100001"]) {
+    expect(screen.queryByText("Quote")).toBeNull();
+    for (const secret of ["Test Customer", "10 Main St", "5550100000", "Test Tech", "5550100001", "$150 private"]) {
       expect(screen.queryByText(secret)).toBeNull();
     }
   });

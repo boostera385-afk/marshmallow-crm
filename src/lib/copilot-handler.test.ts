@@ -250,6 +250,11 @@ describe("authenticated Copilot handler", () => {
     const result = await response.json(); expect(result.text).toContain("Missing saved information"); expect(result.text).toContain("not an urgent-verification");
     expect(result.cards[0].fields).toContainEqual({ label: "Address", value: "10 Test St Apt 2" }); expect(generate).not.toHaveBeenCalled();
   });
+  it("shows a saved brief's scheduled time in 12-hour AM/PM time", async () => {
+    db.rpc.mockImplementation(async (name) => ({ data: name === "copilot_get_access" ? access : { id, job_id: "MM-101", status: "scheduled", scheduled_date: "2026-11-14", scheduled_time_start: "15:00:00", quote: null }, error: null }));
+    const result = await (await handle(ask("this lead", { selectedLeadId: id }))).json();
+    expect(result.cards[0].fields).toContainEqual({ label: "Scheduled", value: "2026-11-14 3:00 PM" });
+  });
   it("drafts with fresh minimal selected context, never customer data or hidden quote", async () => {
     db.rpc.mockImplementation(async (name) => ({ data: name === "copilot_get_access" ? access : { id, service_type: "Plumbing", status: "urgent_job", address: "PRIVATE ADDRESS", customer_name: "PRIVATE NAME", quote: "PRIVATE QUOTE", customer_schedule_requirements: "PRIVATE SCHEDULE" }, error: null }));
     const response = await handle(ask("Draft a message to send to the customer", { allowAi: true, selectedLeadId: id })); expect(response.status).toBe(200);

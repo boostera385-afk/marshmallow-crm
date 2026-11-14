@@ -157,3 +157,12 @@ describe("Check Template", () => {
       .toBe("|TX");
   });
 });
+
+describe("technician reminder time", () => {
+  it("says the visit window in 12-hour AM/PM time", () => {
+    const text = renderLeadTemplate(DEFAULT_MESSAGE_TEMPLATES.technician_reminder,
+      lead({ tech_name: "Synthetic Tech", scheduled_time_start: "15:00:00", scheduled_time_end: "17:00:00" }));
+    expect(text).toContain("today between 3:00 PM - 5:00 PM, Please Text back");
+    expect(text).not.toContain("15:00");
+  });
+});

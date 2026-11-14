@@ -26,6 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { ActivityLog } from "@/types";
 import { motion } from "framer-motion";
 
+import { formatClockTime } from "@/lib/time-value";
 const LOG_FETCH_LIMIT = 300;
 const PAGE_SIZE = 20;
 
@@ -110,6 +111,10 @@ const formatValue = (value: unknown) => {
   if (typeof value === "string") return value;
   return JSON.stringify(value);
 };
+
+const TIME_FIELDS = new Set(["scheduled_time_start", "scheduled_time_end"]);
+/** Saved times ("15:00:00") read as 12-hour ("3:00 PM") in change history. */
+const formatChangedTime = (value: unknown) => (typeof value === "string" ? formatClockTime(value) : value);
 
 const getFieldLabel = (field: string) => FIELD_LABELS[field] || prettyText(field);
 
@@ -264,8 +269,8 @@ const ActivityLogs = () => {
       .map(([field, value]) => {
         if (!value || typeof value !== "object") return null;
 
-        const before = formatValue(value.before);
-        const after = formatValue(value.after);
+        const before = formatValue(TIME_FIELDS.has(field) ? formatChangedTime(value.before) : value.before);
+        const after = formatValue(TIME_FIELDS.has(field) ? formatChangedTime(value.after) : value.after);
 
         if (before === after) return null;
 

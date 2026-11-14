@@ -666,3 +666,21 @@ Optional Google address confirmation in the urgent-review service is a separate
 flow; its latitude/longitude are not used for this free map. A Google key is not
 required for map coordinates or coverage previews. Review Google's content storage
 and attribution terms before enabling optional Google-derived address content.
+
+## 12-hour AM/PM times (2026-11-14; CRM publish, Copilot deploy and Donut v1.7.4 install pending)
+
+Every displayed or copied time uses a 12-hour clock with AM/PM, including browsers
+whose region defaults to 24-hour time.
+
+- CRM: saved times of day (`scheduled_time_start/end`, "15:00:00") go through
+  `formatClockTime` / `formatClockRange` (`src/lib/time-value.ts`): technician
+  reminder, hold alerts, update requests, activity-log changes and the leads CSV
+  export. Timestamps go through `formatDateTime` / `formatTimeOfDay`
+  (`src/lib/date-time-format.ts`), which keep the viewer's date order and force
+  `hour12: true`. Number formatting (`count.toLocaleString()`) is unchanged.
+- Copilot (`supabase/functions/_shared/copilot-handler.ts`): lead brief "Scheduled"
+  shows the start time as 12-hour. Needs Edge Function deployment.
+- Donut v1.7.4: captured-at time, release date and technician AI evidence times
+  pass `hour12: true`. Donut shows no scheduled times itself.
+- Not changed: the lead report download filename (`…_yyyyMMdd_HHmmss.csv`) stays
+  24-hour so files sort chronologically.

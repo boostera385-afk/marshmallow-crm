@@ -6,6 +6,8 @@ import { HOLD_REASON_LABELS, type HoldAlert } from "@/lib/operator-workflow";
 import { locationLabelFromParts, redactLeadForOperator } from "@/lib/operator-privacy";
 import type { AppRole } from "@/types";
 
+import { formatDateTime } from "@/lib/date-time-format";
+import { formatClockRange } from "@/lib/time-value";
 interface Props {
   alert: HoldAlert;
   onAcknowledge: (alert: HoldAlert) => void;
@@ -18,9 +20,11 @@ interface Props {
 export default function HoldJobCard({ alert, onAcknowledge, onDismiss, saving = false, expanded = false, role = null }: Props) {
   const [open, setOpen] = useState(expanded);
   // A plain Operator never sees the raw snapshot: no name, phone, landline, street
-  // address or technician details — same rule as everywhere else an Operator can
-  // see a lead (operator-privacy.ts). The quote is shown, as it is on the lead card.
-  // opr_admin is unrestricted here.
+  // address, technician details, or free-text quote — same rule as everywhere else
+  // an Operator can see a lead (operator-privacy.ts). opr_admin is unrestricted here,
+  // same asymmetry that already exists elsewhere. The snapshot has no structured
+  // labor/materials fields to build the operator-safe quote summary from, so the
+  // Quote row is dropped for a plain Operator rather than shown raw.
   // The server already stores an Operator's snapshot with City/State/ZIP only and
   // no location_label, so derive the label from those parts; otherwise the redaction
   // would blank the location the Operator is allowed to see.
@@ -36,8 +40,8 @@ export default function HoldJobCard({ alert, onAcknowledge, onDismiss, saving = 
     ...(role === "opr" ? [] : [["Address", lead.address]]),
     ["Location", [lead.city, lead.state, lead.zip_code].filter(Boolean).join(", ")],
     ["Schedule Requirement", lead.customer_schedule_requirements],
-    ["Scheduled For", [lead.scheduled_date, lead.scheduled_time_start, lead.scheduled_time_end].filter(Boolean).join(" · ")],
-    ["Quote", lead.quote],
+    ["Scheduled For", [lead.scheduled_date, formatClockRange(lead.scheduled_time_start, lead.scheduled_time_end)].filter(Boolean).join(" · ")],
+    ...(role === "opr" ? [] : [["Quote", lead.quote]]),
     ["Technician", [lead.tech_name, lead.tech_number].filter(Boolean).join(" · ")],
   ].filter(([, value]) => Boolean(value));
   return (
@@ -71,7 +75,7 @@ export default function HoldJobCard({ alert, onAcknowledge, onDismiss, saving = 
           <dd className="whitespace-pre-wrap break-words text-sm">{value}</dd>
         </div>)}</dl>
         <CompleteLeadCopyButton lead={lead} className="w-full" />
-        <p className="text-[11px] text-muted-foreground">Read-only snapshot at {new Date(alert.created_at).toLocaleString()}. Private notes and photos are not copied into notifications.</p>
+        <p className="text-[11px] text-muted-foreground">Read-only snapshot at {formatDateTime(alert.created_at)}. Private notes and photos are not copied into notifications.</p>
       </div>}
     </article>
   );

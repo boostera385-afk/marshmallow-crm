@@ -9,6 +9,7 @@ import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-h
 import { cn } from "@/lib/utils";
 import { healthSeverity, type HealthSeverity } from "@/lib/system-health-alert";
 
+import { formatTimeOfDay } from "@/lib/date-time-format";
 /** Realtime delivers these; the poll is only a safety net. */
 const POLL_MS = 60_000;
 const MAX_CARDS = 3;
@@ -122,7 +123,7 @@ export default function SystemHealthPopup() {
                 )}
                 <p className={cn("text-[13px] font-bold leading-5", BADGE[severity] ? "text-red-700 dark:text-red-300" : "text-foreground")}>{n.title}</p>
                 <p className="mt-1 whitespace-pre-line text-[12px] leading-5 text-foreground/85">{n.message}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{new Date(n.created_at).toLocaleTimeString()}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">{formatTimeOfDay(n.created_at)}</p>
               </div>
               <button
                 type="button"

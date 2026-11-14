@@ -27,7 +27,7 @@ export function ProcessorReviewPanel({ job, timezone, checking, busy, error, can
   const facts = processorFacts(job, detail.data);
   const setup = processorSetupIssue(job);
   const status = PROCESSOR_STATUS_UI[job.board_status];
-  const when = (value: string) => new Date(value).toLocaleString([], { timeZone: timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const when = (value: string) => new Date(value).toLocaleString([], { timeZone: timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
   const workflow = processorWorkflowMessage(job.status);
   return <section aria-label={`Review ${job.job_id}`} className="space-y-3 rounded-2xl border border-border/50 bg-muted/20 p-3 text-xs">
     <div className="space-y-1">

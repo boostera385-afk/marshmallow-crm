@@ -88,6 +88,7 @@ import { countTechs } from "@/lib/lead-techs";
 import { saveLeadTag } from "@/lib/lead-tag-actions";
 import AiTagBadge from "@/components/leads/AiTagBadge";
 import { canSeeTechDetails, isOperatorRole } from "@/lib/access";
+import { operatorQuoteSummary } from "@/lib/operator-quote";
 import { customerQuoteSummary } from "@/lib/quote-breakdown";
 import BookingDateTimeDialog, { formatBookingCompact, isBookingExpired } from "./BookingDateTimeDialog";
 import AssignLeadToOperatorDialog from "./AssignLeadToOperatorDialog";
@@ -100,6 +101,7 @@ import LeadCoverageBadge from "./LeadCoverageBadge";
 import UrgentAICheckDialog from "./UrgentAICheckDialog";
 import { showsUrgentCheck } from "@/lib/urgent-verification";
 
+import { formatDateTime as formatDateTime12h } from "@/lib/date-time-format";
 interface LeadCardProps {
   lead: Lead;
   profiles: Record<string, string>;
@@ -139,7 +141,7 @@ const NOTE_INDICATOR_START_AT = new Date("2026-06-12T12:01:26.000Z").getTime();
 function formatDateTime(value?: string | null) {
   if (!value) return null;
   try {
-    return new Date(value).toLocaleString();
+    return formatDateTime12h(value);
   } catch {
     return value;
   }
@@ -936,10 +938,18 @@ function LeadCard({
       icon: Phone,
       wrap: false,
     },
-    // Operators see the same customer-facing quote as everyone else, unless an admin
-    // hid it from Operators for this lead. The For You/For Us split is never shown here.
-    ...(role === "opr" && lead.show_quote_to_opr === false
-      ? []
+    // Plain Operators never see the free-text quote, the full labor amount, or the
+    // For You/For Us split — only the terms, half the labor, and materials if any.
+    ...(role === "opr"
+      ? [
+        {
+          key: "operator_quote",
+          label: "Quote",
+          value: operatorQuoteSummary(lead) ?? "",
+          icon: DollarSign,
+          wrap: true,
+        },
+        ]
       : [{ key: "customer_quote", label: "Quote", value: customerQuoteSummary(lead) ?? "", icon: DollarSign, wrap: true }]),
     // CS Admins never see technician details.
     ...(canSeeTechDetails(role)

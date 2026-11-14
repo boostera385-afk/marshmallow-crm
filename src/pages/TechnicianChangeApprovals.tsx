@@ -22,6 +22,7 @@ import {
 import { silkySpring } from "@/lib/motion";
 import { backgroundInterval } from "@/lib/overload-guard";
 
+import { formatDateTime } from "@/lib/date-time-format";
 const QUERY_KEY = ["tech-change-requests"];
 
 const TABS: { key: TechnicianChangeStatus; label: string }[] = [
@@ -234,7 +235,7 @@ function RequestRow({
 
           <p className="text-xs text-muted-foreground">
             Requested by {request.requested_by_name ?? "Unknown"} ·{" "}
-            {new Date(request.created_at).toLocaleString()}
+            {formatDateTime(request.created_at)}
           </p>
 
           {request.reason ? (
@@ -255,7 +256,7 @@ function RequestRow({
               {request.status === "approved" ? "Approved" : "Declined"} by{" "}
               {request.reviewed_by_name ?? "Unknown"}
               {request.reviewed_at
-                ? ` · ${new Date(request.reviewed_at).toLocaleString()}`
+                ? ` · ${formatDateTime(request.reviewed_at)}`
                 : ""}
               {request.review_note ? ` · “${request.review_note}”` : ""}
             </p>

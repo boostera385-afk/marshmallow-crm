@@ -6,6 +6,7 @@ import { fetchCopilotDiagnostics, testCopilotAi, type CopilotConfig } from "@/li
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
+import { formatDateTime } from "@/lib/date-time-format";
 export default function CopilotReadiness({ config }: { config: CopilotConfig }) {
   const { user, role } = useAuth();
   const client = useQueryClient();
@@ -26,8 +27,8 @@ export default function CopilotReadiness({ config }: { config: CopilotConfig }) 
     {data && !query.isError && <><dl className="grid gap-3 text-xs sm:grid-cols-3">{[
       ["Saved Copilot", config.enabled ? "Enabled" : "Disabled"], ["Saved AI", config.ai_enabled ? "Enabled" : "Disabled"],
       ["Server credential", data.keyConfigured ? "Present · not validated" : "Missing"], ["Allowance remaining", `$${(data.remainingCents / 100).toFixed(2)}`],
-      ["Your requests remaining today", String(data.remainingToday)], ["Last successful AI request", data.lastSuccessAt ? new Date(data.lastSuccessAt).toLocaleString() : "No success recorded"],
-      ["Last configuration change", data.configChangedAt ? new Date(data.configChangedAt).toLocaleString() : "No change recorded"], ["Backend / prompt", `${data.backendVersion} / ${data.promptVersion}`], ["Model", data.model],
+      ["Your requests remaining today", String(data.remainingToday)], ["Last successful AI request", data.lastSuccessAt ? formatDateTime(data.lastSuccessAt) : "No success recorded"],
+      ["Last configuration change", data.configChangedAt ? formatDateTime(data.configChangedAt) : "No change recorded"], ["Backend / prompt", `${data.backendVersion} / ${data.promptVersion}`], ["Model", data.model],
     ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 break-words font-medium">{value}</dd></div>)}</dl>
     <p className="flex items-center gap-2 text-xs"><ShieldCheck className="h-4 w-4"/>{ready ? "Ready for a confirmed provider test. Users still need AI-assisted consent in chat." : "Resolve disabled AI, missing credentials or exhausted limits before testing."}</p></>}
     <AlertDialog><AlertDialogTrigger asChild><Button type="button" size="sm" disabled={!ready || test.isPending}>Test AI connection</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Test the AI provider?</AlertDialogTitle><AlertDialogDescription>This sends one nonsensitive question to OpenAI. It reserves $0.02 of the shared allowance and counts toward your daily limit, even if the outcome is uncertain. It does not change CRM records or enable AI. No automatic retry.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction disabled={test.isPending} onClick={() => { if (flight.current || !ready) return; flight.current = true; test.mutate(); }}>Confirm AI test</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>

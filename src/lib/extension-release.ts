@@ -24,7 +24,7 @@ export function isNewerExtension(latest: string, installed: string): boolean {
 
 export function formatExtensionReleaseDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
-    year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short",
+    year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short",
   }).format(new Date(value));
 }
 

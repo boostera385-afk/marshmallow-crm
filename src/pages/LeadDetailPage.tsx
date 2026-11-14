@@ -80,6 +80,7 @@ import UrgentAICheckDialog from "@/components/leads/UrgentAICheckDialog";
 import { showsUrgentCheck } from "@/lib/urgent-verification";
 import { DateInput } from "@/components/ui/date-input";
 
+import { formatDateTime } from "@/lib/date-time-format";
 const PHOTO_PREVIEW_LIMIT = 1;
 
 interface ExistingPhoto {
@@ -1424,7 +1425,7 @@ export default function LeadDetailPage() {
               </p>
               <p className="mt-1 text-[12px] text-muted-foreground">
                 {lastEditedBy && lastEditedAt
-                  ? `Last updated by ${lastEditedBy} on ${new Date(lastEditedAt).toLocaleString()}`
+                  ? `Last updated by ${lastEditedBy} on ${formatDateTime(lastEditedAt)}`
                   : `${visiblePhotoCount} photo${visiblePhotoCount !== 1 ? "s" : ""} attached`}
               </p>
             </div>

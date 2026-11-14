@@ -21,6 +21,7 @@ import { LEAD_STATUS_CONFIG, type LeadStatus } from "@/types";
 import QuoPhoneTrigger from "@/components/leads/QuoPhoneTrigger";
 import "./ProcessorBoardPage.css";
 
+import { formatDateTime } from "@/lib/date-time-format";
 const EMPTY_JOBS: ProcessorJob[] = [];
 type CheckIssue = { message: string; retryable: boolean; signature: string };
 const time = (value: string | null) => value ? `${Number(value.slice(0, 2)) % 12 || 12}:${value.slice(3, 5)} ${Number(value.slice(0, 2)) >= 12 ? "PM" : "AM"}` : null;
@@ -138,7 +139,7 @@ function ProcessorBoard() {
           <span className="rounded-full bg-destructive/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-destructive" aria-label="Jobs on the board">{query.data?.all_total ?? "—"}</span>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {latestCheck !== null && <span className="hidden text-[11px] text-muted-foreground sm:inline" title={new Date(latestCheck).toLocaleString()}>Updated {formatDistanceToNow(new Date(latestCheck), { addSuffix: true })}</span>}
+          {latestCheck !== null && <span className="hidden text-[11px] text-muted-foreground sm:inline" title={formatDateTime(latestCheck)}>Updated {formatDistanceToNow(new Date(latestCheck), { addSuffix: true })}</span>}
           <Button size="sm" variant="outline" className="h-7 gap-1.5 border-border/60 text-[11px]" disabled={query.isFetching} onClick={() => void query.refetch()} title="Reload the board. AI checks run on the server.">
             <RefreshCw className={cn("h-3 w-3", query.isFetching && "motion-safe:animate-spin")} />Refresh</Button>
           <span className="hidden text-[11px] text-muted-foreground md:inline">Showing <b className="tabular-nums text-foreground">{query.data?.total ?? "—"}</b></span>
