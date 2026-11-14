@@ -109,3 +109,30 @@ it("rejects Yes-materials with no amount instead of saving", async () => {
   await save();
   expect(state.updates).toHaveLength(0);
 });
+
+describe("Operator viewing a lead's quote (half labor rule)", () => {
+  beforeEach(() => { state.role = "opr"; });
+  afterEach(() => { state.role = "customer_service"; });
+
+  it("shows half the labor and the parts/materials amount, never the full labor", async () => {
+    await mount();
+    const section = screen.getByRole("region", { name: "Quote breakdown" });
+    expect(section).toHaveTextContent("$100.00");
+    expect(section).toHaveTextContent("$50.00");
+    expect(section).not.toHaveTextContent("$200.00");
+    expect(screen.queryByText("$200.00")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Customer Labor ($)")).not.toBeInTheDocument();
+  });
+
+  it("shows no quote section when an admin hid the quote from Operators", async () => {
+    state.lead = { ...baseLead, show_quote_to_opr: false };
+    await mount();
+    expect(screen.queryByRole("region", { name: "Quote breakdown" })).not.toBeInTheDocument();
+  });
+});
+
+it("other roles still see and edit the full labor amount", async () => {
+  state.role = "processor";
+  await mount();
+  expect(screen.getByLabelText("Customer Labor ($)")).toHaveValue(200);
+});

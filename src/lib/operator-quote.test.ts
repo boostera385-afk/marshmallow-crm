@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { operatorQuoteSummary, operatorVisibleLabor } from "./operator-quote";
+import { operatorQuoteFormValue, operatorQuoteSummary, operatorVisibleLabor } from "./operator-quote";
 
 describe("Operator-safe quote summary (business rule 2026-11-13)", () => {
   it("halves the labor amount and rounds to the cent", () => {
@@ -53,5 +53,25 @@ describe("Operator-safe quote summary (business rule 2026-11-13)", () => {
     expect(
       operatorQuoteSummary({ terms: "free_estimate", show_quote_to_opr: false }),
     ).toBeNull();
+  });
+});
+
+describe("Operator quote section on the lead page (business rule 2026-11-14)", () => {
+  const value = { terms: "quoted" as const, laborAmount: "200", materialAmount: "50", includesMaterials: true };
+  it("shows half the labor and the full parts/materials amount", () => {
+    expect(operatorQuoteFormValue(value)).toEqual({ terms: "quoted", laborAmount: "100", materialAmount: "50", includesMaterials: true });
+    expect(operatorQuoteFormValue({ ...value, laborAmount: "99.99" })?.laborAmount).toBe("50");
+  });
+  it("matches the lead card: materials shown whenever an amount is recorded", () => {
+    expect(operatorQuoteFormValue({ ...value, includesMaterials: false })?.includesMaterials).toBe(true);
+    expect(operatorQuoteFormValue({ ...value, materialAmount: "" })?.includesMaterials).toBe(false);
+  });
+  it("never infers labor that was not recorded", () => {
+    expect(operatorQuoteFormValue({ ...value, laborAmount: "" })?.laborAmount).toBe("");
+    expect(operatorQuoteFormValue({ ...value, laborAmount: "abc" })?.laborAmount).toBe("");
+  });
+  it("hides the whole section when an admin hid the quote from Operators", () => {
+    expect(operatorQuoteFormValue(value, false)).toBeNull();
+    expect(operatorQuoteFormValue(value, true)).not.toBeNull();
   });
 });

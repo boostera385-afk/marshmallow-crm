@@ -56,6 +56,7 @@ import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "@/components/leads/QuoteBreakdownFields";
 import { hasMaterialCharge, validateQuoteBreakdown } from "@/lib/quote-breakdown";
+import { operatorQuoteFormValue } from "@/lib/operator-quote";
 import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import StatusBadge from "@/components/leads/StatusBadge";
 import LeadCoverageBadge from "@/components/leads/LeadCoverageBadge";
@@ -1261,6 +1262,11 @@ export default function LeadDetailPage() {
     );
   }
 
+  // A plain Operator sees half the labor and parts/materials only (operator-quote.ts),
+  // never the full labor amount; an admin can hide the quote from Operators per lead.
+  const formQuote = { terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included };
+  const quoteSection = isOpr ? operatorQuoteFormValue(formQuote, originalLead?.show_quote_to_opr) : formQuote;
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       {externalUpdateBy && (
@@ -1622,7 +1628,7 @@ export default function LeadDetailPage() {
             </CollapsibleContent>
           </Collapsible>
 
-          <QuoteBreakdownFields readOnly={isOpr}value={{ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included }} onChange={(value) => setForm((previous) => ({ ...previous, terms: value.terms, labor_amount: value.laborAmount, material_amount: value.materialAmount, materials_included: value.includesMaterials }))} />
+          {quoteSection && <QuoteBreakdownFields readOnly={isOpr} value={quoteSection} onChange={(value) => setForm((previous) => ({ ...previous, terms: value.terms, labor_amount: value.laborAmount, material_amount: value.materialAmount, materials_included: value.includesMaterials }))} />}
 
           {!hideProcessorDetails && (
             <Collapsible open={processorOpen} onOpenChange={setProcessorOpen}>
