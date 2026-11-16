@@ -102,6 +102,14 @@ describe.each(["customer_service", "cs_admin"])("%s editing an existing lead's q
     await save();
     expect(state.updates[0]).toMatchObject({ for_you_amount: 120, for_us_amount: 80, diagnostic_fee_amount: 60 });
   });
+
+  it("keeps the saved labor percentages too", async () => {
+    state.lead = { ...baseLead, terms: "free_estimate", for_you_labor_percent: 55, for_us_labor_percent: 45 };
+    await mount();
+    expect(screen.queryByLabelText("For You (% of labor)")).not.toBeInTheDocument();
+    await save();
+    expect(state.updates[0]).toMatchObject({ for_you_labor_percent: 55, for_us_labor_percent: 45 });
+  });
 });
 
 it("rejects Yes-materials with no amount instead of saving", async () => {
@@ -168,19 +176,37 @@ describe("Diagnostic/Service Call terms and For You / For Us on every term (2026
     expect(state.updates).toHaveLength(0);
   });
 
-  it.each(["free_estimate", "diagnostic_service_call", null])("shows the For You / For Us share for terms %s", async (terms) => {
+  const shown = () => ["For You ($)", "For You ($ incl. material)", "For Us ($ from labor)", "For You ($ from diagnostic)", "For Us ($ from diagnostic)",
+    "For You (% of labor)", "For Us (% of labor)", "Diagnostic Fee ($)"].filter((label) => screen.queryByLabelText(label));
+
+  it.each([
+    ["quoted", ["For You ($ incl. material)", "For Us ($ from labor)", "Diagnostic Fee ($)"]],
+    ["free_estimate", ["For You (% of labor)", "For Us (% of labor)", "Diagnostic Fee ($)"]],
+    ["diagnostic_service_call", ["For Us ($ from diagnostic)", "For You ($ from diagnostic)", "For You (% of labor)", "For Us (% of labor)", "Diagnostic Fee ($)"]],
+    [null, ["For You ($)", "For Us ($ from labor)", "Diagnostic Fee ($)"]],
+  ])("shows the Internal Technician Share fields for terms %s", async (terms, expected) => {
     state.lead = { ...baseLead, terms };
     await mount();
     expect(screen.getByText("Internal Technician Share")).toBeInTheDocument();
-    expect(screen.getByText("For Us ($ from labor)")).toBeInTheDocument();
-    expect(screen.getByLabelText("Diagnostic Fee ($)")).toBeInTheDocument();
+    expect(shown().sort()).toEqual([...expected].sort());
   });
 
-  it("keeps For You / For Us when terms are Free Estimate Visit", async () => {
+  it("saves Free Estimate labor percentages and keeps the hidden dollar shares", async () => {
     state.lead = { ...baseLead, terms: "free_estimate" };
     await mount();
+    fireEvent.change(screen.getByLabelText("For You (% of labor)"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("For Us (% of labor)"), { target: { value: "40" } });
     await save();
-    expect(state.updates[0]).toMatchObject({ terms: "free_estimate", labor_amount: null, material_amount: null, for_you_amount: 120, for_us_amount: 80 });
+    expect(state.updates[0]).toMatchObject({ terms: "free_estimate", labor_amount: null, material_amount: null,
+      for_you_labor_percent: 60, for_us_labor_percent: 40, for_you_amount: 120, for_us_amount: 80 });
+  });
+
+  it("refuses a labor percentage over 100 instead of saving", async () => {
+    state.lead = { ...baseLead, terms: "free_estimate" };
+    await mount();
+    fireEvent.change(screen.getByLabelText("For You (% of labor)"), { target: { value: "150" } });
+    await save();
+    expect(state.updates).toHaveLength(0);
   });
 
   it("Operators see only the Diagnostic/Service Call term, not the fee", async () => {

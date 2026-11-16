@@ -55,7 +55,8 @@ import { optimizeImageForUpload } from "@/lib/image-upload";
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "@/components/leads/QuoteBreakdownFields";
-import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
+import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateLaborPercent, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
+import TechnicianShareFields from "@/components/leads/TechnicianShareFields";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
 import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import StatusBadge from "@/components/leads/StatusBadge";
@@ -223,6 +224,8 @@ export default function LeadDetailPage() {
     for_you_amount: "",
     for_us_amount: "",
     diagnostic_fee_amount: "",
+    for_you_labor_percent: "",
+    for_us_labor_percent: "",
 
     amount: "",
     payment_screenshot_url: "",
@@ -324,6 +327,8 @@ export default function LeadDetailPage() {
       for_you_amount: lead.for_you_amount != null ? String(lead.for_you_amount) : "",
       for_us_amount: lead.for_us_amount != null ? String(lead.for_us_amount) : "",
       diagnostic_fee_amount: lead.diagnostic_fee_amount != null ? String(lead.diagnostic_fee_amount) : "",
+      for_you_labor_percent: lead.for_you_labor_percent != null ? String(lead.for_you_labor_percent) : "",
+      for_us_labor_percent: lead.for_us_labor_percent != null ? String(lead.for_us_labor_percent) : "",
 
       amount: lead.amount != null ? String(lead.amount) : "",
       payment_screenshot_url: lead.payment_screenshot_url || "",
@@ -720,7 +725,8 @@ export default function LeadDetailPage() {
   const handleSave = async () => {
     const quoteError = validateQuoteBreakdown({ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included });
     if (quoteError) { toast.error(quoteError); return; }
-    const feeError = validateDiagnosticFee(form.diagnostic_fee_amount);
+    const feeError = validateDiagnosticFee(form.diagnostic_fee_amount)
+      || validateLaborPercent(form.for_you_labor_percent) || validateLaborPercent(form.for_us_labor_percent);
     if (feeError) { toast.error(feeError); return; }
     if (!user) return;
     if (isOpr) {
@@ -844,6 +850,14 @@ export default function LeadDetailPage() {
         !hideProcessorDetails
           ? parseAmount(form.diagnostic_fee_amount)
           : (originalLead?.diagnostic_fee_amount ?? null),
+      for_you_labor_percent:
+        !hideProcessorDetails
+          ? parseAmount(form.for_you_labor_percent)
+          : (originalLead?.for_you_labor_percent ?? null),
+      for_us_labor_percent:
+        !hideProcessorDetails
+          ? parseAmount(form.for_us_labor_percent)
+          : (originalLead?.for_us_labor_percent ?? null),
 
       last_edited_by: user.id,
       last_edited_by_name: currentUserName,
@@ -1170,6 +1184,8 @@ export default function LeadDetailPage() {
       for_you_amount: form.for_you_amount ? parseFloat(form.for_you_amount) : null,
       for_us_amount: form.for_us_amount ? parseFloat(form.for_us_amount) : null,
       diagnostic_fee_amount: form.diagnostic_fee_amount ? parseFloat(form.diagnostic_fee_amount) : null,
+      for_you_labor_percent: form.for_you_labor_percent ? parseFloat(form.for_you_labor_percent) : null,
+      for_us_labor_percent: form.for_us_labor_percent ? parseFloat(form.for_us_labor_percent) : null,
       created_by: originalLead?.created_by || user?.id || null,
       created_by_name: originalLead?.created_by_name || profile?.full_name || user?.email || null,
       created_at: originalLead?.created_at || new Date().toISOString(),
@@ -1718,43 +1734,16 @@ export default function LeadDetailPage() {
                     </p>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                      <div className="space-y-1.5">
-                        <Label className={labelClass}>{form.terms === "quoted" && form.materials_included ? "For You ($ incl. material)" : "For You ($)"}</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={form.for_you_amount}
-                          onChange={(e) => update("for_you_amount", e.target.value)}
-                          className={fieldClass}
-                          readOnly={isOpr}
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className={labelClass}>For Us ($ from labor)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={form.for_us_amount}
-                          onChange={(e) => update("for_us_amount", e.target.value)}
-                          className={fieldClass}
-                          readOnly={isOpr}
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label htmlFor="lead-diagnostic-fee" className={labelClass}>Diagnostic Fee ($)</Label>
-                        <Input
-                          id="lead-diagnostic-fee"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={form.diagnostic_fee_amount}
-                          onChange={(e) => update("diagnostic_fee_amount", e.target.value)}
-                          className={fieldClass}
-                          readOnly={isOpr}
-                        />
-                      </div>
+                      <TechnicianShareFields
+                        idPrefix="lead"
+                        terms={form.terms}
+                        materialsIncluded={form.materials_included}
+                        values={form}
+                        onChange={(field, value) => update(field, value)}
+                        readOnly={isOpr}
+                        labelClassName={labelClass}
+                        inputClassName={fieldClass}
+                      />
                     </div>
                   </div>
                 )}

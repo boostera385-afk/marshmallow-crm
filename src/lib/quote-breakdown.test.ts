@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
-import { customerQuoteSummary, validateDiagnosticFee, validateQuoteBreakdown, type QuoteFormValue } from "./quote-breakdown";
+import { customerQuoteSummary, technicianShareFieldsForTerms, validateDiagnosticFee, validateLaborPercent, validateQuoteBreakdown, type QuoteFormValue } from "./quote-breakdown";
 const donut = runInNewContext(readFileSync("tmp_extension/quo-crm-extension/quote-breakdown.js", "utf8") + "; globalThis.DonutQuote");
 const quoted: QuoteFormValue = { terms: "quoted", laborAmount: "200", materialAmount: "60", includesMaterials: true };
 
@@ -40,5 +40,15 @@ describe("CRM and Donut customer quote breakdown", () => {
   });
   it("Donut drops unknown terms", () => {
     expect(donut.fields({ terms: "made_up", laborAmount: "10" })).toEqual({ terms: null, labor_amount: null, material_amount: null });
+  });
+  it("picks the Internal Technician Share fields by terms (owner formats)", () => {
+    expect(technicianShareFieldsForTerms("quoted")).toEqual(["for_you_amount", "for_us_amount", "diagnostic_fee_amount"]);
+    expect(technicianShareFieldsForTerms("free_estimate")).toEqual(["for_you_labor_percent", "for_us_labor_percent", "diagnostic_fee_amount"]);
+    expect(technicianShareFieldsForTerms("diagnostic_service_call")).toEqual(["for_you_amount", "for_us_amount", "for_you_labor_percent", "for_us_labor_percent", "diagnostic_fee_amount"]);
+    expect(technicianShareFieldsForTerms(null)).toEqual(["for_you_amount", "for_us_amount", "diagnostic_fee_amount"]);
+  });
+  it.each([["", null], ["0", null], ["100", null], ["50.5", null], ["-1", /0 to 100/], ["101", /0 to 100/], ["x", /0 to 100/]])("labor percent %j", (value, expected) => {
+    const result = validateLaborPercent(value);
+    if (expected) expect(result).toMatch(expected); else expect(result).toBeNull();
   });
 });

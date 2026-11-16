@@ -145,6 +145,9 @@ export interface Lead {
   for_you_amount: number | null;
   /** Diagnostic Fee, beside For You / For Us on every term (20261222000000). */
   diagnostic_fee_amount?: number | null;
+  /** For You / For Us share of labor in percent, 0-100 (20261224000000). */
+  for_you_labor_percent?: number | null;
+  for_us_labor_percent?: number | null;
   for_us_amount: number | null;
   cancellation_reason?: string | null;
   source_url?: string | null;
