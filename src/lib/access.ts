@@ -124,6 +124,21 @@ export function canAddLeadViaExtension(
   return role === "customer_service" && !canAddManualLead(role, profile);
 }
 
+/**
+ * Whether this user may edit notes written by other people in a lead's Processor
+ * Notes thread. Admin always may; a Processor needs the per-user
+ * `can_edit_processor_notes` grant from Settings -> Feature Access. Everyone can
+ * still edit their own notes in threads they can write to. The database enforces
+ * the same rule (policy "Granted processors can edit processor notes").
+ */
+export function canEditOthersProcessorNotes(
+  role: AppRole | null | undefined,
+  profile?: { can_edit_processor_notes?: boolean | null } | null,
+): boolean {
+  if (role === "admin") return true;
+  return role === "processor" && Boolean(profile?.can_edit_processor_notes);
+}
+
 /** Roles that manage technicians across OPRs must choose an OPR code. */
 export function mustChooseOprCode(role: AppRole | null | undefined): boolean {
   return role === "admin" || role === "processor" || role === "opr_admin";

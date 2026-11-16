@@ -104,6 +104,7 @@ interface SettingsUser {
   opr_code: string | null;
   can_view_tech_report: boolean | null;
   can_add_manual_leads: boolean | null;
+  can_edit_processor_notes: boolean | null;
 }
 
 interface AccessCodeRow {
@@ -177,6 +178,13 @@ const Settings = () => {
               }[]
             | null;
         };
+        // Read separately so the user list still loads if the
+        // 20261220000000 migration has not been applied yet (the grant then
+        // reads as off, and switching it reports the database error).
+        const { data: notesGrants } = (await supabase.from("profiles").select("id, can_edit_processor_notes" as never)) as unknown as {
+          data: { id: string; can_edit_processor_notes: boolean | null }[] | null;
+        };
+        const notesGrantByUserId = new Map((notesGrants ?? []).map((row) => [row.id, row.can_edit_processor_notes]));
 
         return (profiles ?? [])
           .map((profile) => {
@@ -192,6 +200,7 @@ const Settings = () => {
               opr_code: profile.opr_code,
               can_view_tech_report: profile.can_view_tech_report,
               can_add_manual_leads: profile.can_add_manual_leads,
+              can_edit_processor_notes: notesGrantByUserId.get(profile.id) ?? false,
             } as SettingsUser;
           })
           .filter((entry): entry is SettingsUser => entry !== null);
@@ -224,6 +233,7 @@ const Settings = () => {
             opr_code: null,
             can_view_tech_report: false,
             can_add_manual_leads: manualLeadByUserId.get(profile.id) ?? false,
+            can_edit_processor_notes: null,
           } as SettingsUser;
         })
         .filter((entry): entry is SettingsUser => entry !== null);
@@ -703,6 +713,25 @@ const Settings = () => {
     onError: (error) => toast.error(`Failed to update report access: ${error.message}`),
   });
 
+  // Admin-only: profiles UPDATE RLS and protect_profile_privilege_flags() refuse
+  // anyone else. Lets a Processor edit other users' Processor Notes.
+  const toggleCanEditProcessorNotes = useMutation({
+    mutationFn: async ({ userId, allowed }: { userId: string; allowed: boolean }) => {
+      const { data, error } = await supabase.from("profiles")
+        .update({ can_edit_processor_notes: allowed } as never).eq("id", userId).select("id");
+      if (error) throw error;
+      if (!data?.length) throw new Error("Not permitted");
+      return { userId, allowed };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(settingsUsersQueryKey, (old: SettingsUser[] | undefined) =>
+        old ? old.map((u) => (u.id === data.userId ? { ...u, can_edit_processor_notes: data.allowed } : u)) : [],
+      );
+      toast.success(`Edit Processor Notes ${data.allowed ? "granted" : "revoked"}`);
+    },
+    onError: (error) => toast.error(`Failed to update Edit Processor Notes: ${error.message}`),
+  });
+
   // profiles UPDATE RLS is admin-only, so this goes through the SECURITY
   // DEFINER RPC that lets a CS Admin (with can_manage_users) grant the flag
   // to Customer Service users only.
@@ -796,6 +825,16 @@ const Settings = () => {
         ? <Switch aria-label={`Manual Lead for ${target.full_name || "Unnamed user"}`} checked={target.can_add_manual_leads || false} disabled={toggleCanAddManualLead.isPending}
             onCheckedChange={(checked) => toggleCanAddManualLead.mutate({ userId: target.id, allowed: checked })} />
         : <span className="text-xs text-muted-foreground">{target.role === "cs_admin" ? "Included with role" : "Not available"}</span>,
+    },
+    {
+      key: "edit_processor_notes", label: "Edit Processor Notes",
+      searchTerms: ["Processor Notes", "Edit others' notes", "Notes thread"],
+      renderControl: (target) => target.role === "processor"
+        ? <Switch aria-label={`Edit Processor Notes for ${target.full_name || "Unnamed user"}`}
+            title="Edit other users' notes in the Processor Notes thread"
+            checked={target.can_edit_processor_notes || false} disabled={!isAdmin || toggleCanEditProcessorNotes.isPending}
+            onCheckedChange={(checked) => toggleCanEditProcessorNotes.mutate({ userId: target.id, allowed: checked })} />
+        : <span className="text-xs text-muted-foreground">Processors only</span>,
     },
   ];
 

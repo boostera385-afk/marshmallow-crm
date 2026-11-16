@@ -76,6 +76,8 @@ export interface Profile {
   can_view_tech_report?: boolean | null;
   /** CS-only grant that unlocks the manual "New Lead" button in the CRM. */
   can_add_manual_leads?: boolean | null;
+  /** Processor-only grant to edit other users' notes in the Processor Notes thread. */
+  can_edit_processor_notes?: boolean | null;
 }
 
 export interface UserRole {

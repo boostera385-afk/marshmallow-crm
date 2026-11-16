@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { isOperatorRole } from "@/lib/access";
+import { canEditOthersProcessorNotes, isOperatorRole } from "@/lib/access";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -289,12 +289,14 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
 
   const handleSaveEdit = async () => {
     if (!editContent.trim() || !editingId) return;
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("lead_notes")
       .update({ content: editContent.trim() })
-      .eq("id", editingId);
-    if (error) {
-      toast.error("Failed to update note");
+      .eq("id", editingId)
+      .select("id");
+    // RLS that refuses an UPDATE returns no rows rather than an error.
+    if (error || !data?.length) {
+      toast.error(error ? "Failed to update note" : "You don't have permission to edit this note");
     } else {
       setEditingId(null);
       setEditContent("");
@@ -315,9 +317,13 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
     }
   };
 
+  // Others' processor notes are editable only with the Feature Access grant
+  // (content only - the database keeps author, lead and thread fixed).
+  const canEditOthers = noteType === "processor" && canEditOthersProcessorNotes(role, profile);
+
   const canEdit = (note: LeadNote) => {
     if (!canWriteThread) return false;
-    if (isAdmin) return true;
+    if (isAdmin || canEditOthers) return true;
     return note.user_id === user?.id;
   };
 
