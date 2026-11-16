@@ -1,5 +1,7 @@
 -- =============================================================================
 -- Migration : 20261223000000_lead_note_edited_by.sql
+-- Applied   : production (kxiqholnmhkwhdkhtopp) 2026-11-16, at the user's request;
+--             harness 96 run there inside a rolled-back transaction: 5/5 PASS.
 -- Purpose   : Record who last edited a lead note, so the Processor Notes thread
 --             can show which processor changed a note.
 --
