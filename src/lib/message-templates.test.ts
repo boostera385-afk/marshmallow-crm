@@ -37,8 +37,8 @@ const message = (l: Lead, extras: Record<string, string> = {}) =>
     ...extras,
   });
 
-describe("technician message by terms (original wording restored)", () => {
-  it("writes the quoted message word for word as before June 2026", () => {
+describe("technician message by terms (owner formats 2026-11-16)", () => {
+  it("writes the Quoted Job format: labor + parts, then For You / For Us dollars", () => {
     expect(message(lead())).toBe(
       [
         "*Customer # 12*",
@@ -48,12 +48,10 @@ describe("technician message by terms (original wording restored)", () => {
         "Customer Address: 1 Test St",
         "Service: Fix sink",
         "",
-        "Customer is agreed to pay ($300) total labor",
-        "($100) FOR MATERIALS",
-        "",
+        "Customer is agreed to pay $300 total labor + $100 for Parts or Material.",
         "You Agreed on the Terms:",
-        "For you: $250 labor including material",
-        "For us: $150 from total labor",
+        "For You: $250 from Labor",
+        "For Us: $150 from Labor",
         "",
         "Job Scheduled for: THURSDAY 12th December between 9:00am-11:30am",
         "",
@@ -61,8 +59,8 @@ describe("technician message by terms (original wording restored)", () => {
     );
   });
 
-  it("writes the free estimate message with the For You / For Us lines (2026-11-16)", () => {
-    expect(message(lead({ terms: "free_estimate" }), { reference_name: "Ali" })).toBe(
+  it("writes the Free Estimate format: For You / For Us percent of labor", () => {
+    expect(message(lead({ terms: "free_estimate", for_you_labor_percent: 60, for_us_labor_percent: 40 }), { reference_name: "Ali" })).toBe(
       [
         "*Customer # 12*",
         "",
@@ -74,8 +72,8 @@ describe("technician message by terms (original wording restored)", () => {
         "FREE ESTIMATE VISIT",
         "",
         "You Agreed on the Terms:",
-        "For you: $250",
-        "For us: $150",
+        "For You: 60% from Labor",
+        "For Us: 40% from Labor",
         "",
         "FREE ESTIMATE VISIT Scheduled for: THURSDAY 12th December between 9:00am-11:30am",
         "",
@@ -85,11 +83,10 @@ describe("technician message by terms (original wording restored)", () => {
     );
   });
 
-  it("omits materials when no charge exists instead of inventing a $0 materials charge", () => {
+  it("writes $0 for missing Quoted amounts and parts, as in the owner's format", () => {
     const text = message(lead({ labor_amount: null, material_amount: null, for_you_amount: null, for_us_amount: null }));
-    expect(text).toContain("Customer is agreed to pay ($0) total labor");
-    expect(text).not.toMatch(/material|parts/i);
-    expect(text).toContain("For you: $0 labor\nFor us: $0 from total labor");
+    expect(text).toContain("Customer is agreed to pay $0 total labor + $0 for Parts or Material.\nYou Agreed on the Terms:\nFor You: $0 from Labor\nFor Us: $0 from Labor");
+    expect(message(lead({ terms: "free_estimate" }))).toContain("For You: 0% from Labor\nFor Us: 0% from Labor");
   });
 
   it("uses the built-in message for leads with no terms", () => {
@@ -108,8 +105,8 @@ describe("technician message by terms (original wording restored)", () => {
 });
 
 describe("Diagnostic/Service Call technician message", () => {
-  it("uses the Quoted layout with the Diagnostic Fee (not labor) and For You / For Us lines", () => {
-    expect(message(lead({ terms: "diagnostic_service_call", diagnostic_fee_amount: 89, labor_amount: 300, material_amount: null, for_you_amount: 40, for_us_amount: 49 }))).toBe(
+  it("writes the Diagnostic / Service Call format: fee, then dollars from diagnostic + percent of labor", () => {
+    expect(message(lead({ terms: "diagnostic_service_call", diagnostic_fee_amount: 89, labor_amount: 300, material_amount: null, for_you_amount: 40, for_us_amount: 49, for_you_labor_percent: 50, for_us_labor_percent: 50 }))).toBe(
       `*Customer # 12*
 
 Customer Name: Synthetic Customer
@@ -119,8 +116,8 @@ Service: Fix sink
 
 Customer is agreed to pay $89 total Diagnostic Fees / Service Call Fees + Parts & Labor will be separate OR (Convertible towards Labor / Repairs)
 You Agreed on the Terms:
-For You: $40 from Diagnostic + xx% from Labor
-For Us: $49 from Diagnostic + xx% from Labor
+For You: $40 from Diagnostic + 50% from Labor
+For Us: $49 from Diagnostic + 50% from Labor
 
 Job Scheduled for: THURSDAY 12th December between 9:00am-11:30am
 `,

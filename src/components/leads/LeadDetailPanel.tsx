@@ -69,7 +69,8 @@ import {
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "./QuoteBreakdownFields";
-import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateQuoteBreakdown, type QuoteFormValue } from "@/lib/quote-breakdown";
+import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateLaborPercent, validateQuoteBreakdown, type QuoteFormValue } from "@/lib/quote-breakdown";
+import TechnicianShareFields from "./TechnicianShareFields";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
 import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import { DateInput } from "@/components/ui/date-input";
@@ -111,6 +112,8 @@ type TrackedLeadField =
   | "for_you_amount"
   | "for_us_amount"
   | "diagnostic_fee_amount"
+  | "for_you_labor_percent"
+  | "for_us_labor_percent"
   | "amount";
 
 const SectionHeader = ({
@@ -254,8 +257,10 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
       for_you_amount: form.for_you_amount ?? null,
       for_us_amount: form.for_us_amount ?? null,
       diagnostic_fee_amount: form.diagnostic_fee_amount ?? null,
+      for_you_labor_percent: form.for_you_labor_percent ?? null,
+      for_us_labor_percent: form.for_us_labor_percent ?? null,
     } as Lead;
-  }, [lead, form.id, form.terms, form.labor_amount, form.material_amount, form.materials_included, form.for_you_amount, form.for_us_amount, form.diagnostic_fee_amount]);
+  }, [lead, form.id, form.terms, form.labor_amount, form.material_amount, form.materials_included, form.for_you_amount, form.for_us_amount, form.diagnostic_fee_amount, form.for_you_labor_percent, form.for_us_labor_percent]);
 
   const { isDuplicate, duplicateLeadName } = useDuplicatePhoneCheck(form.customer_phone || "", leadId);
 
@@ -302,6 +307,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
       "for_you_amount",
       "for_us_amount",
       "diagnostic_fee_amount",
+      "for_you_labor_percent",
+      "for_us_labor_percent",
       "amount",
     ];
 
@@ -570,7 +577,9 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
       if (!user) return;
       const quoteError = validateQuoteBreakdown({ terms: form.terms || "", laborAmount: String(form.labor_amount ?? ""), materialAmount: String(form.material_amount ?? ""), includesMaterials: Boolean(form.materials_included) });
       if (quoteError) throw new Error(quoteError);
-      const feeError = validateDiagnosticFee(form.diagnostic_fee_amount == null ? "" : String(form.diagnostic_fee_amount));
+      const asText = (value: number | null | undefined) => (value == null ? "" : String(value));
+      const feeError = validateDiagnosticFee(asText(form.diagnostic_fee_amount))
+        || validateLaborPercent(asText(form.for_you_labor_percent)) || validateLaborPercent(asText(form.for_us_labor_percent));
       if (feeError) throw new Error(feeError);
       if (isDuplicate) throw new Error(`Duplicate phone: ${duplicateLeadName}`);
       if (!form.status || !canChangeStatus(role, form.status as LeadStatus)) {
@@ -642,6 +651,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
         for_us_amount: role !== "customer_service" && role !== "cs_admin" ? form.for_us_amount : lead?.for_us_amount,
         // Beside For You / For Us, with the same role gate (2026-11-16).
         diagnostic_fee_amount: role !== "customer_service" && role !== "cs_admin" ? (form.diagnostic_fee_amount ?? null) : (lead?.diagnostic_fee_amount ?? null),
+        for_you_labor_percent: role !== "customer_service" && role !== "cs_admin" ? (form.for_you_labor_percent ?? null) : (lead?.for_you_labor_percent ?? null),
+        for_us_labor_percent: role !== "customer_service" && role !== "cs_admin" ? (form.for_us_labor_percent ?? null) : (lead?.for_us_labor_percent ?? null),
       };
 
       if (form.status === "paid") {
@@ -1141,45 +1152,22 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                 </div>
 
 
-                {/* For You / For Us apply to every term (2026-11-16), not only Quoted. */}
-                {(
-                  <>
-                    <div className="space-y-1.5">
-                      <Label className={labelClass}>For You ($)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={form.for_you_amount ?? ""}
-                        onChange={(e) => update("for_you_amount", parseAmountInput(e.target.value))}
-                        className={fieldClass}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className={labelClass}>For Us ($)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={form.for_us_amount ?? ""}
-                        onChange={(e) => update("for_us_amount", parseAmountInput(e.target.value))}
-                        className={fieldClass}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor="panel-diagnostic-fee" className={labelClass}>Diagnostic Fee ($)</Label>
-                      <Input
-                        id="panel-diagnostic-fee"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={form.diagnostic_fee_amount ?? ""}
-                        onChange={(e) => update("diagnostic_fee_amount", parseAmountInput(e.target.value))}
-                        className={fieldClass}
-                      />
-                    </div>
-                  </>
-                )}
+                {/* Internal Technician Share by terms (owner formats 2026-11-16). */}
+                <TechnicianShareFields
+                  idPrefix="panel"
+                  terms={form.terms}
+                  materialsIncluded={Boolean(form.materials_included)}
+                  values={{
+                    for_you_amount: form.for_you_amount == null ? "" : String(form.for_you_amount),
+                    for_us_amount: form.for_us_amount == null ? "" : String(form.for_us_amount),
+                    for_you_labor_percent: form.for_you_labor_percent == null ? "" : String(form.for_you_labor_percent),
+                    for_us_labor_percent: form.for_us_labor_percent == null ? "" : String(form.for_us_labor_percent),
+                    diagnostic_fee_amount: form.diagnostic_fee_amount == null ? "" : String(form.diagnostic_fee_amount),
+                  }}
+                  onChange={(field, value) => update(field, parseAmountInput(value))}
+                  labelClassName={labelClass}
+                  inputClassName={fieldClass}
+                />
               </div>
             </motion.div>
           )}

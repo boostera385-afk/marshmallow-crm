@@ -94,6 +94,8 @@ const FIELD_LABELS: Record<string, string> = {
   material_amount: "Material amount",
   for_you_amount: "For you amount",
   diagnostic_fee_amount: "Diagnostic fee amount",
+  for_you_labor_percent: "For you % of labor",
+  for_us_labor_percent: "For us % of labor",
   for_us_amount: "For us amount",
   amount: "Amount",
   payment_amount: "Payment amount",

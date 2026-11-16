@@ -84,12 +84,10 @@ Customer Number: {customer_phone}
 Customer Address: {customer_address}
 Service: {service_details}
 
-Customer is agreed to pay ($\{labor_amount_or_zero}) total labor
-{materials_line}
-
+Customer is agreed to pay $\{labor_amount_or_zero} total labor + $\{material_amount_or_zero} for Parts or Material.
 You Agreed on the Terms:
-For you: $\{for_you_amount_or_zero} labor{labor_material_suffix}
-For us: $\{for_us_amount_or_zero} from total labor
+For You: $\{for_you_amount_or_zero} from Labor
+For Us: $\{for_us_amount_or_zero} from Labor
 
 Job Scheduled for: {technician_schedule}
 {reference_block}`,
@@ -103,14 +101,14 @@ Service Details: {service_details}
 FREE ESTIMATE VISIT
 
 You Agreed on the Terms:
-For you: $\{for_you_amount_or_zero}
-For us: $\{for_us_amount_or_zero}
+For You: {for_you_labor_percent_or_zero}% from Labor
+For Us: {for_us_labor_percent_or_zero}% from Labor
 
 FREE ESTIMATE VISIT Scheduled for: {technician_schedule}
 {reference_block}`,
-  // The Quoted message with only the amount and For You / For Us lines replaced
-  // (owner wording 2026-11-16). "xx%" is literal: admins set their usual labor
-  // percentage by editing this template in Settings > Templates.
+  // Owner formats 2026-11-16: Quoted uses For You / For Us dollars, Free Estimate
+  // the labor percentages, Diagnostic/Service Call both (dollars from the
+  // diagnostic fee + percent of labor).
   diagnostic_service_call: `*Customer #{customer_number_spaced}*
 
 Customer Name: {customer_name}
@@ -120,8 +118,8 @@ Service: {service_details}
 
 Customer is agreed to pay $\{diagnostic_fee_amount_or_zero} total Diagnostic Fees / Service Call Fees + Parts & Labor will be separate OR (Convertible towards Labor / Repairs)
 You Agreed on the Terms:
-For You: $\{for_you_amount_or_zero} from Diagnostic + xx% from Labor
-For Us: $\{for_us_amount_or_zero} from Diagnostic + xx% from Labor
+For You: $\{for_you_amount_or_zero} from Diagnostic + {for_you_labor_percent_or_zero}% from Labor
+For Us: $\{for_us_amount_or_zero} from Diagnostic + {for_us_labor_percent_or_zero}% from Labor
 
 Job Scheduled for: {technician_schedule}
 {reference_block}`,
@@ -166,7 +164,7 @@ export const EDITABLE_TEMPLATE_INFO: Record<EditableTemplateKey, { label: string
   },
   technician_message_diagnostic_service_call: {
     label: "Technician Message: Diagnostic/Service Call",
-    description: "Copy Technician Message for leads with Diagnostic/Service Call terms. Replace xx% with your labor percentage.",
+    description: "Copy Technician Message for leads with Diagnostic/Service Call terms.",
   },
   check_template: {
     label: "Check Template",
@@ -177,8 +175,8 @@ export const EDITABLE_TEMPLATE_INFO: Record<EditableTemplateKey, { label: string
 export const TEMPLATE_PLACEHOLDERS: Record<EditableTemplateKey, string[]> = {
   technician_message: ["customer_number", "customer_name", "customer_phone", "customer_address", "service_details", "schedule", "technician_schedule", "reference_line", "reference_block", "quote", "tech_name"],
   technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "materials_line", "labor_material_suffix", "for_you_amount_or_zero", "for_us_amount_or_zero", "diagnostic_fee_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
-  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "for_you_amount_or_zero", "for_us_amount_or_zero", "diagnostic_fee_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
-  technician_message_diagnostic_service_call: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "diagnostic_fee_amount_or_zero", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "for_you_labor_percent_or_zero", "for_us_labor_percent_or_zero", "diagnostic_fee_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_diagnostic_service_call: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "diagnostic_fee_amount_or_zero", "for_you_amount_or_zero", "for_us_amount_or_zero", "for_you_labor_percent_or_zero", "for_us_labor_percent_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
   check_template: ["tech_name", "service", "service_details", "area", "city", "state", "schedule_requirement", "quote"],
 };
 
@@ -279,6 +277,8 @@ export const renderLeadTemplate = (
     for_us_amount_or_zero: String(lead.for_us_amount ?? 0),
     diagnostic_fee_amount: normalize(lead.diagnostic_fee_amount),
     diagnostic_fee_amount_or_zero: String(lead.diagnostic_fee_amount ?? 0),
+    for_you_labor_percent_or_zero: String(lead.for_you_labor_percent ?? 0),
+    for_us_labor_percent_or_zero: String(lead.for_us_labor_percent ?? 0),
   };
 
   const hasMaterials = lead.material_amount != null && Number.isFinite(lead.material_amount) && lead.material_amount > 0;

@@ -38,6 +38,33 @@ export function validateQuoteBreakdown(value: QuoteFormValue): string | null {
   return null;
 }
 
+export type TechnicianShareField =
+  | "for_you_amount"
+  | "for_us_amount"
+  | "for_you_labor_percent"
+  | "for_us_labor_percent"
+  | "diagnostic_fee_amount";
+
+/**
+ * Which Internal Technician Share fields a term uses (owner formats 2026-11-16):
+ * Quoted: For You / For Us dollars. Free Estimate: For You / For Us % of labor.
+ * Diagnostic/Service Call: dollars from the diagnostic fee + % of labor.
+ * No terms: dollars. The Diagnostic Fee is offered on every term.
+ */
+export function technicianShareFieldsForTerms(terms: string | null | undefined): TechnicianShareField[] {
+  const dollars: TechnicianShareField[] = ["for_you_amount", "for_us_amount"];
+  const percents: TechnicianShareField[] = ["for_you_labor_percent", "for_us_labor_percent"];
+  const fields = terms === "free_estimate" ? percents
+    : terms === "diagnostic_service_call" ? [...dollars, ...percents]
+    : dollars;
+  return [...fields, "diagnostic_fee_amount"];
+}
+
+/** A labor percentage is valid when blank or a number from 0 to 100. */
+export function validateLaborPercent(value: string): string | null {
+  return value.trim() && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 100) ? "Enter a labor percentage from 0 to 100" : null;
+}
+
 /** A Diagnostic Fee input is valid when blank or a non-negative number. */
 export function validateDiagnosticFee(value: string): string | null {
   return value.trim() && (!Number.isFinite(Number(value)) || Number(value) < 0) ? "Enter a valid non-negative diagnostic fee" : null;

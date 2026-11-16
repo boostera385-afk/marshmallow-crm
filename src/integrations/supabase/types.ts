@@ -1447,7 +1447,9 @@ export type Database = {
           direction: string | null
           expected_completion_date: string | null
           for_us_amount: number | null
+          for_us_labor_percent: number | null
           for_you_amount: number | null
+          for_you_labor_percent: number | null
           general_notes: string | null
           half_address: string | null
           id: string
@@ -1511,7 +1513,9 @@ export type Database = {
           direction?: string | null
           expected_completion_date?: string | null
           for_us_amount?: number | null
+          for_us_labor_percent?: number | null
           for_you_amount?: number | null
+          for_you_labor_percent?: number | null
           general_notes?: string | null
           half_address?: string | null
           id?: string
@@ -1575,7 +1579,9 @@ export type Database = {
           direction?: string | null
           expected_completion_date?: string | null
           for_us_amount?: number | null
+          for_us_labor_percent?: number | null
           for_you_amount?: number | null
+          for_you_labor_percent?: number | null
           general_notes?: string | null
           half_address?: string | null
           id?: string
