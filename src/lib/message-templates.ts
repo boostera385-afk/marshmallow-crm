@@ -72,7 +72,8 @@ export const formatTechnicianSchedule = (
 /**
  * The Quoted and Free Estimate technician messages, restored word for word from
  * before the June 2026 template change removed them. Free Estimate also carries
- * the For You / For Us lines since 2026-11-16 (owner request). Leads with no terms use the
+ * the For You / For Us lines since 2026-11-16, and every message with For You /
+ * For Us has a "You Agreed on the Terms:" line above them (owner request). Leads with no terms use the
  * editable technician_message template.
  */
 export const TECHNICIAN_MESSAGE_BY_TERMS = {
@@ -86,6 +87,7 @@ Service: {service_details}
 Customer is agreed to pay ($\{labor_amount_or_zero}) total labor
 {materials_line}
 
+You Agreed on the Terms:
 For you: $\{for_you_amount_or_zero} labor{labor_material_suffix}
 For us: $\{for_us_amount_or_zero} from total labor
 
@@ -100,6 +102,7 @@ Service Details: {service_details}
 
 FREE ESTIMATE VISIT
 
+You Agreed on the Terms:
 For you: $\{for_you_amount_or_zero}
 For us: $\{for_us_amount_or_zero}
 
@@ -115,7 +118,7 @@ Customer Number: {customer_phone}
 Customer Address: {customer_address}
 Service: {service_details}
 
-Customer is agreed to pay $\{labor_amount_or_zero} total Diagnostic Fees / Service Call Fees + Parts & Labor will be separate OR (Convertible towards Labor / Repairs)
+Customer is agreed to pay $\{diagnostic_fee_amount_or_zero} total Diagnostic Fees / Service Call Fees + Parts & Labor will be separate OR (Convertible towards Labor / Repairs)
 You Agreed on the Terms:
 For You: $\{for_you_amount_or_zero} from Diagnostic + xx% from Labor
 For Us: $\{for_us_amount_or_zero} from Diagnostic + xx% from Labor
@@ -173,9 +176,9 @@ export const EDITABLE_TEMPLATE_INFO: Record<EditableTemplateKey, { label: string
 
 export const TEMPLATE_PLACEHOLDERS: Record<EditableTemplateKey, string[]> = {
   technician_message: ["customer_number", "customer_name", "customer_phone", "customer_address", "service_details", "schedule", "technician_schedule", "reference_line", "reference_block", "quote", "tech_name"],
-  technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "materials_line", "labor_material_suffix", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
-  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
-  technician_message_diagnostic_service_call: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "materials_line", "labor_material_suffix", "for_you_amount_or_zero", "for_us_amount_or_zero", "diagnostic_fee_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "for_you_amount_or_zero", "for_us_amount_or_zero", "diagnostic_fee_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_diagnostic_service_call: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "diagnostic_fee_amount_or_zero", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
   check_template: ["tech_name", "service", "service_details", "area", "city", "state", "schedule_requirement", "quote"],
 };
 
@@ -274,6 +277,8 @@ export const renderLeadTemplate = (
     material_amount_or_zero: String(lead.material_amount ?? 0),
     for_you_amount_or_zero: String(lead.for_you_amount ?? 0),
     for_us_amount_or_zero: String(lead.for_us_amount ?? 0),
+    diagnostic_fee_amount: normalize(lead.diagnostic_fee_amount),
+    diagnostic_fee_amount_or_zero: String(lead.diagnostic_fee_amount ?? 0),
   };
 
   const hasMaterials = lead.material_amount != null && Number.isFinite(lead.material_amount) && lead.material_amount > 0;

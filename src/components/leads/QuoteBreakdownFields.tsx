@@ -11,6 +11,7 @@ export default function QuoteBreakdownFields({ value, onChange, readOnly = false
 }) {
   const id = useId();
   const amountText = value.laborAmount.trim() && Number.isFinite(Number(value.laborAmount)) ? quoteMoney(Number(value.laborAmount)) : "Not recorded";
+  // The Diagnostic Fee is entered beside For You / For Us, not here (2026-11-16).
   if (readOnly) return <section aria-label="Quote breakdown" className="space-y-3 rounded-xl border border-border/60 p-4">
     <h3 className="text-sm font-semibold">Quote</h3>
     <p className="text-sm">{quoteTermLabel(value.terms) ?? "Terms not recorded"}</p>
@@ -18,7 +19,6 @@ export default function QuoteBreakdownFields({ value, onChange, readOnly = false
       <div><h4 className="text-xs font-semibold">Labor Section</h4><p className="text-sm">{amountText}</p></div>
       {value.includesMaterials && hasMaterialCharge(Number(value.materialAmount)) && <div><h4 className="text-xs font-semibold">Parts/Materials Section</h4><p className="text-sm">{quoteMoney(Number(value.materialAmount))}</p></div>}
     </>}
-    {value.terms === "diagnostic_service_call" && value.laborAmount.trim() !== "" && <div><h4 className="text-xs font-semibold">Diagnostic/Service Call Fee</h4><p className="text-sm">{amountText}</p></div>}
   </section>;
 
   return <section aria-label="Quote breakdown" className="space-y-4 rounded-xl border border-border/60 p-4">
@@ -33,12 +33,6 @@ export default function QuoteBreakdownFields({ value, onChange, readOnly = false
         </SelectContent>
       </Select>
     </div>
-    {value.terms === "diagnostic_service_call" && (
-      <fieldset className="space-y-2"><legend className="mb-2 text-xs font-semibold">Diagnostic/Service Call Section</legend>
-        <Label htmlFor={`${id}-diagnostic`}>Diagnostic/Service Call Fee ($)</Label>
-        <Input id={`${id}-diagnostic`} type="number" min="0" step="0.01" value={value.laborAmount} onChange={(event) => onChange({ ...value, laborAmount: event.target.value })} />
-      </fieldset>
-    )}
     {value.terms === "quoted" && <>
       <fieldset className="space-y-2"><legend className="mb-2 text-xs font-semibold">Labor Section</legend>
         <Label htmlFor={`${id}-labor`}>Customer Labor ($)</Label>

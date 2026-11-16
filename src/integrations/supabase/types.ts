@@ -1420,6 +1420,7 @@ export type Database = {
           customer_name: string
           customer_phone: string
           customer_schedule_requirements: string | null
+          diagnostic_fee_amount: number | null
           direction: string | null
           expected_completion_date: string | null
           for_us_amount: number | null
@@ -1483,6 +1484,7 @@ export type Database = {
           customer_name: string
           customer_phone: string
           customer_schedule_requirements?: string | null
+          diagnostic_fee_amount?: number | null
           direction?: string | null
           expected_completion_date?: string | null
           for_us_amount?: number | null
@@ -1546,6 +1548,7 @@ export type Database = {
           customer_name?: string
           customer_phone?: string
           customer_schedule_requirements?: string | null
+          diagnostic_fee_amount?: number | null
           direction?: string | null
           expected_completion_date?: string | null
           for_us_amount?: number | null

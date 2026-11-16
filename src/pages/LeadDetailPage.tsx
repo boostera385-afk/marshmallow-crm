@@ -55,7 +55,7 @@ import { optimizeImageForUpload } from "@/lib/image-upload";
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "@/components/leads/QuoteBreakdownFields";
-import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
+import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
 import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import StatusBadge from "@/components/leads/StatusBadge";
@@ -222,6 +222,7 @@ export default function LeadDetailPage() {
     materials_included: false,
     for_you_amount: "",
     for_us_amount: "",
+    diagnostic_fee_amount: "",
 
     amount: "",
     payment_screenshot_url: "",
@@ -322,6 +323,7 @@ export default function LeadDetailPage() {
       materials_included: hasMaterialCharge(lead.material_amount),
       for_you_amount: lead.for_you_amount != null ? String(lead.for_you_amount) : "",
       for_us_amount: lead.for_us_amount != null ? String(lead.for_us_amount) : "",
+      diagnostic_fee_amount: lead.diagnostic_fee_amount != null ? String(lead.diagnostic_fee_amount) : "",
 
       amount: lead.amount != null ? String(lead.amount) : "",
       payment_screenshot_url: lead.payment_screenshot_url || "",
@@ -718,6 +720,8 @@ export default function LeadDetailPage() {
   const handleSave = async () => {
     const quoteError = validateQuoteBreakdown({ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included });
     if (quoteError) { toast.error(quoteError); return; }
+    const feeError = validateDiagnosticFee(form.diagnostic_fee_amount);
+    if (feeError) { toast.error(feeError); return; }
     if (!user) return;
     if (isOpr) {
       toast.error("Operators cannot edit leads");
@@ -835,6 +839,11 @@ export default function LeadDetailPage() {
         !hideProcessorDetails
           ? parseAmount(form.for_us_amount)
           : (originalLead?.for_us_amount ?? null),
+      // Lives beside For You / For Us and follows the same role gate (2026-11-16).
+      diagnostic_fee_amount:
+        !hideProcessorDetails
+          ? parseAmount(form.diagnostic_fee_amount)
+          : (originalLead?.diagnostic_fee_amount ?? null),
 
       last_edited_by: user.id,
       last_edited_by_name: currentUserName,
@@ -1160,6 +1169,7 @@ export default function LeadDetailPage() {
       material_amount: form.material_amount ? parseFloat(form.material_amount) : null,
       for_you_amount: form.for_you_amount ? parseFloat(form.for_you_amount) : null,
       for_us_amount: form.for_us_amount ? parseFloat(form.for_us_amount) : null,
+      diagnostic_fee_amount: form.diagnostic_fee_amount ? parseFloat(form.diagnostic_fee_amount) : null,
       created_by: originalLead?.created_by || user?.id || null,
       created_by_name: originalLead?.created_by_name || profile?.full_name || user?.email || null,
       created_at: originalLead?.created_at || new Date().toISOString(),
@@ -1700,14 +1710,14 @@ export default function LeadDetailPage() {
                 </div>
 
 
-                {/* For You / For Us apply to every term (2026-11-16), not only Quoted. */}
+                {/* For You / For Us / Diagnostic Fee apply to every term (2026-11-16), not only Quoted. */}
                 {(
                   <div className="crm-lead-card-soft rounded-[22px] p-4 space-y-3 shadow-[0_18px_28px_-24px_rgba(59,130,246,0.12)] dark:shadow-none">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground/60">
                       Internal Technician Share
                     </p>
 
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                       <div className="space-y-1.5">
                         <Label className={labelClass}>{form.terms === "quoted" && form.materials_included ? "For You ($ incl. material)" : "For You ($)"}</Label>
                         <Input
@@ -1727,6 +1737,20 @@ export default function LeadDetailPage() {
                           step="0.01"
                           value={form.for_us_amount}
                           onChange={(e) => update("for_us_amount", e.target.value)}
+                          className={fieldClass}
+                          readOnly={isOpr}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="lead-diagnostic-fee" className={labelClass}>Diagnostic Fee ($)</Label>
+                        <Input
+                          id="lead-diagnostic-fee"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={form.diagnostic_fee_amount}
+                          onChange={(e) => update("diagnostic_fee_amount", e.target.value)}
                           className={fieldClass}
                           readOnly={isOpr}
                         />

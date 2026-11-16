@@ -1,7 +1,7 @@
 {
   "name": "Donut",
-  "version": "1.7.5",
-  "releasedAt": "2026-11-16T07:48:58.959Z",
-  "summary": "Estimate / Quote adds Diagnostic/Service Call with a single Diagnostic/Service Call Fee (saved as the lead's labor amount, no Parts/Materials).",
-  "sourceSha256": "3f4f2c088a8fc4a5b70841272c9dd317a84813fb975bbd399cc063b911bcf5e5"
+  "version": "1.7.6",
+  "releasedAt": "2026-11-16T10:02:54.196Z",
+  "summary": "Diagnostic/Service Call fee is now saved as the lead's Diagnostic Fee (its own field), not as labor.",
+  "sourceSha256": "ad73aaf9c122862508979d475027b6045c0a1ec5be1ca70b5c632175d6aac67d"
 }

@@ -32,7 +32,7 @@ import { showsUrgentCheck } from "@/lib/urgent-verification";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "./QuoteBreakdownFields";
-import { termsAllowMaterials, termsRecordAmount, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
+import { termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
 import { motion, AnimatePresence } from "framer-motion";
 import NumberNameCombobox from "./NumberNameCombobox";
 import MultiDateTimePicker from "./MultiDateTimePicker";
@@ -90,6 +90,7 @@ const initialFormState = {
   materials_included: false,
   for_you_amount: "",
   for_us_amount: "",
+  diagnostic_fee_amount: "",
   cs_notes: "",
   processor_notes: "",
   general_notes: "",
@@ -253,6 +254,8 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
 
     const quoteError = validateQuoteBreakdown({ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included });
     if (quoteError) { toast.error(quoteError); return; }
+    const feeError = validateDiagnosticFee(form.diagnostic_fee_amount);
+    if (feeError) { toast.error(feeError); return; }
     setLoading(true);
 
     const jobId = generateJobId();
@@ -313,6 +316,7 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
       material_amount: termsAllowMaterials(form.terms) && form.materials_included && form.material_amount ? parseFloat(form.material_amount) : null,
       for_you_amount: form.for_you_amount ? parseFloat(form.for_you_amount) : null,
       for_us_amount: form.for_us_amount ? parseFloat(form.for_us_amount) : null,
+      diagnostic_fee_amount: form.diagnostic_fee_amount ? parseFloat(form.diagnostic_fee_amount) : null,
     };
 
     const { data, error } = await supabase.from("leads").insert(insertData).select().single();
@@ -785,7 +789,7 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
                             Internal Technician Share
                           </p>
 
-                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                             <div className="space-y-1.5">
                               <Label className={labelClass}>{form.terms === "quoted" && form.materials_included ? "For You ($ incl. material)" : "For You ($)"}</Label>
                               <Input
@@ -805,6 +809,20 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
                                 step="0.01"
                                 value={form.for_us_amount}
                                 onChange={(e) => update("for_us_amount", e.target.value)}
+                                placeholder="0.00"
+                                className={fieldClass}
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <Label htmlFor="add-lead-diagnostic-fee" className={labelClass}>Diagnostic Fee ($)</Label>
+                              <Input
+                                id="add-lead-diagnostic-fee"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={form.diagnostic_fee_amount}
+                                onChange={(e) => update("diagnostic_fee_amount", e.target.value)}
                                 placeholder="0.00"
                                 className={fieldClass}
                               />
