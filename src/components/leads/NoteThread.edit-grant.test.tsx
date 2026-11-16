@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   grant: false,
   updates: [] as { id: string; content: string }[],
   updateResult: { rows: 1, error: null as { message: string } | null },
+  edited: null as null | { edited_by: string; edited_by_name: string; edited_at: string },
 }));
 const toastError = vi.hoisted(() => vi.fn());
 
@@ -38,6 +39,7 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
       order: (_: string, __: unknown) => Promise.resolve({ data: [{
         id: "colleague-note", lead_id: "lead-1", user_id: "colleague", user_name: "Colleague",
         note_type: "processor", content: "Tech 1: colleague note", created_at: "2026-11-01T00:00:00Z",
+        ...(state.edited ?? {}),
       }], error: null }),
     };
     return query;
@@ -50,6 +52,7 @@ beforeEach(() => {
   state.grant = false;
   state.updates = [];
   state.updateResult = { rows: 1, error: null };
+  state.edited = null;
   toastError.mockClear();
 });
 afterEach(() => cleanup());
@@ -105,5 +108,16 @@ describe("Edit Processor Notes grant", () => {
     await act(async () => { await Promise.resolve(); });
     // CS cannot even view the processor thread.
     expect(screen.queryByText("Processor notes")).toBeNull();
+  });
+
+  it("shows which processor last edited a note", async () => {
+    state.edited = { edited_by: "editor-2", edited_by_name: "Processor Two", edited_at: "2026-11-16T10:00:00Z" };
+    await renderThread();
+    expect(screen.getByText(/Edited by Processor Two/)).toBeInTheDocument();
+  });
+
+  it("shows no edited label on a note nobody edited", async () => {
+    await renderThread();
+    expect(screen.queryByText(/Edited by/)).toBeNull();
   });
 });
