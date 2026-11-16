@@ -106,7 +106,7 @@ describe("technician message by terms (owner formats 2026-11-16)", () => {
 
 describe("Diagnostic/Service Call technician message", () => {
   it("writes the Diagnostic / Service Call format: fee, then dollars from diagnostic + percent of labor", () => {
-    expect(message(lead({ terms: "diagnostic_service_call", diagnostic_fee_amount: 89, labor_amount: 300, material_amount: null, for_you_amount: 40, for_us_amount: 49, for_you_labor_percent: 50, for_us_labor_percent: 50 }))).toBe(
+    expect(message(lead({ terms: "diagnostic_service_call", diagnostic_fee_amount: 89, labor_amount: 300, material_amount: null, for_you_amount: 999, for_us_amount: 888, for_you_diagnostic_amount: 40, for_us_diagnostic_amount: 49, for_you_labor_percent: 50, for_us_labor_percent: 50 }))).toBe(
       `*Customer # 12*
 
 Customer Name: Synthetic Customer
@@ -123,6 +123,14 @@ Job Scheduled for: THURSDAY 12th December between 9:00am-11:30am
 `,
     );
   });
+  it("adds the diagnostic split to Quoted and Free Estimate lines only when recorded", () => {
+    const quoted = message(lead({ for_you_diagnostic_amount: 20, for_us_diagnostic_amount: 30 }));
+    expect(quoted).toContain("For You: $250 from Labor + $20 from Diagnostic\nFor Us: $150 from Labor + $30 from Diagnostic");
+    const free = message(lead({ terms: "free_estimate", for_you_labor_percent: 60, for_us_labor_percent: 40, for_you_diagnostic_amount: 20, for_us_diagnostic_amount: null }));
+    expect(free).toContain("For You: 60% from Labor + $20 from Diagnostic\nFor Us: 40% from Labor\n");
+    expect(message(lead())).toContain("For You: $250 from Labor\nFor Us: $150 from Labor\n");
+  });
+
   it("uses an admin-saved Diagnostic/Service Call template when there is one", () => {
     const saved = { technician_message_diagnostic_service_call: "Diag {labor_amount_or_zero}" };
     expect(technicianMessageTemplate(lead({ terms: "diagnostic_service_call" }), saved)).toBe("Diag {labor_amount_or_zero}");

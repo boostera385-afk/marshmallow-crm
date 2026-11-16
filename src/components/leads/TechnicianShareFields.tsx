@@ -5,18 +5,20 @@ import { technicianShareFieldsForTerms, type TechnicianShareField } from "@/lib/
 export type TechnicianShareValues = Record<TechnicianShareField, string>;
 
 const LABELS: Record<TechnicianShareField, (terms: string, materials: boolean) => string> = {
-  for_you_amount: (terms, materials) =>
-    terms === "diagnostic_service_call" ? "For You ($ from diagnostic)" : terms === "quoted" && materials ? "For You ($ incl. material)" : "For You ($)",
-  for_us_amount: (terms) => (terms === "diagnostic_service_call" ? "For Us ($ from diagnostic)" : "For Us ($ from labor)"),
+  for_you_amount: (terms, materials) => (terms === "quoted" && materials ? "For You ($ incl. material)" : "For You ($ from labor)"),
+  for_us_amount: () => "For Us ($ from labor)",
   for_you_labor_percent: () => "For You (% of labor)",
   for_us_labor_percent: () => "For Us (% of labor)",
   diagnostic_fee_amount: () => "Diagnostic Fee ($)",
+  for_you_diagnostic_amount: () => "For You ($ from diagnostic)",
+  for_us_diagnostic_amount: () => "For Us ($ from diagnostic)",
 };
 
 /**
  * The Internal Technician Share inputs, shown by quote terms (owner formats
- * 2026-11-16): Quoted uses For You / For Us dollars, Free Estimate the labor
- * percentages, Diagnostic/Service Call both; the Diagnostic Fee is on every term.
+ * 2026-11-16): the labor share in dollars (Quoted, no terms) or % of labor
+ * (Free Estimate, Diagnostic/Service Call), plus the Diagnostic Fee and its
+ * For You / For Us split on every term.
  * Fields hidden for a term keep their saved values.
  */
 export default function TechnicianShareFields({ idPrefix, terms, materialsIncluded = false, values, onChange, readOnly = false, labelClassName, inputClassName }: {
