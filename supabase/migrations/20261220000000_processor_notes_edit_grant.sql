@@ -1,5 +1,6 @@
 -- =============================================================================
 -- Migration : 20261220000000_processor_notes_edit_grant.sql
+-- Applied   : production (kxiqholnmhkwhdkhtopp) 2026-11-16, at the user's request.
 -- Purpose   : Per-user Feature Access grant that lets a Processor edit other
 --             users' notes in a lead's Processor Notes thread.
 --

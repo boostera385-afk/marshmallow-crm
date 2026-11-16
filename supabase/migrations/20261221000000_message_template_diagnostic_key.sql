@@ -1,5 +1,7 @@
 -- =============================================================================
 -- Migration : 20261221000000_message_template_diagnostic_key.sql
+-- Applied   : production (kxiqholnmhkwhdkhtopp) 2026-11-16, at the user's request;
+--             message_templates_key_check verified read-only afterwards.
 -- Purpose   : Allow Settings > Templates to save the new
 --             "Technician Message: Diagnostic/Service Call" template.
 --

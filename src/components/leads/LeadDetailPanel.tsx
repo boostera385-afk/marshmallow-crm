@@ -239,6 +239,22 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
     }
   }, [lead]);
 
+  // The copy buttons follow the terms and amounts currently selected in the form
+  // (as on the lead page), so switching Quote Terms switches the Copy Technician
+  // Message before saving. Amounts are trimmed the same way the save does.
+  const copyLead = useMemo(() => {
+    if (!lead || form.id !== lead.id) return lead;
+    const terms = (form.terms ?? null) as Lead["terms"];
+    return {
+      ...lead,
+      terms,
+      labor_amount: termsRecordAmount(terms) ? (form.labor_amount ?? null) : null,
+      material_amount: termsAllowMaterials(terms) && form.materials_included ? (form.material_amount ?? null) : null,
+      for_you_amount: form.for_you_amount ?? null,
+      for_us_amount: form.for_us_amount ?? null,
+    } as Lead;
+  }, [lead, form.id, form.terms, form.labor_amount, form.material_amount, form.materials_included, form.for_you_amount, form.for_us_amount]);
+
   const { isDuplicate, duplicateLeadName } = useDuplicatePhoneCheck(form.customer_phone || "", leadId);
 
   const formattedEditedAt = useMemo(() => {
@@ -827,9 +843,9 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                     <span>Tech Quick Chat</span>
                   </QuoPhoneTrigger>
                 )}
-                <CopyLeadButton lead={lead} />
+                <CopyLeadButton lead={copyLead ?? lead} />
                 <CheckTemplateButton lead={lead} />
-                <CompleteLeadCopyButton lead={lead} />
+                <CompleteLeadCopyButton lead={copyLead ?? lead} />
                 <CxUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />
                 <TechUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />
 
