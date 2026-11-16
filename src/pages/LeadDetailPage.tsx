@@ -226,6 +226,8 @@ export default function LeadDetailPage() {
     diagnostic_fee_amount: "",
     for_you_labor_percent: "",
     for_us_labor_percent: "",
+    for_you_diagnostic_amount: "",
+    for_us_diagnostic_amount: "",
 
     amount: "",
     payment_screenshot_url: "",
@@ -329,6 +331,8 @@ export default function LeadDetailPage() {
       diagnostic_fee_amount: lead.diagnostic_fee_amount != null ? String(lead.diagnostic_fee_amount) : "",
       for_you_labor_percent: lead.for_you_labor_percent != null ? String(lead.for_you_labor_percent) : "",
       for_us_labor_percent: lead.for_us_labor_percent != null ? String(lead.for_us_labor_percent) : "",
+      for_you_diagnostic_amount: lead.for_you_diagnostic_amount != null ? String(lead.for_you_diagnostic_amount) : "",
+      for_us_diagnostic_amount: lead.for_us_diagnostic_amount != null ? String(lead.for_us_diagnostic_amount) : "",
 
       amount: lead.amount != null ? String(lead.amount) : "",
       payment_screenshot_url: lead.payment_screenshot_url || "",
@@ -726,7 +730,8 @@ export default function LeadDetailPage() {
     const quoteError = validateQuoteBreakdown({ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included });
     if (quoteError) { toast.error(quoteError); return; }
     const feeError = validateDiagnosticFee(form.diagnostic_fee_amount)
-      || validateLaborPercent(form.for_you_labor_percent) || validateLaborPercent(form.for_us_labor_percent);
+      || validateLaborPercent(form.for_you_labor_percent) || validateLaborPercent(form.for_us_labor_percent)
+      || validateDiagnosticFee(form.for_you_diagnostic_amount) || validateDiagnosticFee(form.for_us_diagnostic_amount);
     if (feeError) { toast.error(feeError); return; }
     if (!user) return;
     if (isOpr) {
@@ -858,6 +863,14 @@ export default function LeadDetailPage() {
         !hideProcessorDetails
           ? parseAmount(form.for_us_labor_percent)
           : (originalLead?.for_us_labor_percent ?? null),
+      for_you_diagnostic_amount:
+        !hideProcessorDetails
+          ? parseAmount(form.for_you_diagnostic_amount)
+          : (originalLead?.for_you_diagnostic_amount ?? null),
+      for_us_diagnostic_amount:
+        !hideProcessorDetails
+          ? parseAmount(form.for_us_diagnostic_amount)
+          : (originalLead?.for_us_diagnostic_amount ?? null),
 
       last_edited_by: user.id,
       last_edited_by_name: currentUserName,
@@ -1186,6 +1199,8 @@ export default function LeadDetailPage() {
       diagnostic_fee_amount: form.diagnostic_fee_amount ? parseFloat(form.diagnostic_fee_amount) : null,
       for_you_labor_percent: form.for_you_labor_percent ? parseFloat(form.for_you_labor_percent) : null,
       for_us_labor_percent: form.for_us_labor_percent ? parseFloat(form.for_us_labor_percent) : null,
+      for_you_diagnostic_amount: form.for_you_diagnostic_amount ? parseFloat(form.for_you_diagnostic_amount) : null,
+      for_us_diagnostic_amount: form.for_us_diagnostic_amount ? parseFloat(form.for_us_diagnostic_amount) : null,
       created_by: originalLead?.created_by || user?.id || null,
       created_by_name: originalLead?.created_by_name || profile?.full_name || user?.email || null,
       created_at: originalLead?.created_at || new Date().toISOString(),

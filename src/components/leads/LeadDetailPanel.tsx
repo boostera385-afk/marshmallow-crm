@@ -114,6 +114,8 @@ type TrackedLeadField =
   | "diagnostic_fee_amount"
   | "for_you_labor_percent"
   | "for_us_labor_percent"
+  | "for_you_diagnostic_amount"
+  | "for_us_diagnostic_amount"
   | "amount";
 
 const SectionHeader = ({
@@ -259,8 +261,10 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
       diagnostic_fee_amount: form.diagnostic_fee_amount ?? null,
       for_you_labor_percent: form.for_you_labor_percent ?? null,
       for_us_labor_percent: form.for_us_labor_percent ?? null,
+      for_you_diagnostic_amount: form.for_you_diagnostic_amount ?? null,
+      for_us_diagnostic_amount: form.for_us_diagnostic_amount ?? null,
     } as Lead;
-  }, [lead, form.id, form.terms, form.labor_amount, form.material_amount, form.materials_included, form.for_you_amount, form.for_us_amount, form.diagnostic_fee_amount, form.for_you_labor_percent, form.for_us_labor_percent]);
+  }, [lead, form.id, form.terms, form.labor_amount, form.material_amount, form.materials_included, form.for_you_amount, form.for_us_amount, form.diagnostic_fee_amount, form.for_you_labor_percent, form.for_us_labor_percent, form.for_you_diagnostic_amount, form.for_us_diagnostic_amount]);
 
   const { isDuplicate, duplicateLeadName } = useDuplicatePhoneCheck(form.customer_phone || "", leadId);
 
@@ -309,6 +313,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
       "diagnostic_fee_amount",
       "for_you_labor_percent",
       "for_us_labor_percent",
+      "for_you_diagnostic_amount",
+      "for_us_diagnostic_amount",
       "amount",
     ];
 
@@ -579,7 +585,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
       if (quoteError) throw new Error(quoteError);
       const asText = (value: number | null | undefined) => (value == null ? "" : String(value));
       const feeError = validateDiagnosticFee(asText(form.diagnostic_fee_amount))
-        || validateLaborPercent(asText(form.for_you_labor_percent)) || validateLaborPercent(asText(form.for_us_labor_percent));
+        || validateLaborPercent(asText(form.for_you_labor_percent)) || validateLaborPercent(asText(form.for_us_labor_percent))
+        || validateDiagnosticFee(asText(form.for_you_diagnostic_amount)) || validateDiagnosticFee(asText(form.for_us_diagnostic_amount));
       if (feeError) throw new Error(feeError);
       if (isDuplicate) throw new Error(`Duplicate phone: ${duplicateLeadName}`);
       if (!form.status || !canChangeStatus(role, form.status as LeadStatus)) {
@@ -653,6 +660,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
         diagnostic_fee_amount: role !== "customer_service" && role !== "cs_admin" ? (form.diagnostic_fee_amount ?? null) : (lead?.diagnostic_fee_amount ?? null),
         for_you_labor_percent: role !== "customer_service" && role !== "cs_admin" ? (form.for_you_labor_percent ?? null) : (lead?.for_you_labor_percent ?? null),
         for_us_labor_percent: role !== "customer_service" && role !== "cs_admin" ? (form.for_us_labor_percent ?? null) : (lead?.for_us_labor_percent ?? null),
+        for_you_diagnostic_amount: role !== "customer_service" && role !== "cs_admin" ? (form.for_you_diagnostic_amount ?? null) : (lead?.for_you_diagnostic_amount ?? null),
+        for_us_diagnostic_amount: role !== "customer_service" && role !== "cs_admin" ? (form.for_us_diagnostic_amount ?? null) : (lead?.for_us_diagnostic_amount ?? null),
       };
 
       if (form.status === "paid") {
@@ -1163,6 +1172,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                     for_you_labor_percent: form.for_you_labor_percent == null ? "" : String(form.for_you_labor_percent),
                     for_us_labor_percent: form.for_us_labor_percent == null ? "" : String(form.for_us_labor_percent),
                     diagnostic_fee_amount: form.diagnostic_fee_amount == null ? "" : String(form.diagnostic_fee_amount),
+                    for_you_diagnostic_amount: form.for_you_diagnostic_amount == null ? "" : String(form.for_you_diagnostic_amount),
+                    for_us_diagnostic_amount: form.for_us_diagnostic_amount == null ? "" : String(form.for_us_diagnostic_amount),
                   }}
                   onChange={(field, value) => update(field, parseAmountInput(value))}
                   labelClassName={labelClass}

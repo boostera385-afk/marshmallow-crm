@@ -94,6 +94,8 @@ const initialFormState = {
   diagnostic_fee_amount: "",
   for_you_labor_percent: "",
   for_us_labor_percent: "",
+  for_you_diagnostic_amount: "",
+  for_us_diagnostic_amount: "",
   cs_notes: "",
   processor_notes: "",
   general_notes: "",
@@ -258,7 +260,8 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
     const quoteError = validateQuoteBreakdown({ terms: form.terms, laborAmount: form.labor_amount, materialAmount: form.material_amount, includesMaterials: form.materials_included });
     if (quoteError) { toast.error(quoteError); return; }
     const feeError = validateDiagnosticFee(form.diagnostic_fee_amount)
-      || validateLaborPercent(form.for_you_labor_percent) || validateLaborPercent(form.for_us_labor_percent);
+      || validateLaborPercent(form.for_you_labor_percent) || validateLaborPercent(form.for_us_labor_percent)
+      || validateDiagnosticFee(form.for_you_diagnostic_amount) || validateDiagnosticFee(form.for_us_diagnostic_amount);
     if (feeError) { toast.error(feeError); return; }
     setLoading(true);
 
@@ -323,6 +326,8 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
       diagnostic_fee_amount: form.diagnostic_fee_amount ? parseFloat(form.diagnostic_fee_amount) : null,
       for_you_labor_percent: form.for_you_labor_percent ? parseFloat(form.for_you_labor_percent) : null,
       for_us_labor_percent: form.for_us_labor_percent ? parseFloat(form.for_us_labor_percent) : null,
+      for_you_diagnostic_amount: form.for_you_diagnostic_amount ? parseFloat(form.for_you_diagnostic_amount) : null,
+      for_us_diagnostic_amount: form.for_us_diagnostic_amount ? parseFloat(form.for_us_diagnostic_amount) : null,
     };
 
     const { data, error } = await supabase.from("leads").insert(insertData).select().single();

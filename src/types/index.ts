@@ -148,6 +148,9 @@ export interface Lead {
   /** For You / For Us share of labor in percent, 0-100 (20261224000000). */
   for_you_labor_percent?: number | null;
   for_us_labor_percent?: number | null;
+  /** For You / For Us share of the Diagnostic Fee in dollars (20261225000000). */
+  for_you_diagnostic_amount?: number | null;
+  for_us_diagnostic_amount?: number | null;
   for_us_amount: number | null;
   cancellation_reason?: string | null;
   source_url?: string | null;

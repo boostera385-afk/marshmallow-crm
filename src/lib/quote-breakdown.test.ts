@@ -42,10 +42,11 @@ describe("CRM and Donut customer quote breakdown", () => {
     expect(donut.fields({ terms: "made_up", laborAmount: "10" })).toEqual({ terms: null, labor_amount: null, material_amount: null });
   });
   it("picks the Internal Technician Share fields by terms (owner formats)", () => {
-    expect(technicianShareFieldsForTerms("quoted")).toEqual(["for_you_amount", "for_us_amount", "diagnostic_fee_amount"]);
-    expect(technicianShareFieldsForTerms("free_estimate")).toEqual(["for_you_labor_percent", "for_us_labor_percent", "diagnostic_fee_amount"]);
-    expect(technicianShareFieldsForTerms("diagnostic_service_call")).toEqual(["for_you_amount", "for_us_amount", "for_you_labor_percent", "for_us_labor_percent", "diagnostic_fee_amount"]);
-    expect(technicianShareFieldsForTerms(null)).toEqual(["for_you_amount", "for_us_amount", "diagnostic_fee_amount"]);
+    const diagnostic = ["diagnostic_fee_amount", "for_you_diagnostic_amount", "for_us_diagnostic_amount"];
+    expect(technicianShareFieldsForTerms("quoted")).toEqual(["for_you_amount", "for_us_amount", ...diagnostic]);
+    expect(technicianShareFieldsForTerms("free_estimate")).toEqual(["for_you_labor_percent", "for_us_labor_percent", ...diagnostic]);
+    expect(technicianShareFieldsForTerms("diagnostic_service_call")).toEqual([...diagnostic, "for_you_labor_percent", "for_us_labor_percent"]);
+    expect(technicianShareFieldsForTerms(null)).toEqual(["for_you_amount", "for_us_amount", ...diagnostic]);
   });
   it.each([["", null], ["0", null], ["100", null], ["50.5", null], ["-1", /0 to 100/], ["101", /0 to 100/], ["x", /0 to 100/]])("labor percent %j", (value, expected) => {
     const result = validateLaborPercent(value);

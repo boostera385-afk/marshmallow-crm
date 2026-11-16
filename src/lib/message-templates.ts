@@ -86,8 +86,8 @@ Service: {service_details}
 
 Customer is agreed to pay $\{labor_amount_or_zero} total labor + $\{material_amount_or_zero} for Parts or Material.
 You Agreed on the Terms:
-For You: $\{for_you_amount_or_zero} from Labor
-For Us: $\{for_us_amount_or_zero} from Labor
+For You: $\{for_you_amount_or_zero} from Labor{for_you_diagnostic_suffix}
+For Us: $\{for_us_amount_or_zero} from Labor{for_us_diagnostic_suffix}
 
 Job Scheduled for: {technician_schedule}
 {reference_block}`,
@@ -101,8 +101,8 @@ Service Details: {service_details}
 FREE ESTIMATE VISIT
 
 You Agreed on the Terms:
-For You: {for_you_labor_percent_or_zero}% from Labor
-For Us: {for_us_labor_percent_or_zero}% from Labor
+For You: {for_you_labor_percent_or_zero}% from Labor{for_you_diagnostic_suffix}
+For Us: {for_us_labor_percent_or_zero}% from Labor{for_us_diagnostic_suffix}
 
 FREE ESTIMATE VISIT Scheduled for: {technician_schedule}
 {reference_block}`,
@@ -118,8 +118,8 @@ Service: {service_details}
 
 Customer is agreed to pay $\{diagnostic_fee_amount_or_zero} total Diagnostic Fees / Service Call Fees + Parts & Labor will be separate OR (Convertible towards Labor / Repairs)
 You Agreed on the Terms:
-For You: $\{for_you_amount_or_zero} from Diagnostic + {for_you_labor_percent_or_zero}% from Labor
-For Us: $\{for_us_amount_or_zero} from Diagnostic + {for_us_labor_percent_or_zero}% from Labor
+For You: $\{for_you_diagnostic_amount_or_zero} from Diagnostic + {for_you_labor_percent_or_zero}% from Labor
+For Us: $\{for_us_diagnostic_amount_or_zero} from Diagnostic + {for_us_labor_percent_or_zero}% from Labor
 
 Job Scheduled for: {technician_schedule}
 {reference_block}`,
@@ -174,9 +174,9 @@ export const EDITABLE_TEMPLATE_INFO: Record<EditableTemplateKey, { label: string
 
 export const TEMPLATE_PLACEHOLDERS: Record<EditableTemplateKey, string[]> = {
   technician_message: ["customer_number", "customer_name", "customer_phone", "customer_address", "service_details", "schedule", "technician_schedule", "reference_line", "reference_block", "quote", "tech_name"],
-  technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "materials_line", "labor_material_suffix", "for_you_amount_or_zero", "for_us_amount_or_zero", "diagnostic_fee_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
-  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "for_you_labor_percent_or_zero", "for_us_labor_percent_or_zero", "diagnostic_fee_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
-  technician_message_diagnostic_service_call: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "diagnostic_fee_amount_or_zero", "for_you_amount_or_zero", "for_us_amount_or_zero", "for_you_labor_percent_or_zero", "for_us_labor_percent_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "materials_line", "labor_material_suffix", "for_you_amount_or_zero", "for_us_amount_or_zero", "for_you_diagnostic_suffix", "for_us_diagnostic_suffix", "diagnostic_fee_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "for_you_labor_percent_or_zero", "for_us_labor_percent_or_zero", "for_you_diagnostic_suffix", "for_us_diagnostic_suffix", "diagnostic_fee_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_diagnostic_service_call: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "diagnostic_fee_amount_or_zero", "for_you_diagnostic_amount_or_zero", "for_us_diagnostic_amount_or_zero", "for_you_labor_percent_or_zero", "for_us_labor_percent_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
   check_template: ["tech_name", "service", "service_details", "area", "city", "state", "schedule_requirement", "quote"],
 };
 
@@ -229,6 +229,9 @@ export function useSavedTemplates(enabled: boolean) {
   });
 }
 
+const diagnosticSuffix = (amount: number | null | undefined) =>
+  amount != null && Number.isFinite(amount) && amount > 0 ? ` + $${amount} from Diagnostic` : "";
+
 /** Fills a template from the lead's saved values; unknown placeholders become empty. */
 export const renderLeadTemplate = (
   template: string,
@@ -279,6 +282,12 @@ export const renderLeadTemplate = (
     diagnostic_fee_amount_or_zero: String(lead.diagnostic_fee_amount ?? 0),
     for_you_labor_percent_or_zero: String(lead.for_you_labor_percent ?? 0),
     for_us_labor_percent_or_zero: String(lead.for_us_labor_percent ?? 0),
+    for_you_diagnostic_amount_or_zero: String(lead.for_you_diagnostic_amount ?? 0),
+    for_us_diagnostic_amount_or_zero: String(lead.for_us_diagnostic_amount ?? 0),
+    // Quoted and Free Estimate add the diagnostic split only when one is recorded,
+    // so their lines stay exactly in the owner's format otherwise.
+    for_you_diagnostic_suffix: diagnosticSuffix(lead.for_you_diagnostic_amount),
+    for_us_diagnostic_suffix: diagnosticSuffix(lead.for_us_diagnostic_amount),
   };
 
   const hasMaterials = lead.material_amount != null && Number.isFinite(lead.material_amount) && lead.material_amount > 0;
