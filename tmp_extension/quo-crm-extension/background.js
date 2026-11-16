@@ -431,7 +431,7 @@ function normalizeLeadStatus(value) {
 }
 
 function normalizeLeadTerms(value) {
-  const allowedTerms = new Set(["free_estimate", "quoted"]);
+  const allowedTerms = new Set(["free_estimate", "quoted", "diagnostic_service_call"]);
   return allowedTerms.has(value) ? value : "";
 }
 

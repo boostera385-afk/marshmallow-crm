@@ -32,7 +32,7 @@ import { showsUrgentCheck } from "@/lib/urgent-verification";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "./QuoteBreakdownFields";
-import { validateQuoteBreakdown } from "@/lib/quote-breakdown";
+import { termsAllowMaterials, termsRecordAmount, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
 import { motion, AnimatePresence } from "framer-motion";
 import NumberNameCombobox from "./NumberNameCombobox";
 import MultiDateTimePicker from "./MultiDateTimePicker";
@@ -84,7 +84,7 @@ const initialFormState = {
   reference_name: "",
   tech_name: "",
   tech_number: "",
-  terms: "" as "" | "free_estimate" | "quoted",
+  terms: "" as "" | QuoteTerms,
   labor_amount: "",
   material_amount: "",
   materials_included: false,
@@ -309,8 +309,8 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
       tech_name: form.tech_name || null,
       tech_number: form.tech_number || null,
       terms: form.terms || null,
-      labor_amount: form.terms === "quoted" && form.labor_amount ? parseFloat(form.labor_amount) : null,
-      material_amount: form.terms === "quoted" && form.materials_included && form.material_amount ? parseFloat(form.material_amount) : null,
+      labor_amount: termsRecordAmount(form.terms) && form.labor_amount ? parseFloat(form.labor_amount) : null,
+      material_amount: termsAllowMaterials(form.terms) && form.materials_included && form.material_amount ? parseFloat(form.material_amount) : null,
       for_you_amount: form.for_you_amount ? parseFloat(form.for_you_amount) : null,
       for_us_amount: form.for_us_amount ? parseFloat(form.for_us_amount) : null,
     };
@@ -770,8 +770,9 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
                   </div>
 
 
+                  {/* For You / For Us apply to every term (2026-11-16), not only Quoted. */}
                   <AnimatePresence initial={false}>
-                    {form.terms === "quoted" && (
+                    {(
                       <motion.div
                         initial={{ opacity: 0, y: -6, height: 0 }}
                         animate={{ opacity: 1, y: 0, height: "auto" }}
@@ -786,7 +787,7 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
 
                           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-1.5">
-                              <Label className={labelClass}>{form.materials_included ? "For You ($ incl. material)" : "For You ($)"}</Label>
+                              <Label className={labelClass}>{form.terms === "quoted" && form.materials_included ? "For You ($ incl. material)" : "For You ($)"}</Label>
                               <Input
                                 type="number"
                                 step="0.01"

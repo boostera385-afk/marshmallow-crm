@@ -350,16 +350,19 @@
 
                   <input type="radio" id="terms-quoted" name="terms" value="quoted" />
                   <label for="terms-quoted">Quoted</label>
+
+                  <input type="radio" id="terms-diagnostic" name="terms" value="diagnostic_service_call" />
+                  <label for="terms-diagnostic">Diagnostic/Service Call</label>
                 </div>
               </div>
 
               <div id="quote-field" class="form-cell form-cell--quote" hidden>
                 <fieldset>
-                  <legend class="cell-label">Labor Section</legend>
-                  <label class="cell-label" for="quote-labor">Customer Labor ($)</label>
+                  <legend id="quote-labor-legend" class="cell-label">Labor Section</legend>
+                  <label id="quote-labor-label" class="cell-label" for="quote-labor">Customer Labor ($)</label>
                   <input id="quote-labor" type="number" name="laborAmount" min="0" step="0.01" class="form-input" placeholder="0.00" />
                 </fieldset>
-                <fieldset>
+                <fieldset id="quote-materials-section">
                   <legend class="cell-label">Parts/Materials Section</legend>
                   <label class="cell-label" for="quote-materials-choice">Parts/Materials charges?</label>
                   <select id="quote-materials-choice" name="materialsIncluded" class="form-input"><option value="no">No</option><option value="yes">Yes</option></select>
@@ -368,8 +371,10 @@
                     <input id="quote-materials" type="number" name="materialAmount" min="0.01" step="0.01" class="form-input" placeholder="0.00" />
                   </div>
                 </fieldset>
-                <label class="cell-label" for="quote-notes">Quote Notes</label>
-                <input id="quote-notes" type="text" name="quote" class="form-input" placeholder="Additional quote details (optional)" />
+                <div id="quote-notes-field">
+                  <label class="cell-label" for="quote-notes">Quote Notes</label>
+                  <input id="quote-notes" type="text" name="quote" class="form-input" placeholder="Additional quote details (optional)" />
+                </div>
               </div>
             </div>
 

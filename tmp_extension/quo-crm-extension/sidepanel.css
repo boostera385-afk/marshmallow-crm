@@ -1117,6 +1117,18 @@ html, body {
   white-space: nowrap;
 }
 
+/* Estimate / Quote has three options incl. "Diagnostic/Service Call": let labels wrap. */
+.form-row--terms .segmented-pill {
+  height: auto;
+  min-height: 27px;
+}
+
+.form-row--terms .segmented-pill label {
+  white-space: normal;
+  line-height: 1.2;
+  padding: 3px 4px;
+}
+
 .segmented-pill label:active {
   transform: scale(0.96);
 }

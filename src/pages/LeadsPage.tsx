@@ -1352,7 +1352,7 @@ export default function LeadsPage() {
           Service: lead?.service_type || "",
           "Service Details": lead?.service_details || "",
           Quote: lead?.quote || "",
-          Terms: lead?.terms === "free_estimate" ? "Free Estimate" : lead?.terms === "quoted" ? "Quote" : "",
+          Terms: lead?.terms === "free_estimate" ? "Free Estimate" : lead?.terms === "quoted" ? "Quote" : lead?.terms === "diagnostic_service_call" ? "Diagnostic/Service Call" : "",
           "General Notes": noteSummaryByLead[id]?.general || "",
           "CS Notes": noteSummaryByLead[id]?.cs || "",
           "Processor Notes": noteSummaryByLead[id]?.processor || "",
@@ -1703,7 +1703,7 @@ export default function LeadsPage() {
                           truncate={false} 
                         />
                       <td className="whitespace-nowrap px-2 py-2 text-foreground">
-                        {l.terms === "free_estimate" ? "Free Estimate" : l.terms === "quoted" ? "Quoted" : <span className="text-muted-foreground">—</span>}
+                        {l.terms === "free_estimate" ? "Free Estimate" : l.terms === "quoted" ? "Quoted" : l.terms === "diagnostic_service_call" ? "Diagnostic/Service Call" : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="whitespace-nowrap px-2 py-2 text-right text-muted-foreground">
                         {dateStr}

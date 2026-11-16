@@ -94,3 +94,14 @@ describe("half labor sent by the database (20261219000000)", () => {
     expect(operatorVisibleLabor(null)).toBeNull();
   });
 });
+
+describe("Operator view of Diagnostic/Service Call (2026-11-16)", () => {
+  it("shows the terms only, never the diagnostic fee or a half of it", () => {
+    expect(operatorQuoteSummary({ terms: "diagnostic_service_call", labor_amount: 89, operator_labor_amount: 44.5 })).toBe("Diagnostic/Service Call");
+    expect(operatorQuoteFormValue({ terms: "diagnostic_service_call", laborAmount: "89", materialAmount: "", includesMaterials: false }))
+      .toEqual({ terms: "diagnostic_service_call", laborAmount: "", materialAmount: "", includesMaterials: false });
+  });
+  it("still hides it entirely when an admin hid the quote", () => {
+    expect(operatorQuoteSummary({ terms: "diagnostic_service_call", show_quote_to_opr: false })).toBeNull();
+  });
+});

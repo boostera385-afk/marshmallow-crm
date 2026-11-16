@@ -102,6 +102,32 @@ describe("technician message by terms (original wording restored)", () => {
   });
 });
 
+describe("Diagnostic/Service Call technician message", () => {
+  it("uses the Quoted layout with the diagnostic fee and For You / For Us lines", () => {
+    expect(message(lead({ terms: "diagnostic_service_call", labor_amount: 89, material_amount: null, for_you_amount: 40, for_us_amount: 49 }))).toBe(
+      `*Customer # 12*
+
+Customer Name: Synthetic Customer
+Customer Number: 555-0100
+Customer Address: 1 Test St
+Service: Fix sink
+
+Customer is agreed to pay $89 total Diagnostic Fees / Service Call Fees + Parts & Labor will be separate OR (Convertible towards Labor / Repairs)
+You Agreed on the Terms:
+For You: $40 from Diagnostic + xx% from Labor
+For Us: $49 from Diagnostic + xx% from Labor
+
+Job Scheduled for: THURSDAY 12th December between 9:00am-11:30am
+`,
+    );
+  });
+  it("uses an admin-saved Diagnostic/Service Call template when there is one", () => {
+    const saved = { technician_message_diagnostic_service_call: "Diag {labor_amount_or_zero}" };
+    expect(technicianMessageTemplate(lead({ terms: "diagnostic_service_call" }), saved)).toBe("Diag {labor_amount_or_zero}");
+    expect(technicianMessageTemplate(lead({ terms: "quoted" }), saved)).toBe(BUILT_IN_TEMPLATES.technician_message_quoted);
+  });
+});
+
 describe("admin-saved templates", () => {
   it("uses a saved template for the lead's terms and the built-in text for the rest", () => {
     const saved = { technician_message_quoted: "Q {customer_name}", technician_message: "STD {customer_name}" };

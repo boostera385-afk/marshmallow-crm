@@ -26,7 +26,7 @@ const EMPTY_JOBS: ProcessorJob[] = [];
 type CheckIssue = { message: string; retryable: boolean; signature: string };
 const time = (value: string | null) => value ? `${Number(value.slice(0, 2)) % 12 || 12}:${value.slice(3, 5)} ${Number(value.slice(0, 2)) >= 12 ? "PM" : "AM"}` : null;
 const shortDate = (value: string) => new Date(`${value}T12:00:00Z`).toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" });
-const terms = (value: string | null) => value === "free_estimate" ? "Free Estimate" : value === "quoted" ? "Quoted" : value ? value.replace(/_/g, " ") : "—";
+const terms = (value: string | null) => value === "free_estimate" ? "Free Estimate" : value === "quoted" ? "Quoted" : value === "diagnostic_service_call" ? "Diagnostic/Service Call" : value ? value.replace(/_/g, " ") : "—";
 
 function Schedule({ job, overdue }: { job: ProcessorJob; overdue: boolean }) {
   if (!job.scheduled_date) return <span className="text-muted-foreground">Not scheduled</span>;

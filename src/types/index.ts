@@ -131,7 +131,7 @@ export interface Lead {
   // Processor fields
   tech_name: string | null;
   tech_number: string | null;
-  terms: 'free_estimate' | 'quoted' | null;
+  terms: 'free_estimate' | 'quoted' | 'diagnostic_service_call' | null;
   direction: 'incoming' | 'outgoing' | null;
   cs_tag?: CsTag | null;
   /** 'ai' when the current tag was set by the schedule confirmation AI. */

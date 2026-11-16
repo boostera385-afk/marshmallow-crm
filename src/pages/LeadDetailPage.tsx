@@ -55,7 +55,7 @@ import { optimizeImageForUpload } from "@/lib/image-upload";
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "@/components/leads/QuoteBreakdownFields";
-import { hasMaterialCharge, validateQuoteBreakdown } from "@/lib/quote-breakdown";
+import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
 import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import StatusBadge from "@/components/leads/StatusBadge";
@@ -216,7 +216,7 @@ export default function LeadDetailPage() {
 
     tech_name: "",
     tech_number: "",
-    terms: "" as "" | "free_estimate" | "quoted",
+    terms: "" as "" | QuoteTerms,
     labor_amount: "",
     material_amount: "",
     materials_included: false,
@@ -825,8 +825,8 @@ export default function LeadDetailPage() {
       // Every editing role (CS and CS Admin included) owns the customer quote
       // split; only the internal For You/For Us technician split stays gated.
       terms: form.terms || null,
-      labor_amount: form.terms === "quoted" ? parseAmount(form.labor_amount) : null,
-      material_amount: form.terms === "quoted" && form.materials_included ? parseAmount(form.material_amount) : null,
+      labor_amount: termsRecordAmount(form.terms) ? parseAmount(form.labor_amount) : null,
+      material_amount: termsAllowMaterials(form.terms) && form.materials_included ? parseAmount(form.material_amount) : null,
       for_you_amount:
         !hideProcessorDetails
           ? parseAmount(form.for_you_amount)
@@ -1700,7 +1700,8 @@ export default function LeadDetailPage() {
                 </div>
 
 
-                {form.terms === "quoted" && (
+                {/* For You / For Us apply to every term (2026-11-16), not only Quoted. */}
+                {(
                   <div className="crm-lead-card-soft rounded-[22px] p-4 space-y-3 shadow-[0_18px_28px_-24px_rgba(59,130,246,0.12)] dark:shadow-none">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground/60">
                       Internal Technician Share
@@ -1708,7 +1709,7 @@ export default function LeadDetailPage() {
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div className="space-y-1.5">
-                        <Label className={labelClass}>{form.materials_included ? "For You ($ incl. material)" : "For You ($)"}</Label>
+                        <Label className={labelClass}>{form.terms === "quoted" && form.materials_included ? "For You ($ incl. material)" : "For You ($)"}</Label>
                         <Input
                           type="number"
                           step="0.01"

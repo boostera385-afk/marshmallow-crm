@@ -69,7 +69,7 @@ import {
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "./QuoteBreakdownFields";
-import { hasMaterialCharge, validateQuoteBreakdown, type QuoteFormValue } from "@/lib/quote-breakdown";
+import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateQuoteBreakdown, type QuoteFormValue } from "@/lib/quote-breakdown";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
 import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import { DateInput } from "@/components/ui/date-input";
@@ -615,8 +615,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
         tech_name: role !== "customer_service" && role !== "cs_admin" ? form.tech_name : lead?.tech_name,
         tech_number: role !== "customer_service" && role !== "cs_admin" ? form.tech_number : lead?.tech_number,
         terms: form.terms,
-        labor_amount: form.terms === "quoted" ? form.labor_amount : null,
-        material_amount: form.terms === "quoted" && form.materials_included ? form.material_amount : null,
+        labor_amount: termsRecordAmount(form.terms) ? form.labor_amount : null,
+        material_amount: termsAllowMaterials(form.terms) && form.materials_included ? form.material_amount : null,
         for_you_amount: role !== "customer_service" && role !== "cs_admin" ? form.for_you_amount : lead?.for_you_amount,
         for_us_amount: role !== "customer_service" && role !== "cs_admin" ? form.for_us_amount : lead?.for_us_amount,
       };
@@ -1118,7 +1118,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                 </div>
 
 
-                {form.terms === "quoted" && (
+                {/* For You / For Us apply to every term (2026-11-16), not only Quoted. */}
+                {(
                   <>
                     <div className="space-y-1.5">
                       <Label className={labelClass}>For You ($)</Label>

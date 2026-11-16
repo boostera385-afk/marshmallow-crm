@@ -45,6 +45,9 @@ export function operatorLaborForDisplay(lead: Pick<OperatorQuoteLead, "labor_amo
 export function operatorQuoteSummary(lead: OperatorQuoteLead): string | null {
   if (lead.show_quote_to_opr === false) return null;
   if (lead.terms === "free_estimate") return "Free Estimate Visit";
+  // The diagnostic fee is not labor, so the half-labor rule does not apply to
+  // it: Operators are told the terms only.
+  if (lead.terms === "diagnostic_service_call") return "Diagnostic/Service Call";
   if (lead.terms !== "quoted") return null;
 
   const half = operatorLaborForDisplay(lead);
@@ -66,6 +69,8 @@ export function operatorQuoteSummary(lead: OperatorQuoteLead): string | null {
  */
 export function operatorQuoteFormValue(value: QuoteFormValue, showQuoteToOpr?: boolean | null): QuoteFormValue | null {
   if (showQuoteToOpr === false) return null;
+  // Terms only for Diagnostic/Service Call (see operatorQuoteSummary).
+  if (value.terms === "diagnostic_service_call") return { ...value, laborAmount: "", materialAmount: "", includesMaterials: false };
   const labor = value.laborAmount.trim() === "" ? null : Number(value.laborAmount);
   const half = operatorVisibleLabor(labor);
   const materials = value.materialAmount.trim() === "" ? NaN : Number(value.materialAmount);

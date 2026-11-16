@@ -136,3 +136,42 @@ it("other roles still see and edit the full labor amount", async () => {
   await mount();
   expect(screen.getByLabelText("Customer Labor ($)")).toHaveValue(200);
 });
+
+describe("Diagnostic/Service Call terms and For You / For Us on every term (2026-11-16)", () => {
+  beforeEach(() => { state.role = "admin"; });
+  afterEach(() => { state.role = "customer_service"; });
+
+  it("saves the diagnostic fee as labor_amount and drops any stale materials charge", async () => {
+    state.lead = { ...baseLead, terms: "diagnostic_service_call", labor_amount: 89, material_amount: 50 };
+    await mount();
+    expect(screen.queryByLabelText("Customer Labor ($)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Parts/Materials charges?")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Diagnostic/Service Call Fee ($)"), { target: { value: "99" } });
+    await save();
+    expect(state.updates[0]).toMatchObject({ terms: "diagnostic_service_call", labor_amount: 99, material_amount: null, for_you_amount: 120, for_us_amount: 80 });
+  });
+
+  it.each(["free_estimate", "diagnostic_service_call", null])("shows the For You / For Us share for terms %s", async (terms) => {
+    state.lead = { ...baseLead, terms };
+    await mount();
+    expect(screen.getByText("Internal Technician Share")).toBeInTheDocument();
+    expect(screen.getByText("For Us ($ from labor)")).toBeInTheDocument();
+  });
+
+  it("keeps For You / For Us when terms are Free Estimate Visit", async () => {
+    state.lead = { ...baseLead, terms: "free_estimate" };
+    await mount();
+    await save();
+    expect(state.updates[0]).toMatchObject({ terms: "free_estimate", labor_amount: null, material_amount: null, for_you_amount: 120, for_us_amount: 80 });
+  });
+
+  it("Operators see only the Diagnostic/Service Call term, not the fee", async () => {
+    state.role = "opr";
+    state.lead = { ...baseLead, terms: "diagnostic_service_call", labor_amount: 89, material_amount: null };
+    await mount();
+    const section = screen.getByRole("region", { name: "Quote breakdown" });
+    expect(section).toHaveTextContent("Diagnostic/Service Call");
+    expect(section).not.toHaveTextContent("$89");
+    expect(section).not.toHaveTextContent("$44.50");
+  });
+});

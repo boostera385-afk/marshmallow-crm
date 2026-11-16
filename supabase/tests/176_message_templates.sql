@@ -29,6 +29,13 @@ SELECT pg_temp.check_error('Unknown template keys are rejected',
   $$INSERT INTO public.message_templates(key, template) VALUES ('technician_reminder', 'x')$$, '23514');
 SELECT pg_temp.check_error('Blank templates are rejected',
   $$INSERT INTO public.message_templates(key, template) VALUES ('technician_message', '   ')$$, '23514');
+-- 20261221000000: the Diagnostic/Service Call template key is accepted (before that
+-- migration this INSERT fails on message_templates_key_check). Removed again so
+-- the row counts below are unchanged.
+INSERT INTO public.message_templates(key, template) VALUES ('technician_message_diagnostic_service_call', 'Diagnostic {customer_name}');
+SELECT pg_temp.check('Admin can save the Diagnostic/Service Call template',
+  EXISTS (SELECT 1 FROM public.message_templates WHERE key = 'technician_message_diagnostic_service_call'));
+DELETE FROM public.message_templates WHERE key = 'technician_message_diagnostic_service_call';
 RESET ROLE;
 
 -- Every other role reads, but cannot write.
