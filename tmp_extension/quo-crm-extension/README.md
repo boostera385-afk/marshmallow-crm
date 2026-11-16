@@ -49,6 +49,8 @@ Donut is not in the Chrome Web Store.
      and **Parts/Materials Section**. Choose Yes only when parts/materials have a
      positive charge; No clears the amount and saves no materials charge.
      **Quote Notes** preserves additional wording, not a guessed labor amount.
+     **Diagnostic/Service Call** records one Diagnostic/Service Call Fee (saved as
+     the lead's labor amount, as in the CRM) with no Parts/Materials or Quote Notes.
 4. Click **Create Lead**.
 
 Rules that match the CRM:

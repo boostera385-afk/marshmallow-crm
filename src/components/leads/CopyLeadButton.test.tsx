@@ -61,7 +61,8 @@ describe("CopyLeadButton original wording by terms", () => {
   it("copies the original free estimate wording", () => {
     state.role = "admin";
     const copied = openAndCopy({ ...quotedLead, terms: "free_estimate" } as Lead);
-    expect(copied).toContain("FREE ESTIMATE VISIT\n\nFREE ESTIMATE VISIT Scheduled for: TBD");
+    expect(copied).toContain("FREE ESTIMATE VISIT\n\nFor you: $250\nFor us: $150\n\nFREE ESTIMATE VISIT Scheduled for: TBD");
+    expect(copied).toContain("FREE ESTIMATE VISIT Scheduled for: TBD");
     expect(copied).not.toContain("agreed to pay");
   });
 

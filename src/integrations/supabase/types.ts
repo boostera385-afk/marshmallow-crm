@@ -1996,6 +1996,7 @@ export type Database = {
       profiles: {
         Row: {
           can_add_manual_leads: boolean
+          can_edit_processor_notes: boolean
           can_manage_users: boolean | null
           can_view_tech_report: boolean
           created_at: string | null
@@ -2007,6 +2008,7 @@ export type Database = {
         }
         Insert: {
           can_add_manual_leads?: boolean
+          can_edit_processor_notes?: boolean
           can_manage_users?: boolean | null
           can_view_tech_report?: boolean
           created_at?: string | null
@@ -2018,6 +2020,7 @@ export type Database = {
         }
         Update: {
           can_add_manual_leads?: boolean
+          can_edit_processor_notes?: boolean
           can_manage_users?: boolean | null
           can_view_tech_report?: boolean
           created_at?: string | null
@@ -3014,6 +3017,7 @@ export type Database = {
       can_access_quo_ai: { Args: never; Returns: boolean }
       can_access_quote_approval: { Args: never; Returns: boolean }
       can_create_manual_lead: { Args: never; Returns: boolean }
+      can_edit_others_processor_notes: { Args: never; Returns: boolean }
       can_manage_map_coverage: { Args: { _user_id: string }; Returns: boolean }
       can_use_quick_chat: { Args: { _user_id: string }; Returns: boolean }
       claim_ai_status_refresh: {
@@ -3240,6 +3244,7 @@ export type Database = {
           material_amount: number
           nearby_areas: Json
           number_name: string
+          operator_labor_amount: number
           org_id: string
           payment_amount: number
           payment_screenshot_url: string

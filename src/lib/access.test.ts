@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessNavItem, canAddLeadViaExtension, canOpenAnalytics, canAddManualLead, canDeleteTechnicians, canSeeTechDetails, canViewLeadCoverageAnalytics, getDefaultNavAccess } from "@/lib/access";
+import { canAccessNavItem, canAddLeadViaExtension, canOpenAnalytics, canAddManualLead, canEditOthersProcessorNotes, canDeleteTechnicians, canSeeTechDetails, canViewLeadCoverageAnalytics, getDefaultNavAccess } from "@/lib/access";
 import type { NavigationPermission } from "@/types";
 
 describe("cancellation request navigation access", () => {
@@ -204,5 +204,21 @@ describe("add lead via extension", () => {
     expect(canAddLeadViaExtension("opr", notGranted)).toBe(false);
     expect(canAddLeadViaExtension("opr_admin", notGranted)).toBe(false);
     expect(canAddLeadViaExtension(null)).toBe(false);
+  });
+});
+
+describe("Edit Processor Notes grant", () => {
+  it("allows admin always and a processor only with the grant", () => {
+    expect(canEditOthersProcessorNotes("admin", null)).toBe(true);
+    expect(canEditOthersProcessorNotes("processor", { can_edit_processor_notes: true })).toBe(true);
+    expect(canEditOthersProcessorNotes("processor", { can_edit_processor_notes: false })).toBe(false);
+    expect(canEditOthersProcessorNotes("processor", null)).toBe(false);
+  });
+
+  it("never applies to other roles, even if the flag is set", () => {
+    for (const role of ["customer_service", "cs_admin", "opr", "opr_admin"] as const) {
+      expect(canEditOthersProcessorNotes(role, { can_edit_processor_notes: true })).toBe(false);
+    }
+    expect(canEditOthersProcessorNotes(null, { can_edit_processor_notes: true })).toBe(false);
   });
 });

@@ -1286,7 +1286,18 @@ function renderDraft(draft) {
 
 function updateQuoteFieldVisibility(terms) {
   if (!quoteField) return;
-  quoteField.hidden = terms !== "quoted";
+  // Diagnostic/Service Call records one fee (saved as labor_amount, like the CRM);
+  // Parts/Materials and Quote Notes stay Quoted-only.
+  const diagnostic = terms === "diagnostic_service_call";
+  quoteField.hidden = terms !== "quoted" && !diagnostic;
+  const legend = document.getElementById("quote-labor-legend");
+  if (legend) legend.textContent = diagnostic ? "Diagnostic/Service Call Section" : "Labor Section";
+  const laborLabel = document.getElementById("quote-labor-label");
+  if (laborLabel) laborLabel.textContent = diagnostic ? "Diagnostic/Service Call Fee ($)" : "Customer Labor ($)";
+  const materialsSection = document.getElementById("quote-materials-section");
+  if (materialsSection) materialsSection.hidden = diagnostic;
+  const notesField = document.getElementById("quote-notes-field");
+  if (notesField) notesField.hidden = diagnostic;
   const materialsField = document.getElementById("materials-amount-field");
   if (materialsField) materialsField.hidden = terms !== "quoted" || currentDraft?.materialsIncluded !== "yes";
 }

@@ -1,8 +1,8 @@
 {
   "name": "Donut",
-  "version": "1.7.4",
-  "releasedAt": "2026-11-14T10:45:45.710Z",
-  "summary": "Dates and times show in 12-hour AM/PM format",
-  "sourceSha256": "cdc5cbf704c757e6b1041106015e1d72f663b992565c69e53d8e9579fb3eaf1a",
-  "packageSha256": "615cac94b64b7db0eb0c4bf47801289f3f82b87a3a9831cc73dbefa91ecf20aa"
+  "version": "1.7.5",
+  "releasedAt": "2026-11-16T07:48:58.959Z",
+  "summary": "Estimate / Quote adds Diagnostic/Service Call with a single Diagnostic/Service Call Fee (saved as the lead's labor amount, no Parts/Materials).",
+  "sourceSha256": "3f4f2c088a8fc4a5b70841272c9dd317a84813fb975bbd399cc063b911bcf5e5",
+  "packageSha256": "c65ca6e3ff7e5e216931287d1820a1d742749e4fd36cce03e19a6d96766ceb29"
 }

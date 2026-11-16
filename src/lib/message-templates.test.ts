@@ -60,7 +60,7 @@ describe("technician message by terms (original wording restored)", () => {
     );
   });
 
-  it("writes the free estimate message word for word as before June 2026", () => {
+  it("writes the free estimate message with the For You / For Us lines (2026-11-16)", () => {
     expect(message(lead({ terms: "free_estimate" }), { reference_name: "Ali" })).toBe(
       [
         "*Customer # 12*",
@@ -71,6 +71,9 @@ describe("technician message by terms (original wording restored)", () => {
         "Service Details: Fix sink",
         "",
         "FREE ESTIMATE VISIT",
+        "",
+        "For you: $250",
+        "For us: $150",
         "",
         "FREE ESTIMATE VISIT Scheduled for: THURSDAY 12th December between 9:00am-11:30am",
         "",
@@ -99,6 +102,32 @@ describe("technician message by terms (original wording restored)", () => {
     expect(formatTechnicianSchedule(lead({ scheduled_date: null }))).toBe("TBD");
     expect(formatTechnicianSchedule(lead({ scheduled_date: "2024-12-01", scheduled_time_start: "13:05", scheduled_time_end: "00:00" })))
       .toBe("SUNDAY 1st December between 1:05pm-12:00am");
+  });
+});
+
+describe("Diagnostic/Service Call technician message", () => {
+  it("uses the Quoted layout with the diagnostic fee and For You / For Us lines", () => {
+    expect(message(lead({ terms: "diagnostic_service_call", labor_amount: 89, material_amount: null, for_you_amount: 40, for_us_amount: 49 }))).toBe(
+      `*Customer # 12*
+
+Customer Name: Synthetic Customer
+Customer Number: 555-0100
+Customer Address: 1 Test St
+Service: Fix sink
+
+Customer is agreed to pay $89 total Diagnostic Fees / Service Call Fees + Parts & Labor will be separate OR (Convertible towards Labor / Repairs)
+You Agreed on the Terms:
+For You: $40 from Diagnostic + xx% from Labor
+For Us: $49 from Diagnostic + xx% from Labor
+
+Job Scheduled for: THURSDAY 12th December between 9:00am-11:30am
+`,
+    );
+  });
+  it("uses an admin-saved Diagnostic/Service Call template when there is one", () => {
+    const saved = { technician_message_diagnostic_service_call: "Diag {labor_amount_or_zero}" };
+    expect(technicianMessageTemplate(lead({ terms: "diagnostic_service_call" }), saved)).toBe("Diag {labor_amount_or_zero}");
+    expect(technicianMessageTemplate(lead({ terms: "quoted" }), saved)).toBe(BUILT_IN_TEMPLATES.technician_message_quoted);
   });
 });
 

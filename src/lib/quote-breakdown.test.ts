@@ -27,4 +27,18 @@ describe("CRM and Donut customer quote breakdown", () => {
     expect(customerQuoteSummary({ terms: "free_estimate", labor_amount: 200, material_amount: 60, quote: null })).toBe("Free Estimate Visit");
     expect(donut.fields({ terms: "free_estimate", laborAmount: "200", materialsIncluded: "yes", materialAmount: "60" })).toEqual({ terms: "free_estimate", labor_amount: null, material_amount: null });
   });
+  it("Diagnostic/Service Call records one fee as labor_amount and never a materials charge in both clients", () => {
+    expect(customerQuoteSummary({ terms: "diagnostic_service_call", labor_amount: 89, material_amount: 60, quote: "notes" })).toBe("Diagnostic/Service Call · Fee $89.00");
+    expect(customerQuoteSummary({ terms: "diagnostic_service_call", labor_amount: null, material_amount: null, quote: null })).toBe("Diagnostic/Service Call");
+    expect(validateQuoteBreakdown({ terms: "diagnostic_service_call", laborAmount: "89", materialAmount: "", includesMaterials: true })).toBeNull();
+    expect(donut.fields({ terms: "diagnostic_service_call", laborAmount: "89", materialsIncluded: "yes", materialAmount: "60" })).toEqual({ terms: "diagnostic_service_call", labor_amount: 89, material_amount: null });
+    expect(donut.fields({ terms: "diagnostic_service_call", laborAmount: "", materialsIncluded: "no", materialAmount: "" })).toEqual({ terms: "diagnostic_service_call", labor_amount: null, material_amount: null });
+  });
+  it.each(["-5", "abc"])("rejects an invalid diagnostic fee %j in both clients", (fee) => {
+    expect(validateQuoteBreakdown({ terms: "diagnostic_service_call", laborAmount: fee, materialAmount: "", includesMaterials: false })).toMatch(/diagnostic fee/);
+    expect(() => donut.fields({ terms: "diagnostic_service_call", laborAmount: fee, materialsIncluded: "no", materialAmount: "" })).toThrow(/diagnostic fee/);
+  });
+  it("Donut drops unknown terms", () => {
+    expect(donut.fields({ terms: "made_up", laborAmount: "10" })).toEqual({ terms: null, labor_amount: null, material_amount: null });
+  });
 });

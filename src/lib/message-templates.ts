@@ -71,7 +71,8 @@ export const formatTechnicianSchedule = (
 
 /**
  * The Quoted and Free Estimate technician messages, restored word for word from
- * before the June 2026 template change removed them. Leads with no terms use the
+ * before the June 2026 template change removed them. Free Estimate also carries
+ * the For You / For Us lines since 2026-11-16 (owner request). Leads with no terms use the
  * editable technician_message template.
  */
 export const TECHNICIAN_MESSAGE_BY_TERMS = {
@@ -99,7 +100,27 @@ Service Details: {service_details}
 
 FREE ESTIMATE VISIT
 
+For you: $\{for_you_amount_or_zero}
+For us: $\{for_us_amount_or_zero}
+
 FREE ESTIMATE VISIT Scheduled for: {technician_schedule}
+{reference_block}`,
+  // The Quoted message with only the amount and For You / For Us lines replaced
+  // (owner wording 2026-11-16). "xx%" is literal: admins set their usual labor
+  // percentage by editing this template in Settings > Templates.
+  diagnostic_service_call: `*Customer #{customer_number_spaced}*
+
+Customer Name: {customer_name}
+Customer Number: {customer_phone}
+Customer Address: {customer_address}
+Service: {service_details}
+
+Customer is agreed to pay $\{labor_amount_or_zero} total Diagnostic Fees / Service Call Fees + Parts & Labor will be separate OR (Convertible towards Labor / Repairs)
+You Agreed on the Terms:
+For You: $\{for_you_amount_or_zero} from Diagnostic + xx% from Labor
+For Us: $\{for_us_amount_or_zero} from Diagnostic + xx% from Labor
+
+Job Scheduled for: {technician_schedule}
 {reference_block}`,
 } as const;
 
@@ -108,12 +129,14 @@ export type EditableTemplateKey =
   | "technician_message"
   | "technician_message_quoted"
   | "technician_message_free_estimate"
+  | "technician_message_diagnostic_service_call"
   | "check_template";
 
 export const EDITABLE_TEMPLATE_KEYS: EditableTemplateKey[] = [
   "technician_message",
   "technician_message_quoted",
   "technician_message_free_estimate",
+  "technician_message_diagnostic_service_call",
   "check_template",
 ];
 
@@ -121,6 +144,7 @@ export const BUILT_IN_TEMPLATES: Record<EditableTemplateKey, string> = {
   technician_message: DEFAULT_MESSAGE_TEMPLATES.technician_message,
   technician_message_quoted: TECHNICIAN_MESSAGE_BY_TERMS.quoted,
   technician_message_free_estimate: TECHNICIAN_MESSAGE_BY_TERMS.free_estimate,
+  technician_message_diagnostic_service_call: TECHNICIAN_MESSAGE_BY_TERMS.diagnostic_service_call,
   check_template: DEFAULT_CHECK_TEMPLATE,
 };
 
@@ -137,6 +161,10 @@ export const EDITABLE_TEMPLATE_INFO: Record<EditableTemplateKey, { label: string
     label: "Technician Message: Free Estimate",
     description: "Copy Technician Message for leads with Free Estimate Visit terms.",
   },
+  technician_message_diagnostic_service_call: {
+    label: "Technician Message: Diagnostic/Service Call",
+    description: "Copy Technician Message for leads with Diagnostic/Service Call terms. Replace xx% with your labor percentage.",
+  },
   check_template: {
     label: "Check Template",
     description: "Asks a technician whether they can take a new customer before the job is assigned.",
@@ -146,7 +174,8 @@ export const EDITABLE_TEMPLATE_INFO: Record<EditableTemplateKey, { label: string
 export const TEMPLATE_PLACEHOLDERS: Record<EditableTemplateKey, string[]> = {
   technician_message: ["customer_number", "customer_name", "customer_phone", "customer_address", "service_details", "schedule", "technician_schedule", "reference_line", "reference_block", "quote", "tech_name"],
   technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "materials_line", "labor_material_suffix", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
-  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_diagnostic_service_call: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
   check_template: ["tech_name", "service", "service_details", "area", "city", "state", "schedule_requirement", "quote"],
 };
 
@@ -163,6 +192,7 @@ export const resolveTemplate = (key: EditableTemplateKey, saved?: SavedTemplates
 export const technicianMessageTemplate = (lead: Pick<Lead, "terms">, saved?: SavedTemplates) => {
   if (lead.terms === "free_estimate") return resolveTemplate("technician_message_free_estimate", saved);
   if (lead.terms === "quoted") return resolveTemplate("technician_message_quoted", saved);
+  if (lead.terms === "diagnostic_service_call") return resolveTemplate("technician_message_diagnostic_service_call", saved);
   return resolveTemplate("technician_message", saved);
 };
 

@@ -69,7 +69,7 @@ import {
 import { updateLeadById } from "@/lib/lead-updates";
 import { requestQuoteApproval } from "@/lib/quote-approval-requests";
 import QuoteBreakdownFields from "./QuoteBreakdownFields";
-import { hasMaterialCharge, validateQuoteBreakdown, type QuoteFormValue } from "@/lib/quote-breakdown";
+import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateQuoteBreakdown, type QuoteFormValue } from "@/lib/quote-breakdown";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
 import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
 import { DateInput } from "@/components/ui/date-input";
@@ -238,6 +238,22 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
       setForm({ ...lead, materials_included: hasMaterialCharge(lead.material_amount) });
     }
   }, [lead]);
+
+  // The copy buttons follow the terms and amounts currently selected in the form
+  // (as on the lead page), so switching Quote Terms switches the Copy Technician
+  // Message before saving. Amounts are trimmed the same way the save does.
+  const copyLead = useMemo(() => {
+    if (!lead || form.id !== lead.id) return lead;
+    const terms = (form.terms ?? null) as Lead["terms"];
+    return {
+      ...lead,
+      terms,
+      labor_amount: termsRecordAmount(terms) ? (form.labor_amount ?? null) : null,
+      material_amount: termsAllowMaterials(terms) && form.materials_included ? (form.material_amount ?? null) : null,
+      for_you_amount: form.for_you_amount ?? null,
+      for_us_amount: form.for_us_amount ?? null,
+    } as Lead;
+  }, [lead, form.id, form.terms, form.labor_amount, form.material_amount, form.materials_included, form.for_you_amount, form.for_us_amount]);
 
   const { isDuplicate, duplicateLeadName } = useDuplicatePhoneCheck(form.customer_phone || "", leadId);
 
@@ -615,8 +631,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
         tech_name: role !== "customer_service" && role !== "cs_admin" ? form.tech_name : lead?.tech_name,
         tech_number: role !== "customer_service" && role !== "cs_admin" ? form.tech_number : lead?.tech_number,
         terms: form.terms,
-        labor_amount: form.terms === "quoted" ? form.labor_amount : null,
-        material_amount: form.terms === "quoted" && form.materials_included ? form.material_amount : null,
+        labor_amount: termsRecordAmount(form.terms) ? form.labor_amount : null,
+        material_amount: termsAllowMaterials(form.terms) && form.materials_included ? form.material_amount : null,
         for_you_amount: role !== "customer_service" && role !== "cs_admin" ? form.for_you_amount : lead?.for_you_amount,
         for_us_amount: role !== "customer_service" && role !== "cs_admin" ? form.for_us_amount : lead?.for_us_amount,
       };
@@ -827,9 +843,9 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                     <span>Tech Quick Chat</span>
                   </QuoPhoneTrigger>
                 )}
-                <CopyLeadButton lead={lead} />
+                <CopyLeadButton lead={copyLead ?? lead} />
                 <CheckTemplateButton lead={lead} />
-                <CompleteLeadCopyButton lead={lead} />
+                <CompleteLeadCopyButton lead={copyLead ?? lead} />
                 <CxUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />
                 <TechUpdateRequestButton leadId={lead.id} customerName={lead.customer_name} />
 
@@ -1118,7 +1134,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                 </div>
 
 
-                {form.terms === "quoted" && (
+                {/* For You / For Us apply to every term (2026-11-16), not only Quoted. */}
+                {(
                   <>
                     <div className="space-y-1.5">
                       <Label className={labelClass}>For You ($)</Label>
