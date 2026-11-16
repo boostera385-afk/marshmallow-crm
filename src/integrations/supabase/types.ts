@@ -773,6 +773,9 @@ export type Database = {
         Row: {
           content: string
           created_at: string | null
+          edited_at: string | null
+          edited_by: string | null
+          edited_by_name: string | null
           id: string
           lead_id: string
           note_type: string
@@ -782,6 +785,9 @@ export type Database = {
         Insert: {
           content: string
           created_at?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
+          edited_by_name?: string | null
           id?: string
           lead_id: string
           note_type: string
@@ -791,6 +797,9 @@ export type Database = {
         Update: {
           content?: string
           created_at?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
+          edited_by_name?: string | null
           id?: string
           lead_id?: string
           note_type?: string
@@ -798,6 +807,20 @@ export type Database = {
           user_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_notes_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_notes_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lead_notes_lead_id_fkey"
             columns: ["lead_id"]
@@ -1420,6 +1443,7 @@ export type Database = {
           customer_name: string
           customer_phone: string
           customer_schedule_requirements: string | null
+          diagnostic_fee_amount: number | null
           direction: string | null
           expected_completion_date: string | null
           for_us_amount: number | null
@@ -1483,6 +1507,7 @@ export type Database = {
           customer_name: string
           customer_phone: string
           customer_schedule_requirements?: string | null
+          diagnostic_fee_amount?: number | null
           direction?: string | null
           expected_completion_date?: string | null
           for_us_amount?: number | null
@@ -1546,6 +1571,7 @@ export type Database = {
           customer_name?: string
           customer_phone?: string
           customer_schedule_requirements?: string | null
+          diagnostic_fee_amount?: number | null
           direction?: string | null
           expected_completion_date?: string | null
           for_us_amount?: number | null

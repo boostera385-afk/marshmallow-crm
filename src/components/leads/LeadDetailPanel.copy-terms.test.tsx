@@ -76,11 +76,11 @@ describe("drawer Copy Technician Message follows the selected terms", () => {
     expect(state.copied.at(-1)).toMatchObject({ terms: "free_estimate", labor_amount: null, material_amount: null, for_you_amount: 120, for_us_amount: 80 });
   });
 
-  it("switches to Diagnostic/Service Call and uses the fee typed in the form", async () => {
+  it("switches to Diagnostic/Service Call and uses the Diagnostic Fee typed in the form", async () => {
     await mount();
     fireEvent.click(screen.getByRole("combobox", { name: "Quote Terms" }));
     fireEvent.click(screen.getByRole("option", { name: "Diagnostic/Service Call" }));
-    fireEvent.change(screen.getByLabelText("Diagnostic/Service Call Fee ($)"), { target: { value: "89" } });
-    expect(state.copied.at(-1)).toMatchObject({ terms: "diagnostic_service_call", labor_amount: 89, material_amount: null });
+    fireEvent.change(screen.getByLabelText("Diagnostic Fee ($)"), { target: { value: "89" } });
+    expect(state.copied.at(-1)).toMatchObject({ terms: "diagnostic_service_call", diagnostic_fee_amount: 89, labor_amount: null, material_amount: null });
   });
 });

@@ -51,6 +51,7 @@ describe("technician message by terms (original wording restored)", () => {
         "Customer is agreed to pay ($300) total labor",
         "($100) FOR MATERIALS",
         "",
+        "You Agreed on the Terms:",
         "For you: $250 labor including material",
         "For us: $150 from total labor",
         "",
@@ -72,6 +73,7 @@ describe("technician message by terms (original wording restored)", () => {
         "",
         "FREE ESTIMATE VISIT",
         "",
+        "You Agreed on the Terms:",
         "For you: $250",
         "For us: $150",
         "",
@@ -106,8 +108,8 @@ describe("technician message by terms (original wording restored)", () => {
 });
 
 describe("Diagnostic/Service Call technician message", () => {
-  it("uses the Quoted layout with the diagnostic fee and For You / For Us lines", () => {
-    expect(message(lead({ terms: "diagnostic_service_call", labor_amount: 89, material_amount: null, for_you_amount: 40, for_us_amount: 49 }))).toBe(
+  it("uses the Quoted layout with the Diagnostic Fee (not labor) and For You / For Us lines", () => {
+    expect(message(lead({ terms: "diagnostic_service_call", diagnostic_fee_amount: 89, labor_amount: 300, material_amount: null, for_you_amount: 40, for_us_amount: 49 }))).toBe(
       `*Customer # 12*
 
 Customer Name: Synthetic Customer

@@ -46,7 +46,7 @@ describe("CopyLeadButton original wording by terms", () => {
   it("copies the original quoted wording", () => {
     state.role = "processor";
     const copied = openAndCopy(quotedLead);
-    expect(copied).toContain("Customer is agreed to pay ($300) total labor\n($100) FOR MATERIALS\n\nFor you: $250 labor including material\nFor us: $150 from total labor\n\nJob Scheduled for: TBD");
+    expect(copied).toContain("Customer is agreed to pay ($300) total labor\n($100) FOR MATERIALS\n\nYou Agreed on the Terms:\nFor you: $250 labor including material\nFor us: $150 from total labor\n\nJob Scheduled for: TBD");
   });
 
   it.each(["customer_service", "cs_admin", "opr", "admin"])("gives %s the same quoted message", (role) => {
@@ -61,7 +61,7 @@ describe("CopyLeadButton original wording by terms", () => {
   it("copies the original free estimate wording", () => {
     state.role = "admin";
     const copied = openAndCopy({ ...quotedLead, terms: "free_estimate" } as Lead);
-    expect(copied).toContain("FREE ESTIMATE VISIT\n\nFor you: $250\nFor us: $150\n\nFREE ESTIMATE VISIT Scheduled for: TBD");
+    expect(copied).toContain("FREE ESTIMATE VISIT\n\nYou Agreed on the Terms:\nFor you: $250\nFor us: $150\n\nFREE ESTIMATE VISIT Scheduled for: TBD");
     expect(copied).toContain("FREE ESTIMATE VISIT Scheduled for: TBD");
     expect(copied).not.toContain("agreed to pay");
   });

@@ -4,9 +4,10 @@ globalThis.DonutQuote = {
     const terms = ["quoted", "free_estimate", "diagnostic_service_call"].includes(draft.terms) ? draft.terms : null;
     const labor = String(draft.laborAmount ?? "").trim();
     if (terms === "diagnostic_service_call") {
-      // One diagnostic/service call fee, saved in labor_amount as the CRM does; no materials.
+      // One diagnostic/service call fee, saved in leads.diagnostic_fee_amount as the CRM
+      // does (the form reuses the labor input for it); no labor, no materials.
       if (labor && (!Number.isFinite(Number(labor)) || Number(labor) < 0)) throw new Error("Enter a valid non-negative diagnostic fee");
-      return { terms, labor_amount: labor ? Number(labor) : null, material_amount: null };
+      return { terms, labor_amount: null, material_amount: null, diagnostic_fee_amount: labor ? Number(labor) : null };
     }
     if (terms !== "quoted") return { terms, labor_amount: null, material_amount: null };
     const materials = String(draft.materialAmount ?? "").trim();

@@ -25,6 +25,10 @@ interface LeadNote {
   note_type: string;
   content: string;
   created_at: string;
+  /** Stamped by the database when the text changes (20261223000000). */
+  edited_by?: string | null;
+  edited_by_name?: string | null;
+  edited_at?: string | null;
 }
 
 interface Props {
@@ -407,6 +411,13 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                       }`}
                     >
                       {note.content}
+                      {note.edited_at && (
+                        <span className={`mt-1 block text-[10px] italic ${isMe ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
+                          Edited by {(note.edited_by ? profiles[note.edited_by] || resolvedProfiles[note.edited_by] : null) || note.edited_by_name || "Unknown"}
+                          {" · "}
+                          {formatDateTime(note.edited_at, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                       {canEdit(note) && (
                         <button
                           onClick={() => handleEdit(note)}

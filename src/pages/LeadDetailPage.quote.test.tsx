@@ -95,10 +95,12 @@ describe.each(["customer_service", "cs_admin"])("%s editing an existing lead's q
     expect(state.updates[0]).toMatchObject({ labor_amount: 200, material_amount: null });
   });
 
-  it("still cannot change the internal For You/For Us split", async () => {
+  it("still cannot change the internal For You/For Us split or the Diagnostic Fee", async () => {
+    state.lead = { ...baseLead, diagnostic_fee_amount: 60 };
     await mount();
+    expect(screen.queryByLabelText("Diagnostic Fee ($)")).not.toBeInTheDocument();
     await save();
-    expect(state.updates[0]).toMatchObject({ for_you_amount: 120, for_us_amount: 80 });
+    expect(state.updates[0]).toMatchObject({ for_you_amount: 120, for_us_amount: 80, diagnostic_fee_amount: 60 });
   });
 });
 
@@ -141,14 +143,29 @@ describe("Diagnostic/Service Call terms and For You / For Us on every term (2026
   beforeEach(() => { state.role = "admin"; });
   afterEach(() => { state.role = "customer_service"; });
 
-  it("saves the diagnostic fee as labor_amount and drops any stale materials charge", async () => {
-    state.lead = { ...baseLead, terms: "diagnostic_service_call", labor_amount: 89, material_amount: 50 };
+  it("saves the Diagnostic Fee in its own column and drops stale labor and materials", async () => {
+    state.lead = { ...baseLead, terms: "diagnostic_service_call", labor_amount: 200, material_amount: 50, diagnostic_fee_amount: 89 };
     await mount();
     expect(screen.queryByLabelText("Customer Labor ($)")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Parts/Materials charges?")).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Diagnostic/Service Call Fee ($)"), { target: { value: "99" } });
+    expect(screen.getByLabelText("Diagnostic Fee ($)")).toHaveValue(89);
+    fireEvent.change(screen.getByLabelText("Diagnostic Fee ($)"), { target: { value: "99" } });
     await save();
-    expect(state.updates[0]).toMatchObject({ terms: "diagnostic_service_call", labor_amount: 99, material_amount: null, for_you_amount: 120, for_us_amount: 80 });
+    expect(state.updates[0]).toMatchObject({ terms: "diagnostic_service_call", diagnostic_fee_amount: 99, labor_amount: null, material_amount: null, for_you_amount: 120, for_us_amount: 80 });
+  });
+
+  it("a Quoted job keeps its labor AND a Diagnostic Fee", async () => {
+    await mount();
+    fireEvent.change(screen.getByLabelText("Diagnostic Fee ($)"), { target: { value: "75" } });
+    await save();
+    expect(state.updates[0]).toMatchObject({ terms: "quoted", labor_amount: 200, material_amount: 50, diagnostic_fee_amount: 75 });
+  });
+
+  it("refuses a negative Diagnostic Fee instead of saving", async () => {
+    await mount();
+    fireEvent.change(screen.getByLabelText("Diagnostic Fee ($)"), { target: { value: "-5" } });
+    await save();
+    expect(state.updates).toHaveLength(0);
   });
 
   it.each(["free_estimate", "diagnostic_service_call", null])("shows the For You / For Us share for terms %s", async (terms) => {
@@ -156,6 +173,7 @@ describe("Diagnostic/Service Call terms and For You / For Us on every term (2026
     await mount();
     expect(screen.getByText("Internal Technician Share")).toBeInTheDocument();
     expect(screen.getByText("For Us ($ from labor)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Diagnostic Fee ($)")).toBeInTheDocument();
   });
 
   it("keeps For You / For Us when terms are Free Estimate Visit", async () => {
@@ -167,7 +185,7 @@ describe("Diagnostic/Service Call terms and For You / For Us on every term (2026
 
   it("Operators see only the Diagnostic/Service Call term, not the fee", async () => {
     state.role = "opr";
-    state.lead = { ...baseLead, terms: "diagnostic_service_call", labor_amount: 89, material_amount: null };
+    state.lead = { ...baseLead, terms: "diagnostic_service_call", labor_amount: null, material_amount: null, diagnostic_fee_amount: 89 };
     await mount();
     const section = screen.getByRole("region", { name: "Quote breakdown" });
     expect(section).toHaveTextContent("Diagnostic/Service Call");

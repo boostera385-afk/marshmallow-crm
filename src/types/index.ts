@@ -143,6 +143,8 @@ export interface Lead {
   labor_amount: number | null;
   material_amount: number | null;
   for_you_amount: number | null;
+  /** Diagnostic Fee, beside For You / For Us on every term (20261222000000). */
+  diagnostic_fee_amount?: number | null;
   for_us_amount: number | null;
   cancellation_reason?: string | null;
   source_url?: string | null;
