@@ -9,7 +9,9 @@
 --   project run it only with explicit approval (it inserts, then rolls back).
 --
 -- OUTPUT
---   The final SELECT lists every check as PASS/FAIL. Any FAIL is a defect.
+--   The script ends by raising "HARNESS REPORT (rolled back)" listing every
+--   check as PASS/FAIL; that error is expected and guarantees the rollback.
+--   Any FAIL line is a defect.
 -- =============================================================================
 
 BEGIN;
@@ -69,11 +71,11 @@ INSERT INTO public.user_roles (user_id, role) VALUES
 UPDATE public.profiles SET can_edit_processor_notes = true
  WHERE id IN ('00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-0000000000a4');
 
-INSERT INTO public.leads (id, job_id, status, customer_name, customer_phone, created_by)
+INSERT INTO public.leads (id, job_id, status, customer_name, customer_phone, service_type, created_by)
 VALUES
-  ('00000000-0000-4000-8000-0000000000b1', 'PN-HARNESS-1', 'waiting_complete_details', 'Synthetic', '5550100000',
+  ('00000000-0000-4000-8000-0000000000b1', 'PN-HARNESS-1', 'waiting_complete_details', 'Synthetic', '5550100000', 'Plumbing',
    '00000000-0000-4000-8000-0000000000a1'),
-  ('00000000-0000-4000-8000-0000000000b2', 'PN-HARNESS-2', 'waiting_complete_details', 'Synthetic', '5550100000',
+  ('00000000-0000-4000-8000-0000000000b2', 'PN-HARNESS-2', 'waiting_complete_details', 'Synthetic', '5550100000', 'Plumbing',
    '00000000-0000-4000-8000-0000000000a1');
 
 INSERT INTO public.lead_notes (id, lead_id, user_id, note_type, content) VALUES
@@ -153,6 +155,15 @@ SELECT pg_temp.assert(
   (SELECT content = 'CS original' FROM public.lead_notes WHERE id = '00000000-0000-4000-8000-0000000000c2'),
   'CS note unchanged');
 
-SELECT CASE WHEN ok THEN 'PASS: ' ELSE 'FAIL: ' END || label AS result FROM _checks ORDER BY ok, label;
+-- Report by raising: the error aborts the transaction, so nothing can persist
+-- even if the SQL client wraps the script in its own transaction.
+DO $$
+DECLARE v_report text;
+BEGIN
+  SELECT string_agg(CASE WHEN ok THEN 'PASS: ' ELSE 'FAIL: ' END || label, E'\n' ORDER BY ok, label)
+    INTO v_report FROM _checks;
+  RAISE EXCEPTION E'HARNESS REPORT (rolled back)\n%', v_report;
+END;
+$$;
 
 ROLLBACK;
