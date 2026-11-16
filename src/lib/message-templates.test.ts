@@ -60,7 +60,7 @@ describe("technician message by terms (original wording restored)", () => {
     );
   });
 
-  it("writes the free estimate message word for word as before June 2026", () => {
+  it("writes the free estimate message with the For You / For Us lines (2026-11-16)", () => {
     expect(message(lead({ terms: "free_estimate" }), { reference_name: "Ali" })).toBe(
       [
         "*Customer # 12*",
@@ -71,6 +71,9 @@ describe("technician message by terms (original wording restored)", () => {
         "Service Details: Fix sink",
         "",
         "FREE ESTIMATE VISIT",
+        "",
+        "For you: $250",
+        "For us: $150",
         "",
         "FREE ESTIMATE VISIT Scheduled for: THURSDAY 12th December between 9:00am-11:30am",
         "",

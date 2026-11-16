@@ -71,7 +71,8 @@ export const formatTechnicianSchedule = (
 
 /**
  * The Quoted and Free Estimate technician messages, restored word for word from
- * before the June 2026 template change removed them. Leads with no terms use the
+ * before the June 2026 template change removed them. Free Estimate also carries
+ * the For You / For Us lines since 2026-11-16 (owner request). Leads with no terms use the
  * editable technician_message template.
  */
 export const TECHNICIAN_MESSAGE_BY_TERMS = {
@@ -98,6 +99,9 @@ Customer Address: {customer_address}
 Service Details: {service_details}
 
 FREE ESTIMATE VISIT
+
+For you: $\{for_you_amount_or_zero}
+For us: $\{for_us_amount_or_zero}
 
 FREE ESTIMATE VISIT Scheduled for: {technician_schedule}
 {reference_block}`,
@@ -170,7 +174,7 @@ export const EDITABLE_TEMPLATE_INFO: Record<EditableTemplateKey, { label: string
 export const TEMPLATE_PLACEHOLDERS: Record<EditableTemplateKey, string[]> = {
   technician_message: ["customer_number", "customer_name", "customer_phone", "customer_address", "service_details", "schedule", "technician_schedule", "reference_line", "reference_block", "quote", "tech_name"],
   technician_message_quoted: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "material_amount_or_zero", "materials_line", "labor_material_suffix", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
-  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "technician_schedule", "reference_block", "quote", "tech_name"],
+  technician_message_free_estimate: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
   technician_message_diagnostic_service_call: ["customer_number_spaced", "customer_name", "customer_phone", "customer_address", "service_details", "labor_amount_or_zero", "for_you_amount_or_zero", "for_us_amount_or_zero", "technician_schedule", "reference_block", "quote", "tech_name"],
   check_template: ["tech_name", "service", "service_details", "area", "city", "state", "schedule_requirement", "quote"],
 };
