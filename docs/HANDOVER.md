@@ -9,8 +9,8 @@ then read the technical documents in the order given in
 [Start here](#1-start-here). Anything marked **FILL IN** is knowledge only the
 outgoing owner has; it must be completed before the handover is finished.
 
-> Facts here were checked against the code on 2026-10-30 (111 unit-test files,
-> 1,088 tests passing; 21 Edge Functions; 223 migrations). The state of the live
+> Facts here were checked against the code on 2026-11-17 (164 unit-test files,
+> 1,606 tests passing; 24 Edge Functions; 267 migrations). The state of the live
 > Supabase project, Lovable and the installed Donut extension was **not**
 > checked from the code. Confirm those directly (see
 > [Work in progress](#9-work-in-progress-at-handover)).
@@ -258,7 +258,7 @@ These are business rules, not just code style. `AGENTS.md` has the full list.
 |---|---|---|---|
 | **GitHub** (this repo) | The code. Pull requests and the `Validate` check (lint, typecheck, tests, build) live here. | Nobody can change the code safely | |
 | **Lovable** | Hosts the CRM website. Builds from `main`; users only get changes when an Admin clicks **Publish**. | The CRM site is down or out of date | |
-| **Supabase** (project `kxiqholnmhkwhdkhtopp`) | Database, logins, file storage, realtime updates and the 21 Edge Functions. | Everything stops | |
+| **Supabase** (project `kxiqholnmhkwhdkhtopp`) | Database, logins, file storage, realtime updates and the 24 Edge Functions. | Everything stops | |
 | **Quo / OpenPhone** | Phone and text. Sends webhooks to Marshmallow, which copies conversations in. | New chats stop appearing | |
 | **OpenAI** | Powers the advisory AI checks (urgent check, processor board, cancellation reasons, technician summaries). Key is an Edge Function secret. | AI checks show *unavailable*; normal work continues | |
 | **Google Sheets** | The CRM keeps a copy of leads in a spreadsheet. | The sheet goes stale; Settings → Google Sheets shows health | |
