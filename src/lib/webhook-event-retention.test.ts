@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { gunzipSync, gzipSync } from "node:zlib";
 import {
   DELETE_CHUNK,
+  recordRetentionRun,
   runRetention,
   type ArchivedEvent,
   type RetentionOptions,
@@ -129,5 +130,39 @@ describe("quo_webhook_events retention", () => {
     const out = await runRetention(t.store, options());
     expect(out.archived).toBe(0);
     expect(deleted).toEqual([]);
+  });
+});
+
+describe("recordRetentionRun", () => {
+  /** Same shape as the supabase-js query builder: thenable, but no .catch/.finally. */
+  const builder = (outcome: { error: unknown } | Error): PromiseLike<{ error: unknown }> => ({
+    then(onFulfilled, onRejected) {
+      const settled = outcome instanceof Error ? Promise.reject(outcome) : Promise.resolve(outcome);
+      return settled.then(onFulfilled, onRejected);
+    },
+  });
+
+  it("sends the run status through a thenable without .catch (the deployed defect)", async () => {
+    const calls: unknown[] = [];
+    const ok = await recordRetentionRun((fn, args) => { calls.push({ fn, args }); return builder({ error: null }); },
+      { ok: true, stopped: "done", error: null });
+    expect(ok).toBe(true);
+    expect(calls).toEqual([{ fn: "record_webhook_retention_run", args: { p_result: { ok: true, stopped: "done", error: null } } }]);
+  });
+
+  it("reports a failed run's error", async () => {
+    let sent: unknown;
+    await recordRetentionRun((_fn, args) => { sent = args.p_result; return builder({ error: null }); },
+      { ok: false, stopped: "upload_failed", error: "storage unavailable" });
+    expect(sent).toEqual({ ok: false, stopped: "upload_failed", error: "storage unavailable" });
+  });
+
+  it("never throws when the status RPC errors, rejects or throws synchronously", async () => {
+    await expect(recordRetentionRun(() => builder({ error: { message: "permission denied" } }),
+      { ok: true, stopped: "done", error: null })).resolves.toBe(false);
+    await expect(recordRetentionRun(() => builder(new Error("network down")),
+      { ok: true, stopped: "done", error: null })).resolves.toBe(false);
+    await expect(recordRetentionRun(() => { throw new TypeError("boom"); },
+      { ok: true, stopped: "done", error: null })).resolves.toBe(false);
   });
 });

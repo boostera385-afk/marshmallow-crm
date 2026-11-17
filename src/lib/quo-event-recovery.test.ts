@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   RECOVERY_NOTE,
   recoverStuckEvent,
+  recoveredMessageTime,
   recoveryOrder,
   type ConversationRow,
   type RecoveryStore,
@@ -133,5 +134,33 @@ describe("recovering a stuck Quo event", () => {
       ev("m", "message.received", "2026-11-09T20:00:00Z"),
     ]);
     expect(ordered.map((e) => e.id)).toEqual(["m", "c", "t"]);
+  });
+
+  it("dates an old transcript at its own time, not the day it is replayed (live defect)", async () => {
+    // Real Quo shape: the transcript object has no call id/time the normalizer reads,
+    // so it falls back to "now"; the envelope keeps the event's createdAt.
+    const m = memoryStore({ messages: [{ quo_message_id: "CALL-9:call.completed", conversation_id: "conv-9" }] });
+    const transcript: StuckEvent = {
+      id: "event-9", event_type: "call.transcript.completed", received_at: "2026-08-24T21:45:28.094Z",
+      raw_payload: { id: "EV9", object: "event", type: "call.transcript.completed", createdAt: "2026-08-24T21:45:27.536Z",
+        data: { deepLink: "x", object: { object: "callTranscript", callId: "CALL-9", status: "completed", dialogue: [{ content: "Hi" }] } } },
+    };
+    expect(await recoverStuckEvent(m.store, transcript, false)).toMatchObject({ result: "recovered" });
+    expect(m.messages.get("CALL-9:call.transcript.completed")).toMatchObject({
+      conversation_id: "conv-9", message_time: "2026-08-24T21:45:27.536Z", quo_created_at: "2026-08-24T21:45:27.536Z",
+    });
+  });
+
+  it("keeps a payload's own message time when it precedes delivery", () => {
+    expect(recoveredMessageTime("2026-11-09T20:05:00.000Z", { ...received(), received_at: "2026-11-09T20:05:02.000Z" }))
+      .toBe("2026-11-09T20:05:00.000Z");
+  });
+
+  it("falls back to the delivery time when neither the message nor the envelope has a usable time", () => {
+    const event: StuckEvent = { id: "e", event_type: "call.summary.completed", raw_payload: {}, received_at: "2026-08-24T21:45:30.939Z" };
+    expect(recoveredMessageTime("2026-11-17T12:00:00.000Z", event)).toBe("2026-08-24T21:45:30.939Z");
+    // An envelope time after delivery is not trusted either.
+    expect(recoveredMessageTime("2026-11-17T12:00:00.000Z", { ...event, raw_payload: { createdAt: "2026-11-17T11:00:00.000Z" } }))
+      .toBe("2026-08-24T21:45:30.939Z");
   });
 });

@@ -15,7 +15,13 @@
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { jsonResponse } from "../_shared/quo-ai.ts";
-import { RETENTION_STATUSES, runRetention, type ArchivedEvent } from "../_shared/webhook-event-retention.ts";
+import {
+  RETENTION_STATUSES,
+  recordRetentionRun,
+  runRetention,
+  type ArchivedEvent,
+  type RetentionRunStatus,
+} from "../_shared/webhook-event-retention.ts";
 
 const BUCKET = "archives";
 
@@ -52,6 +58,9 @@ Deno.serve(async (req) => {
   }
   if (!valid) return jsonResponse({ error: "Not allowed." }, 401);
 
+  // Status recording must never affect the retention response itself.
+  const record = (fn: "record_webhook_retention_run", args: { p_result: RetentionRunStatus }) => admin.rpc(fn, args);
+
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* defaults */ }
 
@@ -84,14 +93,11 @@ Deno.serve(async (req) => {
       gzip,
     });
     const status = result.stopped === "upload_failed" || result.stopped === "delete_failed" ? 500 : 200;
-    await admin.rpc("record_webhook_retention_run", {
-      p_result: { ok: status === 200, stopped: result.stopped, error: result.error ?? null },
-    }).catch(() => { /* status recording must never affect the retention response itself */ });
+    await recordRetentionRun(record, { ok: status === 200, stopped: result.stopped, error: result.error ?? null });
     return jsonResponse({ ok: status === 200, bucket: BUCKET, ...result }, status);
   } catch (error) {
     const message = error instanceof Error ? error.message : "retention failed";
-    await admin.rpc("record_webhook_retention_run", { p_result: { ok: false, stopped: null, error: message } })
-      .catch(() => { /* status recording must never affect the retention response itself */ });
+    await recordRetentionRun(record, { ok: false, stopped: null, error: message });
     return jsonResponse({ ok: false, error: message }, 500);
   }
 });

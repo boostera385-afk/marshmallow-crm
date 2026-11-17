@@ -23,6 +23,28 @@ export interface StuckEvent {
   id: string;
   event_type: string | null;
   raw_payload: Record<string, unknown>;
+  /** When Quo delivered the event. Used when the payload has no message time. */
+  received_at?: string;
+}
+
+/** A payload's own time can only precede its delivery; allow for clock skew. */
+const DELIVERY_SKEW_MS = 60_000;
+
+/**
+ * The time to save a recovered message with. The shared normalizer falls back
+ * to "now" when a payload has no time it recognises (e.g. call transcript and
+ * summary payloads keep it in the envelope's createdAt), which for an event
+ * replayed weeks later would date old calls today. A time later than the
+ * delivery is that fallback, so use the envelope's createdAt, else delivery.
+ */
+export function recoveredMessageTime(normalizedCreatedAt: string, event: StuckEvent): string {
+  const parsed = Date.parse(normalizedCreatedAt);
+  const delivered = event.received_at ? Date.parse(event.received_at) : NaN;
+  if (Number.isNaN(delivered) || (!Number.isNaN(parsed) && parsed <= delivered + DELIVERY_SKEW_MS)) {
+    return new Date(Number.isNaN(parsed) ? Date.now() : parsed).toISOString();
+  }
+  const envelope = typeof event.raw_payload.createdAt === "string" ? Date.parse(event.raw_payload.createdAt) : NaN;
+  return new Date(!Number.isNaN(envelope) && envelope <= delivered + DELIVERY_SKEW_MS ? envelope : delivered).toISOString();
 }
 
 export interface ConversationRow {
@@ -67,7 +89,7 @@ export async function recoverStuckEvent(store: RecoveryStore, event: StuckEvent,
 
   try {
     const messageExisted = await store.messageExists(message.id);
-    const messageTime = new Date(message.createdAt).toISOString();
+    const messageTime = recoveredMessageTime(message.createdAt, event);
     let conversationRowId: string | null = null;
     let conversationCreated = false;
 

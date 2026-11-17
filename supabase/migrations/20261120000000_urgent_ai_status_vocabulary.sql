@@ -44,4 +44,4 @@ COMMENT ON COLUMN public.lead_ai_statuses.status IS
 
 -- Rollback: redeploy the previous enum-only classifier first. Review/remap any
 -- non-legacy labels in lead_ai_statuses, then replace this constraint with the
--- enum CHECK from 20261107000000_ai_urgent_features.sql. Do not delete leads.
+-- enum CHECK from 20261107000001_ai_urgent_features.sql. Do not delete leads.
