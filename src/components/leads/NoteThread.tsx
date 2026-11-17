@@ -103,7 +103,7 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
       // there yet, fall back to plain notes so the thread never goes blank.
       const withReactions = await supabase
         .from("lead_notes")
-        .select("*, lead_note_reactions(user_id)" as "*")
+        .select("*, lead_note_reactions(user_id)")
         .eq("lead_id", leadId)
         .eq("note_type", noteType)
         .order("created_at", { ascending: true });
@@ -345,14 +345,9 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
         }),
       );
     apply(!had);
-    // supabase types are regenerated after the migration is applied.
-    const table = supabase.from("lead_note_reactions" as never) as unknown as {
-      insert: (v: object) => Promise<{ error: { message: string } | null }>;
-      delete: () => { eq: (c: string, v: string) => { eq: (c: string, v: string) => Promise<{ error: { message: string } | null }> } };
-    };
     const { error } = had
-      ? await table.delete().eq("note_id", note.id).eq("user_id", user.id)
-      : await table.insert({ note_id: note.id, user_id: user.id });
+      ? await supabase.from("lead_note_reactions").delete().eq("note_id", note.id).eq("user_id", user.id)
+      : await supabase.from("lead_note_reactions").insert({ note_id: note.id, user_id: user.id });
     // A duplicate (23505-style) insert means the thumbs-up is already there: not a failure.
     if (error && !(error as { code?: string }).code?.startsWith("23505")) {
       apply(had);
