@@ -9,8 +9,8 @@ then read the technical documents in the order given in
 [Start here](#1-start-here). Anything marked **FILL IN** is knowledge only the
 outgoing owner has; it must be completed before the handover is finished.
 
-> Facts here were checked against the code on 2026-10-30 (111 unit-test files,
-> 1,088 tests passing; 21 Edge Functions; 223 migrations). The state of the live
+> Facts here were checked against the code on 2026-11-17 (164 unit-test files,
+> 1,606 tests passing; 24 Edge Functions; 267 migrations). The state of the live
 > Supabase project, Lovable and the installed Donut extension was **not**
 > checked from the code. Confirm those directly (see
 > [Work in progress](#9-work-in-progress-at-handover)).
@@ -181,13 +181,14 @@ or grants allow.
 | Tab | What it is for |
 |---|---|
 | **Users** | Create users, set passwords, OPR codes, access codes, two-factor (2FA) setup and reset, delete users. CS Admins with *Can manage users* see a limited version. |
-| **Feature Access** | Per-person on/off switches for screens and features. |
+| **Feature Access** | Per-person on/off switches for screens and features, including *Edit Processor Notes* (Processors only; lets them correct colleagues' Processor notes). |
 | **Status Visibility** | Which lead statuses each person can see. |
-| **Templates** | Admin-only: the *Copy Technician Message* texts (no terms, Quoted, Free Estimate) and the *Check Template* message, filled in from a lead. Reset returns a template to its built-in text. |
+| **Templates** | Admin-only: the *Copy Technician Message* texts (no terms, Quoted, Free Estimate, Diagnostic/Service Call) and the *Check Template* message, filled in from a lead. Reset returns a template to its built-in text. |
 | **Security** | Your own password and 2FA. |
 | **CRM Updates** | Send a one-time announcement to chosen roles. |
 | **Google Sheets** | The Google Sheets sync and its health. |
 | **Documentation** | The in-app technical reference (roles, permissions, statuses, workflows, AI features), with PDF export and the yearly *Sync Population Data* button. |
+| **Structure** | Admin-only, read-only map of how Marshmallow fits together: the lead journey (Quo chat → Donut → lead → approvals → Processor Board → payment), every CRM screen and which roles open it, every Edge Function and who calls it, what Donut does and talks to, and the outside services. Kept in `src/lib/app-structure.ts`; its test fails when a screen, Edge Function or Donut call is added without updating the map. |
 
 The header also has a **Donut** button (latest extension version and how to
 update), a theme switch, a notepad, and a command menu (`Ctrl+K` / `⌘K`).
@@ -258,7 +259,7 @@ These are business rules, not just code style. `AGENTS.md` has the full list.
 |---|---|---|---|
 | **GitHub** (this repo) | The code. Pull requests and the `Validate` check (lint, typecheck, tests, build) live here. | Nobody can change the code safely | |
 | **Lovable** | Hosts the CRM website. Builds from `main`; users only get changes when an Admin clicks **Publish**. | The CRM site is down or out of date | |
-| **Supabase** (project `kxiqholnmhkwhdkhtopp`) | Database, logins, file storage, realtime updates and the 21 Edge Functions. | Everything stops | |
+| **Supabase** (project `kxiqholnmhkwhdkhtopp`) | Database, logins, file storage, realtime updates and the 24 Edge Functions. | Everything stops | |
 | **Quo / OpenPhone** | Phone and text. Sends webhooks to Marshmallow, which copies conversations in. | New chats stop appearing | |
 | **OpenAI** | Powers the advisory AI checks (urgent check, processor board, cancellation reasons, technician summaries). Key is an Edge Function secret. | AI checks show *unavailable*; normal work continues | |
 | **Google Sheets** | The CRM keeps a copy of leads in a spreadsheet. | The sheet goes stale; Settings → Google Sheets shows health | |
