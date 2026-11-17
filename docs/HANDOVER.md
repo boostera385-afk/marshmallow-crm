@@ -188,6 +188,7 @@ or grants allow.
 | **CRM Updates** | Send a one-time announcement to chosen roles. |
 | **Google Sheets** | The Google Sheets sync and its health. |
 | **Documentation** | The in-app technical reference (roles, permissions, statuses, workflows, AI features), with PDF export and the yearly *Sync Population Data* button. |
+| **Schema Tree** | Admin-only, read-only map of the database: tables grouped by business area, with each table's purpose, columns and links, plus views, database functions and enums, and a search box. It is built from `src/integrations/supabase/types.ts`; when a new table is added, place it in an area in `src/lib/schema-tree.ts` (a test fails until you do). |
 
 The header also has a **Donut** button (latest extension version and how to
 update), a theme switch, a notepad, and a command menu (`Ctrl+K` / `⌘K`).
