@@ -188,7 +188,7 @@ or grants allow.
 | **CRM Updates** | Send a one-time announcement to chosen roles. |
 | **Google Sheets** | The Google Sheets sync and its health. |
 | **Documentation** | The in-app technical reference (roles, permissions, statuses, workflows, AI features), with PDF export and the yearly *Sync Population Data* button. |
-| **Structure** | Admin-only, read-only map of how Marshmallow fits together: the lead journey (Quo chat → Donut → lead → approvals → Processor Board → payment), every CRM screen and which roles open it, every Edge Function and who calls it, what Donut does and talks to, and the outside services. Kept in `src/lib/app-structure.ts`; its test fails when a screen, Edge Function or Donut call is added without updating the map. |
+| **Structure** | Admin-only, read-only tree of how Marshmallow fits together, opened branch by branch from one Marshmallow root: the lead journey (Quo chat → Donut → lead → approvals → Processor Board → payment), every CRM screen and which roles open it, every Edge Function and who calls it, what Donut does and talks to, and the outside services. Kept in `src/lib/app-structure.ts`; its test fails when a screen, Edge Function or Donut call is added without updating the map. |
 
 The header also has a **Donut** button (latest extension version and how to
 update), a theme switch, a notepad, and a command menu (`Ctrl+K` / `⌘K`).

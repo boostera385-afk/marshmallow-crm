@@ -43,39 +43,74 @@ const openStructure = async () => {
 afterEach(cleanup);
 
 describe("Settings > Structure", () => {
-  it("opens on the lead journey and lets an Admin expand screens with their roles and functions", async () => {
+  const item = (name: RegExp) => screen.getByRole("treeitem", { name });
+  const level2 = (label: string) =>
+    screen.getAllByRole("treeitem").find((el) => el.getAttribute("aria-level") === "2" && el.textContent?.startsWith(label))!;
+
+  it("shows one Marshmallow root with five closed branches that open into deeper levels", async () => {
     renderSettings("admin");
     await openStructure();
     const callsBefore = supabaseMock.functions.invoke.mock.calls.length;
 
-    expect(screen.getByRole("button", { name: /Lead journey/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("7. Payment")).toBeInTheDocument();
+    const tree = screen.getByRole("tree", { name: "Marshmallow structure" });
+    const root = within(tree).getByRole("treeitem", { name: /^Marshmallow/ });
+    expect(root).toHaveAttribute("aria-level", "1");
+    expect(root).toHaveAttribute("aria-expanded", "true");
+    const branches = screen.getAllByRole("treeitem").filter((el) => el.getAttribute("aria-level") === "2");
+    expect(branches.map((el) => el.textContent?.replace(/\(\d+\).*/, ""))).toEqual(["Lead journey", "CRM screens", "Edge Functions", "Donut extension", "Outside services"]);
+    branches.forEach((el) => expect(el).toHaveAttribute("aria-expanded", "false"));
 
-    const screensSection = screen.getByRole("button", { name: /CRM screens/ });
-    expect(screensSection).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(screensSection);
-    expect(screensSection).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(level2("CRM screens"));
+    fireEvent.click(item(/^Processor Board$/));
+    const roles = screen.getAllByRole("treeitem", { name: /^Opens by default/ });
+    expect(roles).toHaveLength(1);
+    fireEvent.click(roles[0]);
+    expect(roles[0]).toHaveAttribute("aria-level", "4");
+    expect(item(/^Admin$/)).toHaveAttribute("aria-level", "5");
+    expect(item(/^Processor$/)).toHaveAttribute("aria-level", "5");
 
-    const board = screen.getByText("Processor Board").closest("li")!;
-    expect(within(board).getByText("/processor-board")).toBeInTheDocument();
-    expect(within(board).getAllByText(/^(Admin|Processor)$/).map((el) => el.textContent)).toEqual(["Admin", "Processor"]);
-    expect(within(board).getByText("processor-board")).toBeInTheDocument();
+    fireEvent.click(level2("CRM screens"));
+    expect(screen.queryByRole("treeitem", { name: /^Processor Board$/ })).toBeNull();
     expect(supabaseMock.functions.invoke.mock.calls.length).toBe(callsBefore);
   });
 
-  it("searches across sections and shows who calls an Edge Function", async () => {
+  it("moves and opens with the arrow keys", async () => {
     renderSettings("admin");
     await openStructure();
-    fireEvent.change(screen.getByRole("textbox", { name: "Search the Marshmallow structure" }), { target: { value: "geocode" } });
+    const root = item(/^Marshmallow/);
+    root.focus();
+    fireEvent.keyDown(root, { key: "ArrowDown" });
+    const journey = level2("Lead journey");
+    expect(journey).toHaveFocus();
+    fireEvent.keyDown(journey, { key: "ArrowRight" });
+    expect(journey).toHaveAttribute("aria-expanded", "true");
+    fireEvent.keyDown(journey, { key: "ArrowRight" });
+    expect(item(/^1\. Customer texts or calls in Quo/)).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    expect(journey).toHaveFocus();
+    fireEvent.keyDown(journey, { key: "ArrowLeft" });
+    expect(journey).toHaveAttribute("aria-expanded", "false");
+    fireEvent.keyDown(journey, { key: "End" });
+    expect(level2("Outside services")).toHaveFocus();
+    expect(screen.getAllByRole("treeitem").filter((el) => el.tabIndex === 0)).toHaveLength(1);
+  });
 
-    const fn = screen.getAllByText("geocode-lead-address").map((el) => el.closest("li")!).find((li) => within(li).queryByText("Donut"));
-    expect(fn).toBeDefined();
-    expect(within(fn!).getByText("CRM")).toBeInTheDocument();
-    expect(screen.getByText("Create a lead from a Quo chat")).toBeInTheDocument();
-    expect(screen.queryByText("Technician Intelligence")).toBeNull();
+  it("search opens the path to each match and keeps the rest out", async () => {
+    renderSettings("admin");
+    await openStructure();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search the Marshmallow structure" }), { target: { value: "geocode-lead-address" } });
+
+    const hits = screen.getAllByRole("treeitem", { name: /^geocode-lead-address/ });
+    expect(hits.length).toBeGreaterThan(1); // Lead journey, screens, Edge Functions and Donut all reach it.
+    const edgeHit = screen.getAllByRole("treeitem", { name: /^geocode-lead-address/ }).find((el) => el.getAttribute("aria-expanded") !== null)!;
+    fireEvent.click(edgeHit);
+    expect(item(/^Called by: CRM$/)).toBeInTheDocument();
+    expect(item(/^Called by: Donut$/)).toBeInTheDocument();
+    expect(screen.queryByRole("treeitem", { name: /^Technician Intelligence/ })).toBeNull();
 
     fireEvent.change(screen.getByRole("textbox", { name: "Search the Marshmallow structure" }), { target: { value: "zz_nothing" } });
     expect(screen.getByText(/Nothing matches/)).toBeInTheDocument();
+    expect(screen.queryByRole("tree")).toBeNull();
   });
 
   it.each(["cs_admin", "customer_service", "processor", "opr", "opr_admin"] as const)("does not offer the tab to %s", async (role) => {

@@ -263,3 +263,163 @@ export const OUTSIDE_SERVICES: OutsideService[] = [
   { name: "Google Sheets", role: "A copy of every lead for reporting.", via: "google-sheets-sync" },
   { name: "Lovable", role: "Hosts the CRM; users get changes only after Publish.", via: "CRM Publish" },
 ];
+
+export type StructureNodeKind =
+  | "root"
+  | "branch"
+  | "group"
+  | "step"
+  | "screen"
+  | "function"
+  | "capability"
+  | "service"
+  | "role"
+  | "status"
+  | "caller"
+  | "target"
+  | "note";
+
+export interface StructureNode {
+  id: string;
+  label: string;
+  kind: StructureNodeKind;
+  /** One line shown beside or under the label. */
+  detail?: string;
+  children?: StructureNode[];
+}
+
+const TARGET_PREFIX: Record<DonutTargetKind, string> = {
+  edge: "Edge Function",
+  rpc: "Database function",
+  table: "Table",
+  storage: "Storage bucket",
+  site: "Website",
+};
+
+const fnLeaf = (parent: string, name: string): StructureNode => ({ id: `${parent}/fn:${name}`, label: name, kind: "function" });
+
+/** The whole of Marshmallow as one tree: root → five branches → their items → details. */
+export function buildStructureTree(): StructureNode {
+  const journey: StructureNode = {
+    id: "journey",
+    label: "Lead journey",
+    kind: "branch",
+    detail: "From a Quo chat to Paid",
+    children: LEAD_JOURNEY.map((step, index) => {
+      const id = `journey/${index}`;
+      const children: StructureNode[] = [{ id: `${id}/who`, label: step.who, kind: "note", detail: "Who acts" }];
+      if (step.statuses.length > 0) {
+        children.push({
+          id: `${id}/statuses`,
+          label: "Statuses",
+          kind: "group",
+          children: step.statuses.map((status) => ({ id: `${id}/status:${status}`, label: STATUS_LABELS[status], kind: "status" })),
+        });
+      }
+      if (step.edgeFunctions.length > 0) {
+        children.push({ id: `${id}/fns`, label: "Edge Functions", kind: "group", children: step.edgeFunctions.map((fn) => fnLeaf(`${id}/fns`, fn)) });
+      }
+      return { id, label: step.title, kind: "step", detail: step.description, children };
+    }),
+  };
+
+  const screens: StructureNode = {
+    id: "screens",
+    label: "CRM screens",
+    kind: "branch",
+    detail: "Every sidebar item and who opens it",
+    children: SCREENS.map((screen) => {
+      const id = `screens/${screen.navItem}`;
+      const children: StructureNode[] = [
+        {
+          id: `${id}/roles`,
+          label: "Opens by default",
+          kind: "group",
+          children: defaultRolesFor(screen.navItem).map((role) => ({ id: `${id}/role:${role}`, label: ROLE_LABELS[role], kind: "role" })),
+        },
+        { id: `${id}/rule`, label: screenAccessRule(screen.navItem), kind: "note", detail: "Access rule" },
+      ];
+      if (screen.edgeFunctions.length > 0) {
+        children.push({ id: `${id}/fns`, label: "Calls", kind: "group", children: screen.edgeFunctions.map((fn) => fnLeaf(`${id}/fns`, fn)) });
+      }
+      return { id, label: screenLabel(screen.navItem), kind: "screen", detail: `${screen.path ?? "Inside another screen"} · ${screen.purpose}`, children };
+    }),
+  };
+
+  const functions: StructureNode = {
+    id: "edge",
+    label: "Edge Functions",
+    kind: "branch",
+    detail: "Server code that holds the secrets",
+    children: EDGE_FUNCTION_GROUPS.map((group) => ({
+      id: `edge/${group}`,
+      label: group,
+      kind: "group",
+      children: EDGE_FUNCTIONS.filter((fn) => fn.group === group).map((fn) => ({
+        id: `edge/fn:${fn.name}`,
+        label: fn.name,
+        kind: "function",
+        detail: fn.purpose,
+        children: fn.callers.length > 0
+          ? fn.callers.map((caller) => ({ id: `edge/fn:${fn.name}/by:${caller}`, label: EDGE_CALLER_LABELS[caller], kind: "caller", detail: "Called by" }))
+          : [{ id: `edge/fn:${fn.name}/by:none`, label: "Not called by anything", kind: "note" }],
+      })),
+    })),
+  };
+
+  const donut: StructureNode = {
+    id: "donut",
+    label: "Donut extension",
+    kind: "branch",
+    detail: "Chrome extension used inside Quo",
+    children: DONUT_CAPABILITIES.map((capability, index) => ({
+      id: `donut/${index}`,
+      label: capability.title,
+      kind: "capability",
+      detail: capability.description,
+      children: capability.talksTo.map((target) => ({
+        id: `donut/${index}/${target.kind}:${target.name}`,
+        label: target.name,
+        kind: target.kind === "edge" ? "function" : "target",
+        detail: TARGET_PREFIX[target.kind],
+      })),
+    })),
+  };
+
+  const services: StructureNode = {
+    id: "services",
+    label: "Outside services",
+    kind: "branch",
+    detail: "What Marshmallow depends on",
+    children: OUTSIDE_SERVICES.map((service) => ({
+      id: `services/${service.name}`,
+      label: service.name,
+      kind: "service",
+      detail: service.role,
+      children: [{ id: `services/${service.name}/via`, label: service.via, kind: "note", detail: "Used through" }],
+    })),
+  };
+
+  return { id: "root", label: "Marshmallow", kind: "root", detail: "CRM + Donut on Supabase", children: [journey, screens, functions, donut, services] };
+}
+
+/**
+ * Keeps nodes whose label or detail matches, plus their ancestors (so the path
+ * stays visible) and, for a matching node, all of its children. Returns null
+ * when nothing matches.
+ */
+export function filterStructureTree(node: StructureNode, query: string): StructureNode | null {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return node;
+  const selfMatches = node.label.toLowerCase().includes(needle) || (node.detail ?? "").toLowerCase().includes(needle);
+  if (selfMatches && node.kind !== "root") return node;
+  const children = (node.children ?? []).map((child) => filterStructureTree(child, query)).filter((child): child is StructureNode => child !== null);
+  if (children.length === 0) return node.kind === "root" && selfMatches ? node : null;
+  return { ...node, children };
+}
+
+/** Ids of every node that has children (for Expand all and for search results). */
+export function branchIds(node: StructureNode): string[] {
+  if (!node.children?.length) return [];
+  return [node.id, ...node.children.flatMap(branchIds)];
+}

@@ -8,9 +8,13 @@ import {
   EDGE_FUNCTION_GROUPS,
   LEAD_JOURNEY,
   SCREENS,
+  branchIds,
+  buildStructureTree,
   defaultRolesFor,
+  filterStructureTree,
   screenAccessRule,
   screenLabel,
+  type StructureNode,
 } from "@/lib/app-structure";
 
 const root = resolve(__dirname, "../..");
@@ -121,5 +125,50 @@ describe("Lead journey", () => {
       step.statuses.forEach((status) => expect(ALL_LEAD_STATUSES).toContain(status));
       step.edgeFunctions.forEach((name) => expect(functionNames.has(name)).toBe(true));
     });
+  });
+});
+
+describe("Structure tree", () => {
+  const tree = buildStructureTree();
+  const find = (node: StructureNode, id: string): StructureNode | undefined =>
+    node.id === id ? node : (node.children ?? []).map((child) => find(child, id)).find(Boolean);
+  const allIds = (node: StructureNode): string[] => [node.id, ...(node.children ?? []).flatMap(allIds)];
+
+  it("has one Marshmallow root with five branches and unique node ids", () => {
+    expect(tree.label).toBe("Marshmallow");
+    expect(tree.children?.map((child) => child.label)).toEqual(["Lead journey", "CRM screens", "Edge Functions", "Donut extension", "Outside services"]);
+    const ids = allIds(tree);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("puts each screen's default roles and calls under it", () => {
+    const board = find(tree, "screens/processor_board")!;
+    expect(board.label).toBe("Processor Board");
+    expect(find(board, "screens/processor_board/roles")?.children?.map((n) => n.label)).toEqual(["Admin", "Processor"]);
+    expect(find(board, "screens/processor_board/fns")?.children?.map((n) => n.label)).toEqual(["processor-board"]);
+  });
+
+  it("puts every Edge Function under its group with its callers", () => {
+    const groups = find(tree, "edge")!.children!;
+    expect(groups.flatMap((group) => group.children!.map((fn) => fn.label)).sort()).toEqual(EDGE_FUNCTIONS.map((fn) => fn.name).sort());
+    expect(find(tree, "edge/fn:geocode-lead-address")?.children?.map((n) => n.label)).toEqual(["CRM", "Donut"]);
+    expect(find(tree, "edge/fn:cx-update-requests")?.children?.map((n) => n.label)).toEqual(["Not called by anything"]);
+  });
+
+  it("search keeps the path to each match and the match's own children", () => {
+    const result = filterStructureTree(tree, "urgent review")!;
+    expect(result.children?.map((child) => child.id)).toEqual(["journey", "screens"]);
+    const screen = find(result, "screens/urgent_review_requests")!;
+    expect(screen.children?.length).toBe(find(tree, "screens/urgent_review_requests")!.children!.length);
+    expect(find(result, "screens/leads")).toBeUndefined();
+    expect(filterStructureTree(tree, "zz_nothing")).toBeNull();
+    expect(filterStructureTree(tree, "  ")).toBe(tree);
+  });
+
+  it("lists every node with children for Expand all", () => {
+    const ids = branchIds(tree);
+    expect(ids).toContain("root");
+    expect(ids).toContain("edge/fn:check-urgent-lead");
+    expect(ids).not.toContain("edge/fn:check-urgent-lead/by:crm");
   });
 });

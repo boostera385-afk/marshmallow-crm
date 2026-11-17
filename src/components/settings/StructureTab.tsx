@@ -1,141 +1,271 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { ChevronRight, Cloud, Globe, LayoutDashboard, Puzzle, Route, Search, Server, Workflow } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  Building2,
+  ChevronRight,
+  Cloud,
+  Cog,
+  FolderTree,
+  Globe,
+  LayoutDashboard,
+  ListChecks,
+  Puzzle,
+  Route,
+  Search,
+  Server,
+  Tag,
+  UserRound,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS } from "@/lib/documentation-content";
 import {
-  DONUT_CAPABILITIES,
-  EDGE_CALLER_LABELS,
-  EDGE_FUNCTIONS,
-  EDGE_FUNCTION_GROUPS,
-  LEAD_JOURNEY,
-  OUTSIDE_SERVICES,
-  SCREENS,
-  defaultRolesFor,
-  screenAccessRule,
-  screenLabel,
-  statusLabel,
+  branchIds,
+  buildStructureTree,
+  filterStructureTree,
+  type StructureNode,
+  type StructureNodeKind,
 } from "@/lib/app-structure";
 
-const SECTION_IDS = ["screens", "edge", "donut", "journey", "services"] as const;
-type SectionId = (typeof SECTION_IDS)[number];
-
-const matches = (query: string, ...texts: Array<string | null | undefined>) => {
-  const needle = query.trim().toLowerCase();
-  return !needle || texts.some((text) => (text ?? "").toLowerCase().includes(needle));
+const BRANCH_ICONS: Record<string, LucideIcon> = {
+  journey: Route,
+  screens: LayoutDashboard,
+  edge: Server,
+  donut: Puzzle,
+  services: Cloud,
 };
 
-function Section({
-  id,
-  icon: Icon,
-  title,
-  summary,
-  count,
-  open,
-  onToggle,
-  children,
-}: {
-  id: SectionId;
-  icon: typeof Server;
-  title: string;
-  summary: string;
-  count: number;
-  open: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={`structure-${id}`}
-        onClick={onToggle}
-        className="flex min-h-11 w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <ChevronRight aria-hidden="true" className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2">
-            <Icon aria-hidden="true" className="h-4 w-4 text-primary" />
-            <span className="text-[14px] font-semibold text-foreground">{title}</span>
-            <Badge variant="outline" className="text-[10px]">{count}</Badge>
-          </span>
-          <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">{summary}</span>
-        </span>
-      </button>
-      {open && (
-        <div id={`structure-${id}`} className="ml-4 mt-1 border-l border-border/60 pb-2 pl-4">
-          {children}
-        </div>
-      )}
-    </li>
-  );
+const KIND_ICONS: Partial<Record<StructureNodeKind, LucideIcon>> = {
+  root: Building2,
+  group: FolderTree,
+  step: ListChecks,
+  screen: LayoutDashboard,
+  function: Cog,
+  capability: Puzzle,
+  service: Globe,
+  role: UserRound,
+  status: Tag,
+  caller: Workflow,
+};
+
+const LABEL_STYLE: Record<StructureNodeKind, string> = {
+  root: "text-[15px] font-bold text-foreground",
+  branch: "text-[14px] font-semibold text-foreground",
+  group: "text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground",
+  step: "text-[13px] font-semibold text-foreground",
+  screen: "text-[13px] font-semibold text-foreground",
+  function: "font-mono text-[12px] font-medium text-primary",
+  capability: "text-[13px] font-semibold text-foreground",
+  service: "text-[13px] font-semibold text-foreground",
+  role: "text-[12px] font-medium text-foreground",
+  status: "text-[12px] font-medium text-foreground",
+  caller: "text-[12px] font-medium text-foreground",
+  target: "font-mono text-[12px] text-foreground",
+  note: "text-[12px] text-foreground/85",
+};
+
+/** Nodes shown in order, for keyboard movement. */
+function visibleNodes(node: StructureNode, expanded: Set<string>, parentId: string | null, out: Array<{ node: StructureNode; parentId: string | null }> = []) {
+  out.push({ node, parentId });
+  if (node.children?.length && expanded.has(node.id)) node.children.forEach((child) => visibleNodes(child, expanded, node.id, out));
+  return out;
 }
 
-function Chip({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "fn" | "role" }) {
+function TreeNode({
+  node,
+  level,
+  isLast,
+  expanded,
+  focusedId,
+  onToggle,
+  onFocusNode,
+  onKeyDown,
+  registerRef,
+}: {
+  node: StructureNode;
+  level: number;
+  isLast: boolean;
+  expanded: Set<string>;
+  focusedId: string;
+  onToggle: (id: string) => void;
+  onFocusNode: (id: string) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>, node: StructureNode) => void;
+  registerRef: (id: string, element: HTMLDivElement | null) => void;
+}) {
+  const hasChildren = Boolean(node.children?.length);
+  const open = hasChildren && expanded.has(node.id);
+  const Icon = (node.kind === "branch" ? BRANCH_ICONS[node.id] : KIND_ICONS[node.kind]) ?? null;
+  const inlineDetail = node.kind === "role" || node.kind === "status" || node.kind === "caller" || node.kind === "target" || node.kind === "note";
+  const groupId = `structure-children-${node.id}`;
+
   return (
-    <span
+    <li
+      role="none"
       className={cn(
-        "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px]",
-        tone === "fn" && "border-primary/25 bg-primary/[0.06] font-mono text-primary",
-        tone === "role" && "border-border/70 bg-muted/50 text-foreground",
-        tone === "default" && "border-border/60 text-muted-foreground",
+        "relative",
+        // Connector lines: a vertical rail from the parent and an elbow into this node.
+        level > 1 && [
+          "pl-6",
+          "before:absolute before:left-[9px] before:top-0 before:border-l before:border-border",
+          isLast ? "before:h-[19px]" : "before:h-full",
+          "after:absolute after:left-[9px] after:top-[19px] after:w-3.5 after:border-t after:border-border",
+        ],
       )}
     >
-      {children}
-    </span>
-  );
-}
-
-function Item({ title, meta, children }: { title: ReactNode; meta?: ReactNode; children?: ReactNode }) {
-  return (
-    <li className="rounded-lg px-2 py-2 hover:bg-muted/30">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[13px] font-semibold text-foreground">{title}</span>
-        {meta}
+      <div
+        ref={(element) => registerRef(node.id, element)}
+        role="treeitem"
+        aria-level={level}
+        aria-expanded={hasChildren ? open : undefined}
+        aria-owns={open ? groupId : undefined}
+        aria-label={node.detail && inlineDetail ? `${node.detail}: ${node.label}` : node.label}
+        tabIndex={focusedId === node.id ? 0 : -1}
+        onFocus={() => onFocusNode(node.id)}
+        onClick={() => {
+          onFocusNode(node.id);
+          if (hasChildren) onToggle(node.id);
+        }}
+        onKeyDown={(event) => onKeyDown(event, node)}
+        className={cn(
+          "group flex min-h-[38px] cursor-default items-start gap-1.5 rounded-lg px-1.5 py-1.5 outline-none transition-colors",
+          hasChildren && "cursor-pointer hover:bg-muted/50",
+          "focus-visible:ring-2 focus-visible:ring-ring",
+          node.kind === "root" && "bg-primary/[0.06]",
+        )}
+      >
+        <ChevronRight
+          aria-hidden="true"
+          className={cn(
+            "mt-[3px] h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-90",
+            !hasChildren && "invisible",
+          )}
+        />
+        {Icon && (
+          <Icon
+            aria-hidden="true"
+            className={cn("mt-[3px] h-4 w-4 shrink-0", node.kind === "root" || node.kind === "branch" ? "text-primary" : "text-muted-foreground")}
+          />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            {node.detail && inlineDetail && (
+              <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{node.detail}</span>
+            )}
+            <span className={cn("break-words", LABEL_STYLE[node.kind])}>{node.label}</span>
+            {hasChildren && (
+              <span className="text-[11px] text-muted-foreground">({node.children!.length})</span>
+            )}
+          </span>
+          {node.detail && !inlineDetail && (
+            <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">{node.detail}</span>
+          )}
+        </span>
       </div>
-      {children && <div className="mt-1 space-y-1.5 text-[12px] leading-snug text-muted-foreground">{children}</div>}
+
+      {open && (
+        <ul role="group" id={groupId} className="relative">
+          {node.children!.map((child, index) => (
+            <TreeNode
+              key={child.id}
+              node={child}
+              level={level + 1}
+              isLast={index === node.children!.length - 1}
+              expanded={expanded}
+              focusedId={focusedId}
+              onToggle={onToggle}
+              onFocusNode={onFocusNode}
+              onKeyDown={onKeyDown}
+              registerRef={registerRef}
+            />
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
+
+const FULL_TREE = buildStructureTree();
+const DEFAULT_EXPANDED = new Set(["root"]);
 
 export default function StructureTab() {
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState<Set<SectionId>>(() => new Set(["journey"]));
+  const [expanded, setExpanded] = useState<Set<string>>(DEFAULT_EXPANDED);
+  const [focusedId, setFocusedId] = useState("root");
+  const refs = useRef(new Map<string, HTMLDivElement>());
+
   const searching = query.trim().length > 0;
+  const tree = useMemo(() => filterStructureTree(FULL_TREE, query), [query]);
+  // While searching, every branch on the path to a match is open; a match
+  // itself stays closed until clicked, like any other node.
+  const pathToMatches = useMemo(
+    () => (searching && tree ? branchIds(tree).filter((id) => id === "root" || !nodeMatches(findNode(tree, id)!, query)) : []),
+    [searching, tree, query],
+  );
+  const shownExpanded = useMemo(() => new Set([...pathToMatches, ...expanded]), [pathToMatches, expanded]);
+  const forcedOpen = useMemo(() => new Set(pathToMatches), [pathToMatches]);
 
-  const screens = useMemo(
-    () =>
-      SCREENS.map((screen) => ({ ...screen, label: screenLabel(screen.navItem), rule: screenAccessRule(screen.navItem), roles: defaultRolesFor(screen.navItem) }))
-        .filter((s) => matches(query, s.label, s.path, s.purpose, s.rule, ...s.edgeFunctions, ...s.roles.map((r) => ROLE_LABELS[r]))),
-    [query],
-  );
-  const functions = useMemo(
-    () => EDGE_FUNCTIONS.filter((fn) => matches(query, fn.name, fn.purpose, fn.group, ...fn.callers.map((c) => EDGE_CALLER_LABELS[c]))),
-    [query],
-  );
-  const donut = useMemo(
-    () => DONUT_CAPABILITIES.filter((c) => matches(query, c.title, c.description, ...c.talksTo.map((t) => t.name))),
-    [query],
-  );
-  const journey = useMemo(
-    () => LEAD_JOURNEY.filter((step) => matches(query, step.title, step.who, step.description, ...step.edgeFunctions, ...step.statuses.map(statusLabel))),
-    [query],
-  );
-  const services = useMemo(() => OUTSIDE_SERVICES.filter((s) => matches(query, s.name, s.role, s.via)), [query]);
-
-  const isOpen = (id: SectionId) => searching || open.has(id);
-  const toggle = (id: SectionId) =>
-    setOpen((previous) => {
+  const toggle = (id: string) => {
+    if (forcedOpen.has(id)) return;
+    setExpanded((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  const nothing = screens.length + functions.length + donut.length + journey.length + services.length === 0;
+  };
+
+  const focusNode = (id: string) => {
+    setFocusedId(id);
+    refs.current.get(id)?.focus();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>, node: StructureNode) => {
+    if (!tree) return;
+    const order = visibleNodes(tree, shownExpanded, null);
+    const index = order.findIndex((entry) => entry.node.id === node.id);
+    const hasChildren = Boolean(node.children?.length);
+    const open = shownExpanded.has(node.id);
+    let handled = true;
+    switch (event.key) {
+      case "ArrowDown":
+        if (index < order.length - 1) focusNode(order[index + 1].node.id);
+        break;
+      case "ArrowUp":
+        if (index > 0) focusNode(order[index - 1].node.id);
+        break;
+      case "ArrowRight":
+        if (hasChildren && !open) toggle(node.id);
+        else if (hasChildren && open) focusNode(node.children![0].id);
+        break;
+      case "ArrowLeft":
+        if (hasChildren && open && !forcedOpen.has(node.id)) toggle(node.id);
+        else if (order[index]?.parentId) focusNode(order[index].parentId!);
+        break;
+      case "Home":
+        focusNode(order[0].node.id);
+        break;
+      case "End":
+        focusNode(order[order.length - 1].node.id);
+        break;
+      case "Enter":
+      case " ":
+        if (hasChildren) toggle(node.id);
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) event.preventDefault();
+  };
+
+  const registerRef = (id: string, element: HTMLDivElement | null) => {
+    if (element) refs.current.set(id, element);
+    else refs.current.delete(id);
+  };
+
+  const rootFocusable = tree && findNode(tree, focusedId) ? focusedId : "root";
 
   return (
     <div className="space-y-4">
@@ -143,14 +273,15 @@ export default function StructureTab() {
         <CardContent className="space-y-4 p-5">
           <div className="flex items-start gap-3">
             <div className="rounded-xl bg-primary/8 p-2.5 text-primary">
-              <Workflow className="h-5 w-5" />
+              <FolderTree className="h-5 w-5" />
             </div>
             <div>
               <h2 className="text-[15px] font-semibold tracking-tight">Marshmallow Structure</h2>
               <p className="text-[12px] leading-relaxed text-muted-foreground">
-                How the pieces fit together: how a lead moves through the system, every CRM screen and who opens it, the
-                Edge Functions behind them, what Donut does, and the outside services. Default roles are read from the
-                app's access rules; per-user grants in Feature Access can add more. Read-only.
+                Marshmallow as one tree: the lead journey, every CRM screen and who opens it, the Edge Functions behind
+                them, what Donut does, and the outside services. Click a branch, or use the arrow keys, to open it.
+                Default roles are read from the app's access rules; per-user grants in Feature Access can add more.
+                Read-only.
               </p>
             </div>
           </div>
@@ -166,129 +297,52 @@ export default function StructureTab() {
               />
             </div>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setOpen(new Set(SECTION_IDS))}>Expand all</Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setOpen(new Set())}>Collapse all</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setExpanded(new Set(branchIds(FULL_TREE)))}>
+                Expand all
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setExpanded(new Set(DEFAULT_EXPANDED))}>
+                Collapse all
+              </Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
       <Card className="border-border/60 bg-card/95">
-        <CardContent className="p-3 sm:p-5">
-          <p className="flex items-center gap-2 px-2 pb-2 text-[14px] font-semibold">
-            <LayoutDashboard aria-hidden="true" className="h-4 w-4 text-primary" /> Marshmallow
-          </p>
-          <ul className="ml-2 space-y-1 border-l border-border/60 pl-2">
-            {journey.length > 0 && (
-              <Section id="journey" icon={Route} title="Lead journey" summary="From a Quo chat to Paid: who acts at each step, the statuses and the functions involved." count={journey.length} open={isOpen("journey")} onToggle={() => toggle("journey")}>
-                <ol className="space-y-1">
-                  {journey.map((step) => (
-                    <Item key={step.title} title={step.title} meta={<Chip>{step.who}</Chip>}>
-                      <p>{step.description}</p>
-                      {(step.statuses.length > 0 || step.edgeFunctions.length > 0) && (
-                        <div className="flex flex-wrap gap-1">
-                          {step.statuses.map((status) => <Chip key={status} tone="role">{statusLabel(status)}</Chip>)}
-                          {step.edgeFunctions.map((fn) => <Chip key={fn} tone="fn">{fn}</Chip>)}
-                        </div>
-                      )}
-                    </Item>
-                  ))}
-                </ol>
-              </Section>
-            )}
-
-            {screens.length > 0 && (
-              <Section id="screens" icon={LayoutDashboard} title="CRM screens" summary="Every sidebar item, its address, who opens it by default and the Edge Functions it calls." count={screens.length} open={isOpen("screens")} onToggle={() => toggle("screens")}>
-                <ul className="space-y-1">
-                  {screens.map((screen) => (
-                    <Item key={screen.navItem} title={screen.label} meta={<Chip>{screen.path ?? "inside another screen"}</Chip>}>
-                      <p>{screen.purpose}</p>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.1em]">Opens by default:</span>
-                        {screen.roles.map((role) => <Chip key={role} tone="role">{ROLE_LABELS[role]}</Chip>)}
-                      </div>
-                      <p className="italic">{screen.rule}</p>
-                      {screen.edgeFunctions.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1">
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.1em]">Calls:</span>
-                          {screen.edgeFunctions.map((fn) => <Chip key={fn} tone="fn">{fn}</Chip>)}
-                        </div>
-                      )}
-                    </Item>
-                  ))}
-                </ul>
-              </Section>
-            )}
-
-            {functions.length > 0 && (
-              <Section id="edge" icon={Server} title="Edge Functions" summary="Server code that holds the secrets and does the checked work, grouped by job, with who calls each one." count={functions.length} open={isOpen("edge")} onToggle={() => toggle("edge")}>
-                <div className="space-y-3">
-                  {EDGE_FUNCTION_GROUPS.map((group) => {
-                    const inGroup = functions.filter((fn) => fn.group === group);
-                    if (inGroup.length === 0) return null;
-                    return (
-                      <div key={group}>
-                        <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{group}</p>
-                        <ul className="space-y-0.5">
-                          {inGroup.map((fn) => (
-                            <Item
-                              key={fn.name}
-                              title={<code>{fn.name}</code>}
-                              meta={fn.callers.length > 0
-                                ? fn.callers.map((c) => <Chip key={c} tone="role">{EDGE_CALLER_LABELS[c]}</Chip>)
-                                : <Chip>Not called</Chip>}
-                            >
-                              <p>{fn.purpose}</p>
-                            </Item>
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Section>
-            )}
-
-            {donut.length > 0 && (
-              <Section id="donut" icon={Puzzle} title="Donut extension" summary="The Chrome extension used inside Quo. It signs in as the user and uses the same server checks as the CRM." count={donut.length} open={isOpen("donut")} onToggle={() => toggle("donut")}>
-                <ul className="space-y-1">
-                  {donut.map((capability) => (
-                    <Item key={capability.title} title={capability.title}>
-                      <p>{capability.description}</p>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.1em]">Talks to:</span>
-                        {capability.talksTo.map((target) => (
-                          <Chip key={`${target.kind}-${target.name}`} tone={target.kind === "edge" ? "fn" : "default"}>
-                            {target.kind === "site" && <Globe aria-hidden="true" className="mr-1 h-3 w-3" />}
-                            {{ edge: "", rpc: "function ", table: "table ", storage: "bucket ", site: "" }[target.kind]}
-                            {target.name}
-                          </Chip>
-                        ))}
-                      </div>
-                    </Item>
-                  ))}
-                </ul>
-              </Section>
-            )}
-
-            {services.length > 0 && (
-              <Section id="services" icon={Cloud} title="Outside services" summary="Everything Marshmallow depends on outside its own code." count={services.length} open={isOpen("services")} onToggle={() => toggle("services")}>
-                <ul className="space-y-1">
-                  {services.map((service) => (
-                    <Item key={service.name} title={service.name} meta={<Chip>{service.via}</Chip>}>
-                      <p>{service.role}</p>
-                    </Item>
-                  ))}
-                </ul>
-              </Section>
-            )}
-
-            {searching && nothing && (
-              <li className="px-2 py-3 text-[13px] text-muted-foreground">Nothing matches “{query.trim()}”.</li>
-            )}
-          </ul>
+        <CardContent className="overflow-x-hidden p-3 sm:p-5">
+          {tree ? (
+            <ul role="tree" aria-label="Marshmallow structure">
+              <TreeNode
+                node={tree}
+                level={1}
+                isLast
+                expanded={shownExpanded}
+                focusedId={rootFocusable}
+                onToggle={toggle}
+                onFocusNode={setFocusedId}
+                onKeyDown={handleKeyDown}
+                registerRef={registerRef}
+              />
+            </ul>
+          ) : (
+            <p className="px-2 py-3 text-[13px] text-muted-foreground">Nothing matches “{query.trim()}”.</p>
+          )}
         </CardContent>
       </Card>
     </div>
   );
+}
+
+function findNode(node: StructureNode, id: string): StructureNode | null {
+  if (node.id === id) return node;
+  for (const child of node.children ?? []) {
+    const found = findNode(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function nodeMatches(node: StructureNode, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  return node.label.toLowerCase().includes(needle) || (node.detail ?? "").toLowerCase().includes(needle);
 }
