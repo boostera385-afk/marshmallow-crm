@@ -97,3 +97,28 @@ export async function runRetention(store: RetentionStore, options: RetentionOpti
   }
   return { ...result, stopped: "max_batches" };
 }
+
+export interface RetentionRunStatus {
+  ok: boolean;
+  stopped: RetentionResult["stopped"] | null;
+  error: string | null;
+}
+
+/**
+ * Report a run to public.record_webhook_retention_run. The supabase-js query
+ * builder is only PromiseLike (it has no .catch), so the call must be awaited
+ * inside try/catch: chaining .catch() threw a TypeError before the request was
+ * sent, which left webhook_retention_state empty and turned successful runs
+ * into 500s. Recording never throws and never changes the run's own response.
+ */
+export async function recordRetentionRun(
+  rpc: (fn: "record_webhook_retention_run", args: { p_result: RetentionRunStatus }) => PromiseLike<{ error: unknown }>,
+  status: RetentionRunStatus,
+): Promise<boolean> {
+  try {
+    const { error } = await rpc("record_webhook_retention_run", { p_result: status });
+    return !error;
+  } catch {
+    return false;
+  }
+}
