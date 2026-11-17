@@ -188,7 +188,7 @@ or grants allow.
 | **CRM Updates** | Send a one-time announcement to chosen roles. |
 | **Google Sheets** | The Google Sheets sync and its health. |
 | **Documentation** | The in-app technical reference (roles, permissions, statuses, workflows, AI features), with PDF export and the yearly *Sync Population Data* button. |
-| **Structure** | Admin-only, read-only org chart of how Marshmallow fits together: a Marshmallow box above five coloured columns, each box opening to show what is under it: the lead journey (Quo chat → Donut → lead → approvals → Processor Board → payment), every CRM screen and which roles open it, every Edge Function and who calls it, what Donut does and talks to, and the outside services. Kept in `src/lib/app-structure.ts`; its test fails when a screen, Edge Function or Donut call is added without updating the map. |
+| **Structure** | Admin-only, read-only. **Graph** (default): an Obsidian-style network showing where AI is used, where the Quo API is called, which functions receive Quo webhooks and what touches leads; click a dot for its connections. **Org chart**: a Marshmallow box above five coloured columns. Both cover: the lead journey (Quo chat → Donut → lead → approvals → Processor Board → payment), every CRM screen and which roles open it, every Edge Function and who calls it, what Donut does and talks to, and the outside services. Kept in `src/lib/app-structure.ts` and `src/lib/system-graph.ts`; their tests read the code (following imports) and fail when a screen, Edge Function, Donut call, AI/Quo API use or data access changes without updating the map. |
 
 The header also has a **Donut** button (latest extension version and how to
 update), a theme switch, a notepad, and a command menu (`Ctrl+K` / `⌘K`).

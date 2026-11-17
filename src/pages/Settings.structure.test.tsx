@@ -39,10 +39,84 @@ const openStructure = async () => {
   fireEvent.click((await tabs()).getByRole("tab", { name: "Structure" }));
   return screen.findByRole("heading", { name: "Marshmallow Structure" });
 };
+const openOrgChart = async () => {
+  await openStructure();
+  fireEvent.click(within(screen.getByRole("tablist", { name: "Structure view" })).getByRole("tab", { name: "Org chart" }));
+};
 
 afterEach(cleanup);
 
-describe("Settings > Structure", () => {
+describe("Settings > Structure > Graph", () => {
+  const dot = (id: string) => document.querySelector<SVGGElement>(`[data-node-id="${id}"]`)!;
+  const panel = () => within(screen.getByRole("complementary", { name: "Selected item" }));
+  const lines = (kind?: string) =>
+    document.querySelectorAll(`svg[aria-label="Marshmallow connection graph"] line${kind ? `[data-edge-kind="${kind}"]` : ""}`).length;
+
+  it("opens on the graph, and clicking OpenAI lists every function where AI is used", async () => {
+    renderSettings("admin");
+    await openStructure();
+    const callsBefore = supabaseMock.functions.invoke.mock.calls.length;
+    expect(within(screen.getByRole("tablist", { name: "Structure view" })).getByRole("tab", { name: "Graph" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("img", { name: "Marshmallow connection graph" })).toBeInTheDocument();
+    expect(dot("svc:openai")).toHaveAttribute("aria-label", "OpenAI, Outside service");
+
+    fireEvent.pointerDown(dot("svc:openai"), { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(dot("svc:openai"), { pointerId: 1, clientX: 10, clientY: 10 });
+    expect(panel().getByRole("heading", { name: "OpenAI" })).toBeInTheDocument();
+    expect(panel().getByText("AI is used by")).toBeInTheDocument();
+    expect(panel().getByRole("button", { name: "check-urgent-lead" })).toBeInTheDocument();
+    expect(panel().getByRole("button", { name: "processor-board" })).toBeInTheDocument();
+    expect(panel().queryByRole("button", { name: "quo-webhook" })).toBeNull();
+    expect(dot("svc:openai")).toHaveAttribute("aria-pressed", "true");
+    expect(supabaseMock.functions.invoke.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("explains Quo: where its API is called and which functions receive its webhooks; chips move the selection", async () => {
+    renderSettings("admin");
+    await openStructure();
+    fireEvent.keyDown(dot("svc:quo"), { key: "Enter" });
+    expect(panel().getByText("Quo API is called by")).toBeInTheDocument();
+    expect(panel().getByText("Sends webhooks to")).toBeInTheDocument();
+    fireEvent.click(panel().getByRole("button", { name: "quo-webhook" }));
+    expect(panel().getByRole("heading", { name: "quo-webhook" })).toBeInTheDocument();
+    expect(panel().getByText("Receives webhooks from")).toBeInTheDocument();
+    fireEvent.click(panel().getByRole("button", { name: "Close details" }));
+    expect(screen.queryByRole("heading", { name: "quo-webhook" })).toBeNull();
+  });
+
+  it("filters to one kind of connection and back", async () => {
+    renderSettings("admin");
+    await openStructure();
+    const all = lines();
+    expect(lines("ai")).toBeGreaterThan(5);
+    fireEvent.click(screen.getByRole("button", { name: "AI used here" }));
+    expect(screen.getByRole("button", { name: "AI used here" })).toHaveAttribute("aria-pressed", "true");
+    expect(lines()).toBe(lines("ai"));
+    expect(dot("svc:openai")).toHaveAttribute("opacity", "1");
+    expect(dot("svc:census")).toHaveAttribute("opacity", "0.18");
+    fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+    expect(lines()).toBe(all);
+  });
+
+  it("finds a dot by name and the jump list selects it", async () => {
+    renderSettings("admin");
+    await openStructure();
+    const find = screen.getByRole("textbox", { name: "Find in the graph" });
+    fireEvent.change(find, { target: { value: "leads" } });
+    expect(screen.getByText(/found$/)).toBeInTheDocument();
+    fireEvent.change(find, { target: { value: "geocode-lead" } });
+    expect(screen.getByText("1 found")).toBeInTheDocument();
+    fireEvent.keyDown(find, { key: "Enter" });
+    expect(panel().getByRole("heading", { name: "geocode-lead-address" })).toBeInTheDocument();
+    fireEvent.click(panel().getByRole("button", { name: "Close details" }));
+    fireEvent.change(screen.getByLabelText("Or jump to"), { target: { value: "data:leads" } });
+    expect(panel().getByRole("heading", { name: "Leads" })).toBeInTheDocument();
+    expect(panel().getByText("Leads are read or changed by")).toBeInTheDocument();
+    expect(panel().getByRole("button", { name: "Donut extension" })).toBeInTheDocument();
+  });
+});
+
+describe("Settings > Structure > Org chart", () => {
   /** A box in the chart, found by its stable node id (fast on a large chart). */
   const box = (id: string) => document.querySelector<HTMLButtonElement>(`button[aria-controls="structure-node-${id}"]`);
   const childrenOf = (id: string) => within(document.getElementById(`structure-node-${id}`)!);
@@ -50,7 +124,7 @@ describe("Settings > Structure", () => {
 
   it("draws a Marshmallow box above five open branch columns whose boxes open level by level", async () => {
     renderSettings("admin");
-    await openStructure();
+    await openOrgChart();
     const callsBefore = supabaseMock.functions.invoke.mock.calls.length;
 
     const chart = screen.getByRole("region", { name: "Marshmallow org chart" });
@@ -82,7 +156,7 @@ describe("Settings > Structure", () => {
 
   it("Expand all opens every box and Collapse all returns to the branch columns", async () => {
     renderSettings("admin");
-    await openStructure();
+    await openOrgChart();
     fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
     expect(box("edge/fn:check-urgent-lead")).toHaveAttribute("aria-expanded", "true");
     expect(childrenOf("edge/fn:check-urgent-lead").getAllByText(/^(CRM|Donut)$/)).toHaveLength(2);
@@ -93,7 +167,7 @@ describe("Settings > Structure", () => {
 
   it("search opens the path to each match and keeps the rest out", async () => {
     renderSettings("admin");
-    await openStructure();
+    await openOrgChart();
     fireEvent.change(screen.getByRole("textbox", { name: "Search the Marshmallow structure" }), { target: { value: "geocode-lead-address" } });
 
     expect(box("edge/Leads, addresses & maps")).toHaveAttribute("aria-expanded", "true");
