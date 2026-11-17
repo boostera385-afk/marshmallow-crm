@@ -216,6 +216,10 @@ export const DOC_SECTIONS: DocSection[] = [
         ],
       },
       { type: "p", text: "Technicians are recorded in the processor notes thread as numbered lines (\"Tech 1: name - number - note\"). CS Admins never see technician details (canSeeTechDetails)." },
+      { type: "p", text: "Notes can be edited by their author or Admin. A Processor with the Edit Processor Notes grant (Settings > Feature Access, set by Admin) can also change the text of other users' notes in the Processor thread only; nobody gains a delete right. Once a note's text changes it shows \"Edited by <name> · <time>\", stamped by the database from the signed-in user." },
+      { type: "kv", label: "Quote Terms", value: "Quoted (labor plus optional Parts/Materials), Free Estimate, or Diagnostic/Service Call (one fee, saved in diagnostic_fee_amount; no labor or materials). Operators see the terms only, never the amounts." },
+      { type: "kv", label: "Internal Technician Share", value: "Shown on every term on Add Lead, the lead page and the drawer. Quoted and no terms: For You / For Us in $ from labor. Free Estimate: For You / For Us in % of labor. Diagnostic/Service Call: % of labor. Every term also has Diagnostic Fee ($) with its own For You / For Us ($ from diagnostic). Fields hidden for a term keep their saved values. CS and CS Admin cannot change these values; Operators never see them." },
+      { type: "kv", label: "Copy Technician Message", value: "Follows the Quote Terms selected in the form, even before saving. Quoted, Free Estimate and Diagnostic/Service Call each have their own wording with a \"You Agreed on the Terms:\" line and For You / For Us lines; Quoted and Free Estimate add the diagnostic share only when one is recorded. Admins can override the wording in Settings > Templates." },
     ],
   },
   {
@@ -351,7 +355,7 @@ export const DOC_SECTIONS: DocSection[] = [
     title: "20. Settings, Activity Logs & Data",
     blocks: [
       { type: "kv", label: "Users", value: "Create users, set role and password, OPR code, access codes, set up or reset 2FA, delete (through the admin-users Edge Function). Deleting a user keeps history: leads are unassigned and their id is cleared from logs and notes." },
-      { type: "kv", label: "Feature Access / Status Visibility", value: "Per-user tab switches and per-user visible statuses." },
+      { type: "kv", label: "Feature Access / Status Visibility", value: "Per-user tab switches (including Edit Processor Notes for Processors) and per-user visible statuses." },
       { type: "kv", label: "Templates", value: "Admin-only. Copy Technician Message texts (no terms, Quoted, Free Estimate, Diagnostic/Service Call) and the Check Template, stored in message_templates; a template with no saved text uses its built-in wording." },
       { type: "kv", label: "CRM Updates", value: "One-time announcements to chosen roles; receipts in crm_update_receipts." },
       { type: "kv", label: "Google Sheets", value: "The Sheets copy of leads: transactional outbox, retries, full rebuild and health watchdog (google-sheets-sync)." },

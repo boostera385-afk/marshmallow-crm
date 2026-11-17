@@ -181,9 +181,9 @@ or grants allow.
 | Tab | What it is for |
 |---|---|
 | **Users** | Create users, set passwords, OPR codes, access codes, two-factor (2FA) setup and reset, delete users. CS Admins with *Can manage users* see a limited version. |
-| **Feature Access** | Per-person on/off switches for screens and features. |
+| **Feature Access** | Per-person on/off switches for screens and features, including *Edit Processor Notes* (Processors only; lets them correct colleagues' Processor notes). |
 | **Status Visibility** | Which lead statuses each person can see. |
-| **Templates** | Admin-only: the *Copy Technician Message* texts (no terms, Quoted, Free Estimate) and the *Check Template* message, filled in from a lead. Reset returns a template to its built-in text. |
+| **Templates** | Admin-only: the *Copy Technician Message* texts (no terms, Quoted, Free Estimate, Diagnostic/Service Call) and the *Check Template* message, filled in from a lead. Reset returns a template to its built-in text. |
 | **Security** | Your own password and 2FA. |
 | **CRM Updates** | Send a one-time announcement to chosen roles. |
 | **Google Sheets** | The Google Sheets sync and its health. |
