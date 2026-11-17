@@ -139,6 +139,14 @@ export function canEditOthersProcessorNotes(
   return role === "processor" && Boolean(profile?.can_edit_processor_notes);
 }
 
+/**
+ * Who may give the single thumbs-up to another user's note in a lead's Processor
+ * Notes thread. Mirrors the `lead_note_reactions` RLS policies (processor/admin).
+ */
+export function canReactToProcessorNotes(role: AppRole | null | undefined): boolean {
+  return role === "processor" || role === "admin";
+}
+
 /** Roles that manage technicians across OPRs must choose an OPR code. */
 export function mustChooseOprCode(role: AppRole | null | undefined): boolean {
   return role === "admin" || role === "processor" || role === "opr_admin";

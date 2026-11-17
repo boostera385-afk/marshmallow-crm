@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { canEditOthersProcessorNotes, isOperatorRole } from "@/lib/access";
+import { canEditOthersProcessorNotes, canReactToProcessorNotes, isOperatorRole } from "@/lib/access";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -29,6 +29,8 @@ interface LeadNote {
   edited_by?: string | null;
   edited_by_name?: string | null;
   edited_at?: string | null;
+  /** Thumbs-up reactions (processor thread only; 20261228000000). */
+  lead_note_reactions?: { user_id: string }[] | null;
 }
 
 interface Props {
@@ -93,14 +95,26 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
       return;
     }
 
-    const { data } = await supabase
-      .from("lead_notes")
-      .select("*")
-      .eq("lead_id", leadId)
-      .eq("note_type", noteType)
-      .order("created_at", { ascending: true });
+    const baseQuery = () =>
+      supabase.from("lead_notes").select("*").eq("lead_id", leadId).eq("note_type", noteType);
+    let data: unknown[] | null = null;
+    if (noteType === "processor") {
+      // Reactions ride along in the same request (no N+1). If the reactions table is not
+      // there yet, fall back to plain notes so the thread never goes blank.
+      const withReactions = await supabase
+        .from("lead_notes")
+        .select("*, lead_note_reactions(user_id)" as "*")
+        .eq("lead_id", leadId)
+        .eq("note_type", noteType)
+        .order("created_at", { ascending: true });
+      data = withReactions.error ? null : (withReactions.data as unknown[] | null);
+    }
+    if (!data) {
+      const plain = await baseQuery().order("created_at", { ascending: true });
+      data = plain.data as unknown[] | null;
+    }
     if (data) {
-      const next = data as LeadNote[];
+      const next = data as unknown as LeadNote[];
       // Avoid re-rendering (and losing textarea focus/cursor) when nothing changed
       setNotes((prev) =>
         JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
@@ -161,7 +175,11 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
   const profilesKey = JSON.stringify(profiles);
 
   useEffect(() => {
-    const missingUserIds = Array.from(new Set(notes.map((note) => note.user_id).filter(Boolean) as string[])).filter((userId) => !profiles[userId]);
+    const missingUserIds = Array.from(new Set(notes.flatMap((note) => [
+      note.user_id,
+      note.edited_by,
+      ...(note.lead_note_reactions ?? []).map((r) => r.user_id),
+    ]).filter(Boolean) as string[])).filter((userId) => !profiles[userId]);
 
     if (missingUserIds.length === 0) {
       setResolvedProfiles((prev) => (Object.keys(prev).length === 0 ? prev : {}));
@@ -309,6 +327,44 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
     }
   };
 
+  // One thumbs-up per person per note, toggled. Optimistic, with a per-note guard so a
+  // double click cannot insert twice; a refused write rolls back and says so.
+  const [reactingIds, setReactingIds] = useState<Set<string>>(new Set());
+  const canReact = noteType === "processor" && canReactToProcessorNotes(role);
+
+  const handleToggleThumbsUp = async (note: LeadNote) => {
+    if (!canReact || !user || note.user_id === user.id || reactingIds.has(note.id)) return;
+    const had = (note.lead_note_reactions ?? []).some((r) => r.user_id === user.id);
+    setReactingIds((prev) => new Set(prev).add(note.id));
+    const apply = (add: boolean) =>
+      setNotes((prev) =>
+        prev.map((n) => {
+          if (n.id !== note.id) return n;
+          const others = (n.lead_note_reactions ?? []).filter((r) => r.user_id !== user.id);
+          return { ...n, lead_note_reactions: add ? [...others, { user_id: user.id }] : others };
+        }),
+      );
+    apply(!had);
+    // supabase types are regenerated after the migration is applied.
+    const table = supabase.from("lead_note_reactions" as never) as unknown as {
+      insert: (v: object) => Promise<{ error: { message: string } | null }>;
+      delete: () => { eq: (c: string, v: string) => { eq: (c: string, v: string) => Promise<{ error: { message: string } | null }> } };
+    };
+    const { error } = had
+      ? await table.delete().eq("note_id", note.id).eq("user_id", user.id)
+      : await table.insert({ note_id: note.id, user_id: user.id });
+    // A duplicate (23505-style) insert means the thumbs-up is already there: not a failure.
+    if (error && !(error as { code?: string }).code?.startsWith("23505")) {
+      apply(had);
+      toast.error("Couldn't update your 👍");
+    }
+    setReactingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(note.id);
+      return next;
+    });
+  };
+
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditContent("");
@@ -429,6 +485,36 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                       )}
                     </div>
                   )}
+                  {noteType === "processor" && !isEditing && (() => {
+                    const reactions = note.lead_note_reactions ?? [];
+                    const mine = reactions.some((r) => r.user_id === user?.id);
+                    const names = reactions
+                      .map((r) => profiles[r.user_id] || resolvedProfiles[r.user_id] || (r.user_id === user?.id ? "You" : "A processor"))
+                      .join(", ");
+                    if (!canReact || isMe) {
+                      return reactions.length > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border/50 px-1.5 text-[11px] text-muted-foreground" title={names}>
+                          <span aria-hidden>👍</span>{reactions.length}
+                          <span className="sr-only">{`${reactions.length} thumbs up: ${names}`}</span>
+                        </span>
+                      ) : null;
+                    }
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleThumbsUp(note)}
+                        disabled={reactingIds.has(note.id)}
+                        aria-pressed={mine}
+                        aria-label={mine ? "Remove your thumbs up" : "Give a thumbs up"}
+                        title={names || "Thumbs up"}
+                        className={`inline-flex items-center gap-1 rounded-full border px-1.5 text-[11px] transition-colors ${
+                          mine ? "border-primary/40 bg-primary/10 text-foreground" : "border-border/50 text-muted-foreground opacity-60 hover:opacity-100"
+                        }`}
+                      >
+                        <span aria-hidden>👍</span>{reactions.length > 0 ? reactions.length : null}
+                      </button>
+                    );
+                  })()}
                 </div>
               </motion.div>
             );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessNavItem, canAddLeadViaExtension, canOpenAnalytics, canAddManualLead, canEditOthersProcessorNotes, canDeleteTechnicians, canSeeTechDetails, canViewLeadCoverageAnalytics, getDefaultNavAccess } from "@/lib/access";
+import { canAccessNavItem, canAddLeadViaExtension, canOpenAnalytics, canAddManualLead, canEditOthersProcessorNotes, canReactToProcessorNotes, canDeleteTechnicians, canSeeTechDetails, canViewLeadCoverageAnalytics, getDefaultNavAccess } from "@/lib/access";
 import type { NavigationPermission } from "@/types";
 
 describe("cancellation request navigation access", () => {
@@ -220,5 +220,15 @@ describe("Edit Processor Notes grant", () => {
       expect(canEditOthersProcessorNotes(role, { can_edit_processor_notes: true })).toBe(false);
     }
     expect(canEditOthersProcessorNotes(null, { can_edit_processor_notes: true })).toBe(false);
+  });
+});
+
+describe("canReactToProcessorNotes", () => {
+  it("allows processor and admin only", () => {
+    expect(canReactToProcessorNotes("processor")).toBe(true);
+    expect(canReactToProcessorNotes("admin")).toBe(true);
+    for (const r of ["customer_service", "cs_admin", "opr", "opr_admin", null, undefined] as const) {
+      expect(canReactToProcessorNotes(r)).toBe(false);
+    }
   });
 });
