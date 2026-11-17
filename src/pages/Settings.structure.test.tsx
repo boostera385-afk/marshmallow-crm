@@ -43,56 +43,52 @@ const openStructure = async () => {
 afterEach(cleanup);
 
 describe("Settings > Structure", () => {
-  const item = (name: RegExp) => screen.getByRole("treeitem", { name });
-  const level2 = (label: string) =>
-    screen.getAllByRole("treeitem").find((el) => el.getAttribute("aria-level") === "2" && el.textContent?.startsWith(label))!;
+  /** A box in the chart, found by its stable node id (fast on a large chart). */
+  const box = (id: string) => document.querySelector<HTMLButtonElement>(`button[aria-controls="structure-node-${id}"]`);
+  const childrenOf = (id: string) => within(document.getElementById(`structure-node-${id}`)!);
+  const BRANCHES = ["journey", "screens", "edge", "donut", "services"];
 
-  it("shows one Marshmallow root with five closed branches that open into deeper levels", async () => {
+  it("draws a Marshmallow box above five open branch columns whose boxes open level by level", async () => {
     renderSettings("admin");
     await openStructure();
     const callsBefore = supabaseMock.functions.invoke.mock.calls.length;
 
-    const tree = screen.getByRole("tree", { name: "Marshmallow structure" });
-    const root = within(tree).getByRole("treeitem", { name: /^Marshmallow/ });
-    expect(root).toHaveAttribute("aria-level", "1");
-    expect(root).toHaveAttribute("aria-expanded", "true");
-    const branches = screen.getAllByRole("treeitem").filter((el) => el.getAttribute("aria-level") === "2");
-    expect(branches.map((el) => el.textContent?.replace(/\(\d+\).*/, ""))).toEqual(["Lead journey", "CRM screens", "Edge Functions", "Donut extension", "Outside services"]);
-    branches.forEach((el) => expect(el).toHaveAttribute("aria-expanded", "false"));
+    const chart = screen.getByRole("region", { name: "Marshmallow org chart" });
+    expect(within(chart).getByText("Marshmallow")).toBeInTheDocument();
+    expect(BRANCHES.map((id) => box(id)?.textContent?.replace(/\s*\d+$/, ""))).toEqual([
+      "Lead journeyFrom a Quo chat to Paid",
+      "CRM screensEvery sidebar item and who opens it",
+      "Edge FunctionsServer code that holds the secrets",
+      "Donut extensionChrome extension used inside Quo",
+      "Outside servicesWhat Marshmallow depends on",
+    ]);
+    BRANCHES.forEach((id) => expect(box(id)).toHaveAttribute("aria-expanded", "true"));
 
-    fireEvent.click(level2("CRM screens"));
-    fireEvent.click(item(/^Processor Board$/));
-    const roles = screen.getAllByRole("treeitem", { name: /^Opens by default/ });
-    expect(roles).toHaveLength(1);
-    fireEvent.click(roles[0]);
-    expect(roles[0]).toHaveAttribute("aria-level", "4");
-    expect(item(/^Admin$/)).toHaveAttribute("aria-level", "5");
-    expect(item(/^Processor$/)).toHaveAttribute("aria-level", "5");
+    const board = box("screens/processor_board")!;
+    expect(board).toHaveTextContent("Processor Board");
+    expect(board).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(board);
+    expect(board).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(box("screens/processor_board/roles")!);
+    expect(childrenOf("screens/processor_board/roles").getAllByText(/^(Admin|Processor)$/).map((el) => el.textContent)).toEqual(["Admin", "Processor"]);
+    fireEvent.click(box("screens/processor_board/fns")!);
+    expect(childrenOf("screens/processor_board/fns").getByText("processor-board")).toBeInTheDocument();
 
-    fireEvent.click(level2("CRM screens"));
-    expect(screen.queryByRole("treeitem", { name: /^Processor Board$/ })).toBeNull();
+    fireEvent.click(box("screens")!);
+    expect(box("screens")).toHaveAttribute("aria-expanded", "false");
+    expect(box("screens/processor_board")).toBeNull();
     expect(supabaseMock.functions.invoke.mock.calls.length).toBe(callsBefore);
   });
 
-  it("moves and opens with the arrow keys", async () => {
+  it("Expand all opens every box and Collapse all returns to the branch columns", async () => {
     renderSettings("admin");
     await openStructure();
-    const root = item(/^Marshmallow/);
-    root.focus();
-    fireEvent.keyDown(root, { key: "ArrowDown" });
-    const journey = level2("Lead journey");
-    expect(journey).toHaveFocus();
-    fireEvent.keyDown(journey, { key: "ArrowRight" });
-    expect(journey).toHaveAttribute("aria-expanded", "true");
-    fireEvent.keyDown(journey, { key: "ArrowRight" });
-    expect(item(/^1\. Customer texts or calls in Quo/)).toHaveFocus();
-    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
-    expect(journey).toHaveFocus();
-    fireEvent.keyDown(journey, { key: "ArrowLeft" });
-    expect(journey).toHaveAttribute("aria-expanded", "false");
-    fireEvent.keyDown(journey, { key: "End" });
-    expect(level2("Outside services")).toHaveFocus();
-    expect(screen.getAllByRole("treeitem").filter((el) => el.tabIndex === 0)).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(box("edge/fn:check-urgent-lead")).toHaveAttribute("aria-expanded", "true");
+    expect(childrenOf("edge/fn:check-urgent-lead").getAllByText(/^(CRM|Donut)$/)).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(box("edge/fn:check-urgent-lead")).toBeNull();
+    BRANCHES.forEach((id) => expect(box(id)).toHaveAttribute("aria-expanded", "true"));
   });
 
   it("search opens the path to each match and keeps the rest out", async () => {
@@ -100,17 +96,17 @@ describe("Settings > Structure", () => {
     await openStructure();
     fireEvent.change(screen.getByRole("textbox", { name: "Search the Marshmallow structure" }), { target: { value: "geocode-lead-address" } });
 
-    const hits = screen.getAllByRole("treeitem", { name: /^geocode-lead-address/ });
-    expect(hits.length).toBeGreaterThan(1); // Lead journey, screens, Edge Functions and Donut all reach it.
-    const edgeHit = screen.getAllByRole("treeitem", { name: /^geocode-lead-address/ }).find((el) => el.getAttribute("aria-expanded") !== null)!;
-    fireEvent.click(edgeHit);
-    expect(item(/^Called by: CRM$/)).toBeInTheDocument();
-    expect(item(/^Called by: Donut$/)).toBeInTheDocument();
-    expect(screen.queryByRole("treeitem", { name: /^Technician Intelligence/ })).toBeNull();
+    expect(box("edge/Leads, addresses & maps")).toHaveAttribute("aria-expanded", "true");
+    const fn = box("edge/fn:geocode-lead-address")!;
+    expect(fn).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(fn);
+    expect(childrenOf("edge/fn:geocode-lead-address").getAllByText(/^(CRM|Donut)$/).map((el) => el.textContent)).toEqual(["CRM", "Donut"]);
+    expect(box("edge/AI checks (advisory)")).toBeNull();
+    expect(box("donut/4")).toBeNull(); // Technician Intelligence does not use it
 
     fireEvent.change(screen.getByRole("textbox", { name: "Search the Marshmallow structure" }), { target: { value: "zz_nothing" } });
     expect(screen.getByText(/Nothing matches/)).toBeInTheDocument();
-    expect(screen.queryByRole("tree")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Marshmallow org chart" })).toBeNull();
   });
 
   it.each(["cs_admin", "customer_service", "processor", "opr", "opr_admin"] as const)("does not offer the tab to %s", async (role) => {

@@ -1,22 +1,5 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import {
-  Building2,
-  ChevronRight,
-  Cloud,
-  Cog,
-  FolderTree,
-  Globe,
-  LayoutDashboard,
-  ListChecks,
-  Puzzle,
-  Route,
-  Search,
-  Server,
-  Tag,
-  UserRound,
-  Workflow,
-  type LucideIcon,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronDown, Cloud, FolderTree, LayoutDashboard, Puzzle, Route, Search, Server, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,186 +12,182 @@ import {
   type StructureNodeKind,
 } from "@/lib/app-structure";
 
-const BRANCH_ICONS: Record<string, LucideIcon> = {
-  journey: Route,
-  screens: LayoutDashboard,
-  edge: Server,
-  donut: Puzzle,
-  services: Cloud,
+/** Each top-level branch gets its own colour, like the columns of an org chart. */
+const BRANCH_STYLE: Record<string, { icon: LucideIcon; header: string; card: string; accent: string }> = {
+  journey: {
+    icon: Route,
+    header: "border-amber-300 bg-amber-100 text-amber-950 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-50",
+    card: "border-amber-200 bg-amber-50 dark:border-amber-400/25 dark:bg-amber-400/[0.07]",
+    accent: "border-l-amber-400",
+  },
+  screens: {
+    icon: LayoutDashboard,
+    header: "border-violet-300 bg-violet-100 text-violet-950 dark:border-violet-400/40 dark:bg-violet-400/15 dark:text-violet-50",
+    card: "border-violet-200 bg-violet-50 dark:border-violet-400/25 dark:bg-violet-400/[0.07]",
+    accent: "border-l-violet-400",
+  },
+  edge: {
+    icon: Server,
+    header: "border-sky-300 bg-sky-100 text-sky-950 dark:border-sky-400/40 dark:bg-sky-400/15 dark:text-sky-50",
+    card: "border-sky-200 bg-sky-50 dark:border-sky-400/25 dark:bg-sky-400/[0.07]",
+    accent: "border-l-sky-400",
+  },
+  donut: {
+    icon: Puzzle,
+    header: "border-emerald-300 bg-emerald-100 text-emerald-950 dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-50",
+    card: "border-emerald-200 bg-emerald-50 dark:border-emerald-400/25 dark:bg-emerald-400/[0.07]",
+    accent: "border-l-emerald-400",
+  },
+  services: {
+    icon: Cloud,
+    header: "border-rose-300 bg-rose-100 text-rose-950 dark:border-rose-400/40 dark:bg-rose-400/15 dark:text-rose-50",
+    card: "border-rose-200 bg-rose-50 dark:border-rose-400/25 dark:bg-rose-400/[0.07]",
+    accent: "border-l-rose-400",
+  },
 };
 
-const KIND_ICONS: Partial<Record<StructureNodeKind, LucideIcon>> = {
-  root: Building2,
-  group: FolderTree,
-  step: ListChecks,
-  screen: LayoutDashboard,
-  function: Cog,
-  capability: Puzzle,
-  service: Globe,
-  role: UserRound,
-  status: Tag,
-  caller: Workflow,
-};
+/** Small facts (a role, a status, a caller…) are drawn as compact boxes with a caption. */
+const COMPACT_KINDS = new Set<StructureNodeKind>(["role", "status", "caller", "target", "note"]);
 
-const LABEL_STYLE: Record<StructureNodeKind, string> = {
-  root: "text-[15px] font-bold text-foreground",
-  branch: "text-[14px] font-semibold text-foreground",
-  group: "text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground",
-  step: "text-[13px] font-semibold text-foreground",
-  screen: "text-[13px] font-semibold text-foreground",
-  function: "font-mono text-[12px] font-medium text-primary",
-  capability: "text-[13px] font-semibold text-foreground",
-  service: "text-[13px] font-semibold text-foreground",
-  role: "text-[12px] font-medium text-foreground",
-  status: "text-[12px] font-medium text-foreground",
-  caller: "text-[12px] font-medium text-foreground",
-  target: "font-mono text-[12px] text-foreground",
-  note: "text-[12px] text-foreground/85",
-};
+const LINE = "bg-border";
 
-/** Nodes shown in order, for keyboard movement. */
-function visibleNodes(node: StructureNode, expanded: Set<string>, parentId: string | null, out: Array<{ node: StructureNode; parentId: string | null }> = []) {
-  out.push({ node, parentId });
-  if (node.children?.length && expanded.has(node.id)) node.children.forEach((child) => visibleNodes(child, expanded, node.id, out));
-  return out;
-}
-
-function TreeNode({
+function NodeBox({
   node,
-  level,
+  branch,
+  depth,
   isLast,
   expanded,
-  focusedId,
   onToggle,
-  onFocusNode,
-  onKeyDown,
-  registerRef,
 }: {
   node: StructureNode;
-  level: number;
+  branch: (typeof BRANCH_STYLE)[string];
+  depth: number;
   isLast: boolean;
   expanded: Set<string>;
-  focusedId: string;
   onToggle: (id: string) => void;
-  onFocusNode: (id: string) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>, node: StructureNode) => void;
-  registerRef: (id: string, element: HTMLDivElement | null) => void;
 }) {
-  const hasChildren = Boolean(node.children?.length);
+  const children = node.children ?? [];
+  const hasChildren = children.length > 0;
   const open = hasChildren && expanded.has(node.id);
-  const Icon = (node.kind === "branch" ? BRANCH_ICONS[node.id] : KIND_ICONS[node.kind]) ?? null;
-  const inlineDetail = node.kind === "role" || node.kind === "status" || node.kind === "caller" || node.kind === "target" || node.kind === "note";
-  const groupId = `structure-children-${node.id}`;
+  const compact = COMPACT_KINDS.has(node.kind);
+  const listId = `structure-node-${node.id}`;
+
+  const box = (
+      <span className="flex items-start gap-2">
+        <span className="min-w-0 flex-1">
+          {compact && node.detail && (
+            <span className="block text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{node.detail}</span>
+          )}
+          <span
+            className={cn(
+              "block break-words",
+              node.kind === "function" || node.kind === "target" ? "font-mono text-[11.5px]" : "text-[12.5px]",
+              node.kind === "group" ? "text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground" : "font-semibold text-foreground",
+              compact && "font-medium",
+            )}
+          >
+            {node.label}
+          </span>
+          {!compact && node.detail && <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{node.detail}</span>}
+        </span>
+        {hasChildren && (
+          <span className="mt-0.5 flex shrink-0 items-center gap-0.5 text-[10.5px] font-medium text-muted-foreground">
+            {children.length}
+            <ChevronDown aria-hidden="true" className={cn("h-3.5 w-3.5 transition-transform", !open && "-rotate-90")} />
+          </span>
+        )}
+      </span>
+  );
+
+  const boxClass = cn(
+    "block w-full rounded-md border px-2.5 py-1.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.06)]",
+    depth === 0 ? branch.card : "border-border/70 bg-card",
+    depth > 0 && "border-l-[3px]",
+    depth > 0 && branch.accent,
+    compact && "py-1",
+  );
 
   return (
-    <li
-      role="none"
-      className={cn(
-        "relative",
-        // Connector lines: a vertical rail from the parent and an elbow into this node.
-        level > 1 && [
-          "pl-6",
-          "before:absolute before:left-[9px] before:top-0 before:border-l before:border-border",
-          isLast ? "before:h-[19px]" : "before:h-full",
-          "after:absolute after:left-[9px] after:top-[19px] after:w-3.5 after:border-t after:border-border",
-        ],
+    <li className="relative pl-5">
+      {/* Org-chart connector: rail from the parent and an elbow into this box. */}
+      <span aria-hidden="true" className={cn("absolute left-2 top-0 w-px", LINE, isLast ? "h-[18px]" : "h-full")} />
+      <span aria-hidden="true" className={cn("absolute left-2 top-[18px] h-px w-3", LINE)} />
+      {hasChildren ? (
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={listId}
+          onClick={() => onToggle(node.id)}
+          className={cn(boxClass, "transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
+        >
+          {box}
+        </button>
+      ) : (
+        <div className={boxClass}>{box}</div>
       )}
-    >
-      <div
-        ref={(element) => registerRef(node.id, element)}
-        role="treeitem"
-        aria-level={level}
-        aria-expanded={hasChildren ? open : undefined}
-        aria-owns={open ? groupId : undefined}
-        aria-label={node.detail && inlineDetail ? `${node.detail}: ${node.label}` : node.label}
-        tabIndex={focusedId === node.id ? 0 : -1}
-        onFocus={() => onFocusNode(node.id)}
-        onClick={() => {
-          onFocusNode(node.id);
-          if (hasChildren) onToggle(node.id);
-        }}
-        onKeyDown={(event) => onKeyDown(event, node)}
-        className={cn(
-          "group flex min-h-[38px] cursor-default items-start gap-1.5 rounded-lg px-1.5 py-1.5 outline-none transition-colors",
-          hasChildren && "cursor-pointer hover:bg-muted/50",
-          "focus-visible:ring-2 focus-visible:ring-ring",
-          node.kind === "root" && "bg-primary/[0.06]",
-        )}
-      >
-        <ChevronRight
-          aria-hidden="true"
-          className={cn(
-            "mt-[3px] h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-90",
-            !hasChildren && "invisible",
-          )}
-        />
-        {Icon && (
-          <Icon
-            aria-hidden="true"
-            className={cn("mt-[3px] h-4 w-4 shrink-0", node.kind === "root" || node.kind === "branch" ? "text-primary" : "text-muted-foreground")}
-          />
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            {node.detail && inlineDetail && (
-              <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{node.detail}</span>
-            )}
-            <span className={cn("break-words", LABEL_STYLE[node.kind])}>{node.label}</span>
-            {hasChildren && (
-              <span className="text-[11px] text-muted-foreground">({node.children!.length})</span>
-            )}
-          </span>
-          {node.detail && !inlineDetail && (
-            <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">{node.detail}</span>
-          )}
-        </span>
-      </div>
-
-      {open && (
-        <ul role="group" id={groupId} className="relative">
-          {node.children!.map((child, index) => (
-            <TreeNode
-              key={child.id}
-              node={child}
-              level={level + 1}
-              isLast={index === node.children!.length - 1}
-              expanded={expanded}
-              focusedId={focusedId}
-              onToggle={onToggle}
-              onFocusNode={onFocusNode}
-              onKeyDown={onKeyDown}
-              registerRef={registerRef}
-            />
-          ))}
-        </ul>
-      )}
+      {open && <Stack id={listId} nodes={children} branch={branch} depth={depth + 1} expanded={expanded} onToggle={onToggle} />}
     </li>
   );
 }
 
+function Stack({
+  id,
+  nodes,
+  branch,
+  depth,
+  expanded,
+  onToggle,
+}: {
+  id: string;
+  nodes: StructureNode[];
+  branch: (typeof BRANCH_STYLE)[string];
+  depth: number;
+  expanded: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <ul id={id} className={cn("mt-2 space-y-2", depth > 0 && "ml-2")}>
+      {nodes.map((node, index) => (
+        <NodeBox key={node.id} node={node} branch={branch} depth={depth} isLast={index === nodes.length - 1} expanded={expanded} onToggle={onToggle} />
+      ))}
+    </ul>
+  );
+}
+
 const FULL_TREE = buildStructureTree();
-const DEFAULT_EXPANDED = new Set(["root"]);
+const BRANCH_IDS = (FULL_TREE.children ?? []).map((branch) => branch.id);
+const DEFAULT_EXPANDED = new Set(["root", ...BRANCH_IDS]);
+
+function findNode(node: StructureNode, id: string): StructureNode | null {
+  if (node.id === id) return node;
+  for (const child of node.children ?? []) {
+    const found = findNode(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function nodeMatches(node: StructureNode, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  return node.label.toLowerCase().includes(needle) || (node.detail ?? "").toLowerCase().includes(needle);
+}
 
 export default function StructureTab() {
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(DEFAULT_EXPANDED);
-  const [focusedId, setFocusedId] = useState("root");
-  const refs = useRef(new Map<string, HTMLDivElement>());
 
   const searching = query.trim().length > 0;
   const tree = useMemo(() => filterStructureTree(FULL_TREE, query), [query]);
-  // While searching, every branch on the path to a match is open; a match
-  // itself stays closed until clicked, like any other node.
+  // While searching, every box on the way to a match is open; a match opens on click.
   const pathToMatches = useMemo(
-    () => (searching && tree ? branchIds(tree).filter((id) => id === "root" || !nodeMatches(findNode(tree, id)!, query)) : []),
+    () => (searching && tree ? branchIds(tree).filter((id) => BRANCH_IDS.includes(id) || id === "root" || !nodeMatches(findNode(tree, id)!, query)) : []),
     [searching, tree, query],
   );
-  const shownExpanded = useMemo(() => new Set([...pathToMatches, ...expanded]), [pathToMatches, expanded]);
-  const forcedOpen = useMemo(() => new Set(pathToMatches), [pathToMatches]);
+  const shown = useMemo(() => new Set([...pathToMatches, ...expanded]), [pathToMatches, expanded]);
+  const forced = useMemo(() => new Set(pathToMatches), [pathToMatches]);
 
   const toggle = (id: string) => {
-    if (forcedOpen.has(id)) return;
+    if (forced.has(id)) return;
     setExpanded((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
@@ -217,55 +196,7 @@ export default function StructureTab() {
     });
   };
 
-  const focusNode = (id: string) => {
-    setFocusedId(id);
-    refs.current.get(id)?.focus();
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>, node: StructureNode) => {
-    if (!tree) return;
-    const order = visibleNodes(tree, shownExpanded, null);
-    const index = order.findIndex((entry) => entry.node.id === node.id);
-    const hasChildren = Boolean(node.children?.length);
-    const open = shownExpanded.has(node.id);
-    let handled = true;
-    switch (event.key) {
-      case "ArrowDown":
-        if (index < order.length - 1) focusNode(order[index + 1].node.id);
-        break;
-      case "ArrowUp":
-        if (index > 0) focusNode(order[index - 1].node.id);
-        break;
-      case "ArrowRight":
-        if (hasChildren && !open) toggle(node.id);
-        else if (hasChildren && open) focusNode(node.children![0].id);
-        break;
-      case "ArrowLeft":
-        if (hasChildren && open && !forcedOpen.has(node.id)) toggle(node.id);
-        else if (order[index]?.parentId) focusNode(order[index].parentId!);
-        break;
-      case "Home":
-        focusNode(order[0].node.id);
-        break;
-      case "End":
-        focusNode(order[order.length - 1].node.id);
-        break;
-      case "Enter":
-      case " ":
-        if (hasChildren) toggle(node.id);
-        break;
-      default:
-        handled = false;
-    }
-    if (handled) event.preventDefault();
-  };
-
-  const registerRef = (id: string, element: HTMLDivElement | null) => {
-    if (element) refs.current.set(id, element);
-    else refs.current.delete(id);
-  };
-
-  const rootFocusable = tree && findNode(tree, focusedId) ? focusedId : "root";
+  const branches = tree?.children ?? [];
 
   return (
     <div className="space-y-4">
@@ -278,10 +209,9 @@ export default function StructureTab() {
             <div>
               <h2 className="text-[15px] font-semibold tracking-tight">Marshmallow Structure</h2>
               <p className="text-[12px] leading-relaxed text-muted-foreground">
-                Marshmallow as one tree: the lead journey, every CRM screen and who opens it, the Edge Functions behind
-                them, what Donut does, and the outside services. Click a branch, or use the arrow keys, to open it.
-                Default roles are read from the app's access rules; per-user grants in Feature Access can add more.
-                Read-only.
+                Marshmallow as an org chart: the lead journey, every CRM screen and who opens it, the Edge Functions
+                behind them, what Donut does, and the outside services. Click a box to open what is under it. Default
+                roles are read from the app's access rules; per-user grants in Feature Access can add more. Read-only.
               </p>
             </div>
           </div>
@@ -309,40 +239,73 @@ export default function StructureTab() {
       </Card>
 
       <Card className="border-border/60 bg-card/95">
-        <CardContent className="overflow-x-hidden p-3 sm:p-5">
+        <CardContent className="p-0">
           {tree ? (
-            <ul role="tree" aria-label="Marshmallow structure">
-              <TreeNode
-                node={tree}
-                level={1}
-                isLast
-                expanded={shownExpanded}
-                focusedId={rootFocusable}
-                onToggle={toggle}
-                onFocusNode={setFocusedId}
-                onKeyDown={handleKeyDown}
-                registerRef={registerRef}
-              />
-            </ul>
+            <div className="max-w-full overflow-x-auto" role="region" aria-label="Marshmallow org chart" tabIndex={0}>
+              <div className="min-w-[1180px] px-5 pb-6 pt-6">
+                {/* Root box */}
+                <div className="flex flex-col items-center">
+                  <div className="rounded-lg border-2 border-primary/40 bg-primary/[0.08] px-6 py-2.5 text-center shadow-sm">
+                    <p className="text-[16px] font-bold tracking-tight text-foreground">{tree.label}</p>
+                    {tree.detail && <p className="text-[11px] text-muted-foreground">{tree.detail}</p>}
+                  </div>
+                  <span aria-hidden="true" className={cn("h-6 w-px", LINE)} />
+                </div>
+
+                {/* One column per branch, joined by a horizontal bar */}
+                <ol className="grid gap-x-4" style={{ gridTemplateColumns: `repeat(${branches.length}, minmax(0, 1fr))` }}>
+                  {branches.map((branch, index) => {
+                    const style = BRANCH_STYLE[branch.id] ?? BRANCH_STYLE.journey;
+                    const Icon = style.icon;
+                    const open = shown.has(branch.id);
+                    const listId = `structure-node-${branch.id}`;
+                    return (
+                      <li key={branch.id} className="relative pt-6">
+                        {branches.length > 1 && (
+                          <span
+                            aria-hidden="true"
+                            className={cn("absolute top-0 h-px", LINE)}
+                            style={{
+                              left: index === 0 ? "50%" : "-0.5rem",
+                              right: index === branches.length - 1 ? "50%" : "-0.5rem",
+                            }}
+                          />
+                        )}
+                        <span aria-hidden="true" className={cn("absolute left-1/2 top-0 h-6 w-px", LINE)} />
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          aria-controls={listId}
+                          onClick={() => toggle(branch.id)}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-lg border-2 px-3 py-2 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            style.header,
+                          )}
+                        >
+                          <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13.5px] font-bold leading-tight">{branch.label}</span>
+                            {branch.detail && <span className="block text-[11px] leading-snug opacity-75">{branch.detail}</span>}
+                          </span>
+                          <span className="flex items-center gap-0.5 text-[11px] font-semibold opacity-75">
+                            {branch.children?.length ?? 0}
+                            <ChevronDown aria-hidden="true" className={cn("h-4 w-4 transition-transform", !open && "-rotate-90")} />
+                          </span>
+                        </button>
+                        {open && branch.children && (
+                          <Stack id={listId} nodes={branch.children} branch={style} depth={0} expanded={shown} onToggle={toggle} />
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            </div>
           ) : (
-            <p className="px-2 py-3 text-[13px] text-muted-foreground">Nothing matches “{query.trim()}”.</p>
+            <p className="px-5 py-4 text-[13px] text-muted-foreground">Nothing matches “{query.trim()}”.</p>
           )}
         </CardContent>
       </Card>
     </div>
   );
-}
-
-function findNode(node: StructureNode, id: string): StructureNode | null {
-  if (node.id === id) return node;
-  for (const child of node.children ?? []) {
-    const found = findNode(child, id);
-    if (found) return found;
-  }
-  return null;
-}
-
-function nodeMatches(node: StructureNode, query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  return node.label.toLowerCase().includes(needle) || (node.detail ?? "").toLowerCase().includes(needle);
 }
