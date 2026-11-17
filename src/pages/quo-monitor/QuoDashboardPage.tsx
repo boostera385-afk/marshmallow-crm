@@ -83,6 +83,10 @@ import ManageNumbersModal from "@/components/quo-dashboard/ManageNumbersModal";
 import RenderEmoji from "@/components/common/RenderEmoji";
 import { DateInput } from "@/components/ui/date-input";
 import { backgroundInterval } from "@/lib/overload-guard";
+import { createTrailingThrottle } from "@/lib/coalesced-refresh";
+
+/** At most one conversation-list refresh per window while webhook changes stream in. */
+const QUO_DASHBOARD_REALTIME_REFRESH_MS = 3000;
 
 
 interface QuoPhoneNumber {
@@ -356,18 +360,24 @@ export default function QuoDashboardPage() {
   const totalCount = queryData.count;
 
   useEffect(() => {
+    // Webhook traffic updates quo_conversations thousands of times a day. Each
+    // change used to re-run the paginated exact-count list in every open
+    // dashboard; a burst now costs one refresh per window, and a change that
+    // arrives after a refresh still gets its own (nothing is dropped).
+    const refresh = createTrailingThrottle(() => {
+      void queryClient.invalidateQueries({ queryKey: ["quo-dashboard-conversations"] });
+    }, QUO_DASHBOARD_REALTIME_REFRESH_MS);
     const channel = supabase
       .channel("quo-dashboard-conversations-realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "quo_conversations" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["quo-dashboard-conversations"] });
-        }
+        refresh.request,
       )
       .subscribe();
 
     return () => {
+      refresh.dispose();
       void supabase.removeChannel(channel);
     };
   }, [queryClient]);

@@ -6,6 +6,7 @@ import QuoDashboardPage from "./QuoDashboardPage";
 const state = vi.hoisted(() => ({
   total: 101, rows: [], phones: [], preferences: [], display: {},
   from: vi.fn(), subscribe: vi.fn(), removeChannel: vi.fn(),
+  realtimeHandler: null as null | (() => void),
   client: { invalidateQueries: vi.fn(), setQueryData: vi.fn() },
 }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ role: "admin" }) }));
@@ -22,14 +23,14 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {
   from: state.from,
-  channel: () => { const channel = { on: () => channel, subscribe: () => { state.subscribe(); return channel; } }; return channel; },
+  channel: () => { const channel = { on: (_type: string, _filter: unknown, handler: () => void) => { state.realtimeHandler = handler; return channel; }, subscribe: () => { state.subscribe(); return channel; } }; return channel; },
   removeChannel: state.removeChannel,
 } }));
 vi.mock("framer-motion", () => ({ motion: { section: ({ children, className }: { children?: ReactNode; className?: string }) => <section className={className}>{children}</section> } }));
 vi.mock("@/components/quo-dashboard/QuoNumberDisplayDialog", () => ({ default: () => null }));
 vi.mock("@/components/quo-dashboard/QuoChatDialog", () => ({ default: () => null }));
 vi.mock("@/components/quo-dashboard/ManageNumbersModal", () => ({ default: () => null }));
-beforeEach(() => { vi.clearAllMocks(); state.total = 101; });
+beforeEach(() => { vi.clearAllMocks(); state.total = 101; state.realtimeHandler = null; });
 afterEach(cleanup);
 
 describe("Quo dashboard exact-total freshness", () => {
@@ -47,5 +48,44 @@ describe("Quo dashboard exact-total freshness", () => {
     expect(state.subscribe).toHaveBeenCalledTimes(1);
     view.unmount();
     expect(state.removeChannel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Quo dashboard realtime refresh throttling", () => {
+  const listInvalidations = () => state.client.invalidateQueries.mock.calls
+    .filter(([arg]) => (arg as { queryKey?: string[] })?.queryKey?.[0] === "quo-dashboard-conversations").length;
+
+  it("turns a webhook burst into one list refresh and still refreshes for a later change", () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(<QuoDashboardPage />);
+      expect(state.realtimeHandler).toBeTypeOf("function");
+      for (let i = 0; i < 40; i++) state.realtimeHandler?.();
+      expect(listInvalidations()).toBe(0);
+      vi.advanceTimersByTime(3000);
+      expect(listInvalidations()).toBe(1);
+      state.realtimeHandler?.();
+      vi.advanceTimersByTime(3000);
+      expect(listInvalidations()).toBe(2);
+      expect(state.subscribe).toHaveBeenCalledTimes(1);
+      expect(state.from).not.toHaveBeenCalled();
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops a pending refresh when the dashboard unmounts", () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(<QuoDashboardPage />);
+      state.realtimeHandler?.();
+      view.unmount();
+      vi.advanceTimersByTime(10_000);
+      expect(listInvalidations()).toBe(0);
+      expect(state.removeChannel).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

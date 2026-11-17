@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCoalescedRefresh } from "./coalesced-refresh";
+import { createCoalescedRefresh, createTrailingThrottle } from "./coalesced-refresh";
 
 function deferred() {
   let resolve!: () => void;
@@ -94,5 +94,43 @@ describe("coalesced refresh", () => {
     await queue.request();
     expect(commit).not.toHaveBeenCalled();
     expect(read).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createTrailingThrottle", () => {
+  it("collapses a burst into one trailing run and starts a new window after it", () => {
+    vi.useFakeTimers();
+    try {
+      const run = vi.fn();
+      const throttle = createTrailingThrottle(run, 3000);
+      for (let i = 0; i < 25; i++) throttle.request();
+      vi.advanceTimersByTime(2999);
+      expect(run).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(run).toHaveBeenCalledTimes(1);
+      // A change after the run is never dropped: it gets its own window.
+      throttle.request();
+      vi.advanceTimersByTime(3000);
+      expect(run).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(10_000);
+      expect(run).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never runs after dispose, including a pending window", () => {
+    vi.useFakeTimers();
+    try {
+      const run = vi.fn();
+      const throttle = createTrailingThrottle(run, 3000);
+      throttle.request();
+      throttle.dispose();
+      throttle.request();
+      vi.advanceTimersByTime(10_000);
+      expect(run).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
