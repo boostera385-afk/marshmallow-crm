@@ -360,7 +360,7 @@ export const DOC_SECTIONS: DocSection[] = [
       { type: "kv", label: "CRM Updates", value: "One-time announcements to chosen roles; receipts in crm_update_receipts." },
       { type: "kv", label: "Google Sheets", value: "The Sheets copy of leads: transactional outbox, retries, full rebuild and health watchdog (google-sheets-sync)." },
       { type: "kv", label: "Documentation", value: "This reference, a PDF export, and Sync Population Data, which refreshes us_places from the Census (run yearly)." },
-      { type: "kv", label: "Schema Tree", value: "Admin-only, read-only map of the database: tables grouped by business area with each table's purpose, columns and links to other tables, plus views, database functions and enums, with search. Built from the generated database types, so it matches the schema as of the last type regeneration. It grants nothing; access is still enforced by the database." },
+      { type: "kv", label: "Structure", value: "Admin-only, read-only map of how Marshmallow fits together: the lead journey from a Quo chat to Paid, every CRM screen with its address, the roles that open it by default and the Edge Functions it calls, every Edge Function with who calls it (CRM, Donut, Quo webhook, scheduled job or by hand), what Donut does and talks to, and the outside services. Default roles come from the app's access rules; tests check the map against the code. It grants nothing." },
       { type: "p", text: "Activity Logs record create, update, status change, note, share, request, approval and delete actions with the actor's name, in plain English." },
     ],
   },
