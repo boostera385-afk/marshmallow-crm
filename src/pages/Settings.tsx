@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy, RefreshCw, KeyRound, Lock, FileText, BookOpen, Megaphone, FileSpreadsheet, Hash } from "lucide-react";
+import { Plus, Shield, Eye, EyeOff, Trash2, ShieldCheck, ShieldOff, QrCode, Copy, RefreshCw, KeyRound, Lock, FileText, BookOpen, Megaphone, FileSpreadsheet, Hash, Workflow } from "lucide-react";
 import { DocumentationTab } from "@/components/settings/DocumentationTab";
 import { GoogleSheetsTab } from "@/components/settings/GoogleSheetsTab";
 import LeadCopyAccessSettings from "@/components/settings/LeadCopyAccessSettings";
@@ -33,6 +33,7 @@ import PaidLeadAccessDialog from "@/components/settings/PaidLeadAccessDialog";
 import { describePaidWindow, fetchPaidLeadAccess, setPaidLeadAccess, type PaidAccessChoice } from "@/lib/paid-lead-access";
 import { type AccessFeature } from "@/components/settings/FeatureAccessMatrix";
 const CrmUpdates = lazy(() => import("@/pages/CrmUpdates"));
+const StructureTab = lazy(() => import("@/components/settings/StructureTab"));
 import { cn } from "@/lib/utils";
 import { ALL_LEAD_STATUSES, STATUS_LABELS, ALL_NAV_ITEMS } from "@/lib/constants";
 import { adminApi } from "@/lib/admin-api";
@@ -142,7 +143,7 @@ const Settings = () => {
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState<AppRole>("customer_service");
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<"users" | "nav_permissions" | "status_permissions" | "templates" | "security" | "documentation" | "crm_updates" | "google_sheets">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "nav_permissions" | "status_permissions" | "templates" | "security" | "documentation" | "structure" | "crm_updates" | "google_sheets">("users");
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [passwordUserId, setPasswordUserId] = useState("");
   const [passwordUserName, setPasswordUserName] = useState("");
@@ -993,6 +994,7 @@ const Settings = () => {
             ...(isAdmin ? [{ key: "crm_updates" as const, label: "CRM Updates", icon: Megaphone }] : []),
             ...(isAdmin ? [{ key: "google_sheets" as const, label: "Google Sheets", icon: FileSpreadsheet }] : []),
             ...(isAdmin ? [{ key: "documentation" as const, label: "Documentation", icon: BookOpen }] : []),
+            ...(isAdmin ? [{ key: "structure" as const, label: "Structure", icon: Workflow }] : []),
           ] as const
         ).map((tab) => (
           <button
@@ -1015,6 +1017,12 @@ const Settings = () => {
       </div>
 
       {activeTab === "documentation" && isAdmin && <DocumentationTab />}
+
+      {activeTab === "structure" && isAdmin && (
+        <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
+          <StructureTab />
+        </Suspense>
+      )}
 
       {activeTab === "crm_updates" && isAdmin && (
         <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
