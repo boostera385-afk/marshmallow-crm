@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import SystemGraphView from "@/components/settings/SystemGraphView";
 import { ChevronDown, Cloud, FolderTree, LayoutDashboard, Puzzle, Route, Search, Server, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -172,7 +173,7 @@ function nodeMatches(node: StructureNode, query: string): boolean {
   return node.label.toLowerCase().includes(needle) || (node.detail ?? "").toLowerCase().includes(needle);
 }
 
-export default function StructureTab() {
+function OrgChartView() {
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(DEFAULT_EXPANDED);
 
@@ -201,20 +202,7 @@ export default function StructureTab() {
   return (
     <div className="space-y-4">
       <Card className="border-border/60 bg-card/95">
-        <CardContent className="space-y-4 p-5">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-primary/8 p-2.5 text-primary">
-              <FolderTree className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-[15px] font-semibold tracking-tight">Marshmallow Structure</h2>
-              <p className="text-[12px] leading-relaxed text-muted-foreground">
-                Marshmallow as an org chart: the lead journey, every CRM screen and who opens it, the Edge Functions
-                behind them, what Donut does, and the outside services. Click a box to open what is under it. Default
-                roles are read from the app's access rules; per-user grants in Feature Access can add more. Read-only.
-              </p>
-            </div>
-          </div>
+        <CardContent className="p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -306,6 +294,66 @@ export default function StructureTab() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+type StructureView = "graph" | "org";
+
+const VIEWS: Array<{ key: StructureView; label: string; description: string }> = [
+  {
+    key: "graph",
+    label: "Graph",
+    description:
+      "Every part of Marshmallow as a dot, joined by coloured lines that say how they connect: where AI is used, where the Quo API is called, which functions receive Quo webhooks, and what reads or changes leads.",
+  },
+  {
+    key: "org",
+    label: "Org chart",
+    description:
+      "The same system as an org chart: the lead journey, every CRM screen and who opens it, the Edge Functions behind them, what Donut does, and the outside services.",
+  },
+];
+
+export default function StructureTab() {
+  const [view, setView] = useState<StructureView>("graph");
+  const current = VIEWS.find((v) => v.key === view)!;
+  return (
+    <div className="space-y-4">
+      <Card className="border-border/60 bg-card/95">
+        <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-primary/8 p-2.5 text-primary">
+              <FolderTree className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-[15px] font-semibold tracking-tight">Marshmallow Structure</h2>
+              <p className="max-w-3xl text-[12px] leading-relaxed text-muted-foreground">
+                {current.description} Facts are checked against the code by tests. Default roles come from the app's
+                access rules; per-user grants in Feature Access can add more. Read-only.
+              </p>
+            </div>
+          </div>
+          <div role="tablist" aria-label="Structure view" className="inline-flex shrink-0 self-start rounded-lg border border-border/60 bg-muted/40 p-1">
+            {VIEWS.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                role="tab"
+                aria-selected={view === v.key}
+                onClick={() => setView(v.key)}
+                className={cn(
+                  "min-h-9 rounded-md px-4 text-[12.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  view === v.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+      {view === "graph" ? <SystemGraphView /> : <OrgChartView />}
     </div>
   );
 }
