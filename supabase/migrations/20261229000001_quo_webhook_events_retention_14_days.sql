@@ -1,5 +1,5 @@
 -- =============================================================================
--- Migration : 20261229000000_quo_webhook_events_retention_14_days.sql
+-- Migration : 20261229000001_quo_webhook_events_retention_14_days.sql
 -- Purpose   : Keep the raw Quo webhook delivery log for 14 days instead of 30.
 --
 -- WHY

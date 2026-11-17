@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Read-only harness: three follow-up fixes from the November 2026 DB audit
---   - 20261212000000_processor_board_daily_vault_secrets.sql
+--   - 20261212000001_processor_board_daily_vault_secrets.sql
 --   - 20261212001000_webhook_retention_run_status.sql
 --   - 20261212003000_technician_area_cache_retry.sql
 --

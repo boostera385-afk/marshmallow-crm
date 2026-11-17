@@ -14,7 +14,7 @@
 --             terms, status and payment columns stay absent from the whitelist.
 -- ROLLBACK:
 --   Re-apply the previous apply_urgent_form_fixes() body from
---   20261107000000_ai_urgent_features.sql (whitelist without service_details
+--   20261107000001_ai_urgent_features.sql (whitelist without service_details
 --   and quote).
 -- =============================================================================
 
