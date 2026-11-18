@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { subscribeToTableChanges } from "@/lib/realtime";
 import {
   canReviewQuoteApproval,
   reviewQuoteApproval,
@@ -76,21 +77,14 @@ export default function QuoteApprovalRequests() {
   });
 
   useEffect(() => {
-    const channel = supabase
-      .channel("quote-approval-page-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "lead_quote_approval_requests" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["quote-approval-requests"] });
-          queryClient.invalidateQueries({ queryKey: ["pending-quote-approval-count"] });
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    // Shared with the sidebar badge and the user's other tabs (one subscription per browser).
+    return subscribeToTableChanges(
+      "lead_quote_approval_requests",
+      () => {
+        queryClient.invalidateQueries({ queryKey: ["quote-approval-requests"] });
+        queryClient.invalidateQueries({ queryKey: ["pending-quote-approval-count"] });
+      },
+    );
   }, [queryClient]);
 
   const filteredRequests = useMemo(() => {

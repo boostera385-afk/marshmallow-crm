@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { setupGlobalRealtime, subscribeToLeadChanges, subscribeToNotifications, subscribeToProcessorActivity, subscribeToProcessorBoard, type LeadChange, type NotificationChange } from "./realtime";
+import { realtimeBus, relayTableToBus, setupGlobalRealtime, subscribeToLeadChanges, subscribeToNotifications, subscribeToProcessorActivity, subscribeToProcessorBoard, subscribeToTableChanges, type LeadChange, type NotificationChange } from "./realtime";
 import { getServerLoadLevel, isBackgroundPollPaused, resetOverloadGuard } from "./overload-guard";
 
 const state = vi.hoisted(() => ({
@@ -178,8 +178,45 @@ describe("server load level broadcast", () => {
     const broadcast = global.handlers.find((handler) => handler.event === "system_load")!;
     expect(broadcast).toBeDefined();
     expect(state.channels.filter((channel) => channel.name === "global-app-events")).toHaveLength(1);
+    // Memory: no table is subscribed for every tab any more (screens subscribe on demand).
+    expect(global.handlers.filter((handler) => handler.event !== "system_load")).toEqual([]);
     (broadcast.callback as unknown as (message: unknown) => void)({ event: "system_load", payload: { level: "critical", busy_pct: 91 } });
     expect(getServerLoadLevel()).toBe("critical");
     expect(isBackgroundPollPaused()).toBe(true);
+  });
+});
+
+describe("on-demand table subscriptions (memory: fewer bindings per tab)", () => {
+  const payload = { eventType: "INSERT", new: { id: "row-1" } } as unknown as NotificationChange;
+
+  it("shares one subscription between the sidebar badge and the page for the same table", () => {
+    const badge = vi.fn(); const page = vi.fn();
+    releases.push(subscribeToTableChanges("lead_quote_approval_requests", badge), subscribeToTableChanges("lead_quote_approval_requests", page));
+    const bound = state.channels.filter((c) => c.handlers.some((h) => h.table === "lead_quote_approval_requests"));
+    expect(bound).toHaveLength(1);
+    expect(bound[0].handlers).toEqual([expect.objectContaining({ event: "*", table: "lead_quote_approval_requests" })]);
+    bound[0].handlers[0].callback(payload);
+    expect(badge).toHaveBeenCalledOnce(); expect(page).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a filtered subscription separate from the unfiltered one on the same table", () => {
+    releases.push(subscribeToLeadChanges(vi.fn()), subscribeToTableChanges("leads", vi.fn(), { event: "UPDATE", filter: "status=eq.activate_customer" }));
+    expect(state.channels).toHaveLength(2);
+    expect(state.channels[1].handlers).toEqual([expect.objectContaining({ event: "UPDATE", table: "leads", filter: "status=eq.activate_customer" })]);
+  });
+
+  it("mirrors a table onto the bus only while held, then closes the subscription", () => {
+    const listener = vi.fn();
+    realtimeBus.addEventListener("lead_notes", listener);
+    const release = relayTableToBus("lead_notes");
+    expect(state.channels).toHaveLength(1);
+    state.channels[0].handlers[0].callback(payload);
+    expect(listener).toHaveBeenCalledOnce();
+    expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual(payload);
+    release();
+    expect(state.remove).toHaveBeenCalledOnce();
+    state.channels[0].handlers[0].callback(payload);
+    expect(listener).toHaveBeenCalledOnce();
+    realtimeBus.removeEventListener("lead_notes", listener);
   });
 });

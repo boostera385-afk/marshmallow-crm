@@ -45,7 +45,7 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
     return query;
   },
 } }));
-vi.mock("@/lib/realtime", () => ({ realtimeBus: new EventTarget() }));
+vi.mock("@/lib/realtime", () => ({ realtimeBus: new EventTarget(), relayTableToBus: () => () => {} }));
 
 beforeEach(() => {
   state.role = "processor";
