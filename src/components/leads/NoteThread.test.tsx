@@ -34,7 +34,17 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
     return query;
   },
 } }));
-vi.mock("@/lib/realtime", () => ({ realtimeBus: new EventTarget() }));
+const noteRelay = vi.hoisted(() => ({ held: 0, opened: 0 }));
+vi.mock("@/lib/realtime", () => ({
+  realtimeBus: new EventTarget(),
+  relayTableToBus: (table: string) => {
+    if (table !== "lead_notes") throw new Error(`unexpected table ${table}`);
+    noteRelay.held++;
+    noteRelay.opened++;
+    let released = false;
+    return () => { if (!released) { released = true; noteRelay.held--; } };
+  },
+}));
 
 function visibility(value: DocumentVisibilityState) {
   vi.spyOn(document, "visibilityState", "get").mockReturnValue(value);
@@ -119,15 +129,22 @@ describe("note polling request optimization", () => {
   });
 
   it("does not poll an excluded thread and cleans up polling and catch-up listeners on unmount", async () => {
+    noteRelay.held = 0;
+    noteRelay.opened = 0;
     const excluded = render(<NoteThread leadId="lead-1" noteType="processor" label="Processor notes" />);
     await act(async () => { visibility("visible"); await vi.advanceTimersByTimeAsync(60_000); });
     expect(state.reads).toHaveLength(0);
     expect(screen.queryByText("Processor notes")).toBeNull();
+    // A thread the user cannot read does not subscribe to lead notes either.
+    expect(noteRelay.opened).toBe(0);
     excluded.unmount();
     const visible = render(<NoteThread leadId="lead-1" noteType="cs" label="CS notes" />);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(noteRelay.held).toBe(1);
     const count = state.reads.length;
     visible.unmount();
+    // Lead notes are only subscribed while a thread is open.
+    expect(noteRelay.held).toBe(0);
     await act(async () => { visibility("visible"); await vi.advanceTimersByTimeAsync(60_000); });
     expect(state.reads).toHaveLength(count);
   });

@@ -9,7 +9,7 @@ import { Send, Pencil, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { buildTechEntry, countTechs, formatTechCount, nextTechNumber } from "@/lib/lead-techs";
 import { formatUSPhone } from "@/lib/phone";
-import { realtimeBus } from "@/lib/realtime";
+import { realtimeBus, relayTableToBus } from "@/lib/realtime";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
@@ -166,9 +166,12 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
     };
 
     realtimeBus.addEventListener("lead_notes", handleNotes);
+    // Notes are only subscribed while a thread is open (shared across tabs).
+    const releaseNotes = relayTableToBus("lead_notes");
 
     return () => {
       realtimeBus.removeEventListener("lead_notes", handleNotes);
+      releaseNotes();
     };
   }, [leadId, noteType, fetchNotes, canViewThread]);
 

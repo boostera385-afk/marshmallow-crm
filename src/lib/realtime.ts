@@ -3,6 +3,8 @@ import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { forgetRealtimeChannel, reportRealtimeStatus } from "@/lib/realtime-health";
 import { setServerLoadLevel } from "@/lib/overload-guard";
+import { browserLocks, type ChannelLike } from "@/lib/cross-tab";
+import { createRealtimeRelay, type RealtimeEvent, type RealtimeRelay, type TableBinding } from "@/lib/realtime-relay";
 
 /**
  * A lightweight global event bus for distributing Supabase Realtime events locally
@@ -10,104 +12,107 @@ import { setServerLoadLevel } from "@/lib/overload-guard";
  */
 export const realtimeBus = new EventTarget();
 
+/** Opens a real Postgres Changes channel for the relay (leader tab only). */
+function openSupabaseChannel(
+  name: string,
+  bindings: TableBinding[],
+  onPayload: (bindingIndex: number, payload: unknown) => void,
+  onStatus: (status: string) => void,
+) {
+  const channel = supabase.channel(name);
+  bindings.forEach((binding, index) => {
+    channel.on(
+      // The overloads only accept literal events; bindings are validated by type.
+      "postgres_changes" as never,
+      { event: binding.event, schema: "public", table: binding.table, ...(binding.filter ? { filter: binding.filter } : {}) },
+      (payload: unknown) => onPayload(index, payload),
+    );
+  });
+  channel.subscribe((status) => onStatus(status));
+  return () => { void supabase.removeChannel(channel); };
+}
+
+let relay: RealtimeRelay | null = null;
+/** The tab's relay: one real channel per subscription per browser (see realtime-relay). */
+export function realtimeRelay(): RealtimeRelay {
+  relay ??= createRealtimeRelay({
+    locks: browserLocks(),
+    createChannel: typeof BroadcastChannel === "function" ? (name) => new BroadcastChannel(name) as unknown as ChannelLike : null,
+    openChannel: openSupabaseChannel,
+    reportStatus: reportRealtimeStatus,
+    forgetStatus: forgetRealtimeChannel,
+  });
+  return relay;
+}
+/** Test hook: install a relay (or reset to the browser one with null). */
+export function setRealtimeRelay(next: RealtimeRelay | null) {
+  relay = next;
+}
+
+/**
+ * Follow one table's changes (optionally one event and filter) while the
+ * returned release is held. Every consumer in every tab of the browser shares
+ * one subscription; it opens with the first consumer and closes with the last.
+ */
+export function subscribeToTableChanges<T = unknown>(
+  table: string,
+  onChange: (payload: T) => void,
+  options: { event?: RealtimeEvent; filter?: string } = {},
+) {
+  const event = options.event ?? "*";
+  const key = `table:${table}:${event}:${options.filter ?? ""}`;
+  return realtimeRelay().subscribe(
+    { key, bindings: [{ event, table, ...(options.filter ? { filter: options.filter } : {}) }], healthName: key },
+    (payload) => onChange(payload as T),
+  );
+}
+
+/**
+ * Mirror a table's changes onto realtimeBus (event name = table, payload in
+ * `detail`) while held. Screens that already listen on the bus mount this so
+ * the table is only subscribed while something that uses it is on screen.
+ */
+export function relayTableToBus(table: string) {
+  return subscribeToTableChanges(table, (payload) => {
+    realtimeBus.dispatchEvent(new CustomEvent(table, { detail: payload }));
+  });
+}
+
 type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"];
 export type NotificationChange = RealtimePostgresChangesPayload<NotificationRow>;
-type NotificationSubscription = {
-  channel: ReturnType<typeof supabase.channel>;
-  consumers: number;
-};
-const notificationSubscriptions = new Map<string, NotificationSubscription>();
-let notificationChannelId = 0;
 
-/** One recipient-filtered transport for the bell and all eligible popups. No row cache. */
+/** One recipient-filtered transport for the bell and all eligible popups, shared across tabs. No row cache. */
 export function subscribeToNotifications(userId: string, onChange: (payload: NotificationChange) => void) {
-  const eventName = `notifications:${userId}`;
-  const listener = (event: Event) => onChange((event as CustomEvent<NotificationChange>).detail);
-  realtimeBus.addEventListener(eventName, listener);
-
-  let subscription = notificationSubscriptions.get(userId);
-  if (!subscription) {
-    // A distinct name also avoids reusing a channel still leaving after a rapid remount.
-    const channel = supabase.channel(`notifications:${userId}:${++notificationChannelId}`);
-    const entry: NotificationSubscription = { channel, consumers: 0 };
-    notificationSubscriptions.set(userId, entry);
-    const dispatch = (payload: NotificationChange) => {
-      if (notificationSubscriptions.get(userId) !== entry) return;
-      realtimeBus.dispatchEvent(new CustomEvent(eventName, { detail: payload }));
-    };
-    channel
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}`,
-      }, dispatch)
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}`,
-      }, dispatch)
-      .subscribe((status) => {
-        if (notificationSubscriptions.get(userId) === entry) reportRealtimeStatus("notifications", status);
-      });
-    subscription = entry;
-  }
-  subscription.consumers++;
-  const entry = subscription;
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    realtimeBus.removeEventListener(eventName, listener);
-    if (--entry.consumers === 0) {
-      notificationSubscriptions.delete(userId);
-      forgetRealtimeChannel("notifications");
-      void supabase.removeChannel(entry.channel);
-    }
-  };
+  return realtimeRelay().subscribe(
+    {
+      key: `notifications:${userId}`,
+      healthName: "notifications",
+      bindings: [
+        { event: "INSERT", table: "notifications", filter: `user_id=eq.${userId}` },
+        { event: "UPDATE", table: "notifications", filter: `user_id=eq.${userId}` },
+      ],
+    },
+    (payload) => onChange(payload as NotificationChange),
+  );
 }
 
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 export type LeadChange = RealtimePostgresChangesPayload<LeadRow>;
-type LeadChangeSubscription = { channel: ReturnType<typeof supabase.channel>; consumers: number };
-let leadChangeSubscription: LeadChangeSubscription | null = null;
-let leadChangeGeneration = 0;
-const LEAD_CHANGE_EVENT = "leads:change";
 
 /**
- * Every screen that follows all lead changes shares ONE `leads` realtime
- * channel per tab. Each subscription costs the database a security check per
- * changed row, so several screens (Leads, Map, Schedule, Areas, Quote Pending,
- * Processor Board, nearby-urgent) each opening their own channel multiplied
- * that work for the same events. Consumers get the same payloads, instantly;
- * the channel closes when the last consumer unmounts.
+ * Every screen that follows all lead changes shares ONE `leads` subscription
+ * per browser (see realtime-relay). Each subscription costs the database a
+ * security check per changed row and the Realtime service memory, so screens
+ * (Leads, Map, Schedule, Areas, Quote Pending, Processor Board, nearby-urgent)
+ * and tabs each opening their own multiplied that work for the same events.
+ * Consumers get the same payloads, instantly; the subscription closes when the
+ * last consumer in the last tab unmounts.
  */
 export function subscribeToLeadChanges(onChange: (payload: LeadChange) => void) {
-  const listener = (event: Event) => onChange((event as CustomEvent<LeadChange>).detail);
-  realtimeBus.addEventListener(LEAD_CHANGE_EVENT, listener);
-
-  if (!leadChangeSubscription) {
-    // A distinct name also avoids reusing a channel still leaving after a rapid remount.
-    const channel = supabase.channel(`leads-changes:${++leadChangeGeneration}`);
-    const entry: LeadChangeSubscription = { channel, consumers: 0 };
-    leadChangeSubscription = entry;
-    channel
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, (payload: LeadChange) => {
-        if (leadChangeSubscription !== entry) return;
-        realtimeBus.dispatchEvent(new CustomEvent(LEAD_CHANGE_EVENT, { detail: payload }));
-      })
-      .subscribe((status) => {
-        if (leadChangeSubscription === entry) reportRealtimeStatus("leads", status);
-      });
-  }
-  const entry = leadChangeSubscription;
-  entry.consumers++;
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    realtimeBus.removeEventListener(LEAD_CHANGE_EVENT, listener);
-    if (--entry.consumers === 0 && leadChangeSubscription === entry) {
-      leadChangeSubscription = null;
-      forgetRealtimeChannel("leads");
-      void supabase.removeChannel(entry.channel);
-    }
-  };
+  return realtimeRelay().subscribe(
+    { key: "leads:all", healthName: "leads", bindings: [{ event: "*", table: "leads" }] },
+    (payload) => onChange(payload as LeadChange),
+  );
 }
 
 let isRealtimeSetup = false;
@@ -195,26 +200,10 @@ export function setupGlobalRealtime() {
     .on("broadcast", { event: "system_load" }, (message: { payload?: { level?: unknown } }) => {
       setServerLoadLevel(message?.payload?.level);
     })
-    // Lead Notes
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "lead_notes" },
-      (payload) => {
-        realtimeBus.dispatchEvent(new CustomEvent("lead_notes", { detail: payload }));
-      }
-    )
-    .on("postgres_changes", { event: "*", schema: "public", table: "lead_hold_alerts" }, (payload) => {
-      realtimeBus.dispatchEvent(new CustomEvent("lead_hold_alerts", { detail: payload }));
-    })
-    .on("postgres_changes", { event: "*", schema: "public", table: "lead_cx_update_requests" }, () => {
-      realtimeBus.dispatchEvent(new Event("lead_cx_update_requests"));
-    })
-    .on("postgres_changes", { event: "*", schema: "public", table: "lead_copy_role_permissions" }, () => {
-      realtimeBus.dispatchEvent(new Event("lead_copy_role_permissions"));
-    })
-    .on("postgres_changes", { event: "*", schema: "public", table: "lead_copy_user_permissions" }, () => {
-      realtimeBus.dispatchEvent(new Event("lead_copy_user_permissions"));
-    })
+    // Table changes (lead notes, hold alerts, CX/Tech update requests) are no
+    // longer subscribed here for every tab: screens that use them hold
+    // relayTableToBus(table) while mounted, shared across tabs. Copy-permission
+    // settings are read on focus and by a short poll (OperatorWorkflowSync).
     .subscribe((status, err) => {
       reportRealtimeStatus("global", status);
       if (status === 'SUBSCRIBED') {

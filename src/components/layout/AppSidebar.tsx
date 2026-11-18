@@ -57,6 +57,8 @@ import { isQuotationMaster } from "@/lib/lead-tags";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSharedQuery } from "@/hooks/useCrossTab";
 import { supabase } from "@/integrations/supabase/client";
+import { realtimeRelay, subscribeToTableChanges } from "@/lib/realtime";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import marshmallowLogo from "@/assets/marshmallow-logo.png.asset.json";
 import ChangePasswordDialog from "@/components/auth/ChangePasswordDialog";
 import { useUpdateCount } from "@/hooks/useCxUpdates";
@@ -280,56 +282,25 @@ export default function AppSidebar() {
   // Realtime subscription for instant sidebar updates when a cancellation is requested/resolved
   useEffect(() => {
     if (!canSeeCancellations) return;
-    const channel = supabase
-      .channel("lead-cancellations-sidebar-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "lead_cancellation_requests" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["pending-cancellations-count"] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    // Shared with the Cancellation Requests page and the user's other tabs.
+    return subscribeToTableChanges("lead_cancellation_requests", () => {
+      queryClient.invalidateQueries({ queryKey: ["pending-cancellations-count"] });
+    });
   }, [canSeeCancellations, queryClient]);
 
   // Realtime subscription for payment request badge
   useEffect(() => {
     if (role !== "admin") return;
-    const channel = supabase
-      .channel("lead-payment-requests-sidebar-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "lead_payment_requests" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["pending-payment-requests-count"] });
-        }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return subscribeToTableChanges("lead_payment_requests", () => {
+      queryClient.invalidateQueries({ queryKey: ["pending-payment-requests-count"] });
+    });
   }, [queryClient, role]);
 
   useEffect(() => {
     if (!canSeeQuoteApproval) return;
-    const channel = supabase
-      .channel("quote-approval-sidebar-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "lead_quote_approval_requests" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["pending-quote-approval-count"] });
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return subscribeToTableChanges("lead_quote_approval_requests", () => {
+      queryClient.invalidateQueries({ queryKey: ["pending-quote-approval-count"] });
+    });
   }, [canSeeQuoteApproval, queryClient]);
 
   // Realtime subscription for quote pending requests badge and notification
@@ -363,39 +334,31 @@ export default function AppSidebar() {
       void import("@/lib/notification-sound").then(({ playUrgentAlertSound }) => playUrgentAlertSound());
     };
 
-    const channel = supabase
-      .channel("quote-pending-sidebar-realtime")
-      // Server-side filter: only rows entering "pending_to_send" are delivered,
-      // instead of every lead change. Cuts realtime message volume drastically.
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "leads", filter: "status=eq.pending_to_send" },
-        (payload) => announceQuotePending(payload.new as { id?: string; status?: string } | undefined),
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "leads", filter: "status=eq.pending_to_send" },
-        (payload) => announceQuotePending(payload.new as { id?: string; status?: string } | undefined),
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    // Server-side filter: only rows entering "pending_to_send" are delivered,
+    // instead of every lead change. One subscription per browser, not per tab;
+    // each tab still announces (once per lead per tab, as before).
+    return realtimeRelay().subscribe(
+      {
+        key: "leads:pending_to_send",
+        healthName: "leads:pending_to_send",
+        bindings: [
+          { event: "UPDATE", table: "leads", filter: "status=eq.pending_to_send" },
+          { event: "INSERT", table: "leads", filter: "status=eq.pending_to_send" },
+        ],
+      },
+      (payload) => announceQuotePending((payload as { new?: { id?: string; status?: string; customer_name?: string | null } }).new),
+    );
   }, [queryClient, role, profile?.is_quotation_master, navigate]);
 
     // Global Leads Notifications (e.g. Activate Customer)
   useEffect(() => {
     if (!profile) return;
 
-    const channel = supabase
-      .channel("global-leads-notifications")
-      // Only "activate_customer" rows are delivered — the handler ignores every
-      // other status anyway, so this is a pure realtime-cost reduction.
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "leads", filter: "status=eq.activate_customer" },
-        (payload) => {
+    // Only "activate_customer" rows are delivered — the handler ignores every
+    // other status anyway — through one subscription per browser.
+    return subscribeToTableChanges<RealtimePostgresChangesPayload<{ id?: string; status?: string; customer_name?: string | null; created_by?: string }>>(
+      "leads",
+      (payload) => {
           const newRow = payload.new as { id?: string; status?: string; customer_name?: string | null; created_by?: string } | undefined;
           const oldRow = payload.old as { status?: string } | undefined;
 
@@ -414,13 +377,9 @@ export default function AppSidebar() {
               });
             }
           }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+      },
+      { event: "UPDATE", filter: "status=eq.activate_customer" },
+    );
   }, [role, profile?.id, navigate]);
 
   const visibleItems = getNavItems(role || "").filter((item) => ("anyOf" in item && item.anyOf ? item.anyOf : [item.navKey]).some(canAccess));

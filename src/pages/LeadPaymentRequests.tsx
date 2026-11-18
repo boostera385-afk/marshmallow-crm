@@ -2,6 +2,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DollarSign, CheckCircle2, XCircle, User, MapPin } from "lucide-react";
 import { InlineSuggestions } from "@/components/payments/InlineSuggestions";
 import { supabase } from "@/integrations/supabase/client";
+import { subscribeToTableChanges } from "@/lib/realtime";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -101,59 +103,53 @@ export default function LeadPaymentRequests() {
   });
 
   useEffect(() => {
-    const channel = supabase
-      .channel("lead-payment-requests-page-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "lead_payment_requests" },
-        async (payload) => {
-          if (payload.eventType === "DELETE") {
-            const oldRow = payload.old;
-            queryClient.setQueryData<Row[]>(["lead-payment-requests-page"], (old) => {
-              if (!old) return old;
-              return old.filter((r) => r.id !== oldRow.id);
-            });
-            return;
-          }
-
-          if (payload.eventType === "UPDATE") {
-            const newRow = payload.new as LeadPaymentRequest;
-            queryClient.setQueryData<Row[]>(["lead-payment-requests-page"], (old) => {
-              if (!old) return old;
-              if (newRow.status !== "pending") return old.filter((r) => r.id !== newRow.id);
-              return old.map((r) => (r.id === newRow.id ? { ...r, ...newRow } : r));
-            });
-            return;
-          }
-
-          if (payload.eventType === "INSERT") {
-            const newRow = payload.new as LeadPaymentRequest;
-            if (newRow.status !== "pending") return;
-
-            const { data: leadData } = await supabase.from("leads").select(PAYMENT_PAGE_LEAD_COLUMNS).eq("id", newRow.lead_id).single();
-            let requesterName = newRow.requested_by_name || null;
-            if (newRow.requested_by) {
-              const { data: profile } = await supabase.from("profiles_public").select("full_name").eq("id", newRow.requested_by).maybeSingle();
-              if (profile) requesterName = profile.full_name;
-            }
-
-            const enrichedRequest: Row = {
-              ...newRow,
-              lead: leadData as unknown as PaymentPageLead,
-              requester_name: requesterName,
-            };
-
-            queryClient.setQueryData<Row[]>(["lead-payment-requests-page"], (old) => {
-              if (!old) return old;
-              return [enrichedRequest, ...old];
-            });
-          }
+    // Shared with the sidebar badge and the user's other tabs (one subscription per browser).
+    return subscribeToTableChanges<RealtimePostgresChangesPayload<LeadPaymentRequest>>(
+      "lead_payment_requests",
+      async (payload) => {
+        if (payload.eventType === "DELETE") {
+          const oldRow = payload.old;
+          queryClient.setQueryData<Row[]>(["lead-payment-requests-page"], (old) => {
+            if (!old) return old;
+            return old.filter((r) => r.id !== oldRow.id);
+          });
+          return;
         }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+
+        if (payload.eventType === "UPDATE") {
+          const newRow = payload.new as LeadPaymentRequest;
+          queryClient.setQueryData<Row[]>(["lead-payment-requests-page"], (old) => {
+            if (!old) return old;
+            if (newRow.status !== "pending") return old.filter((r) => r.id !== newRow.id);
+            return old.map((r) => (r.id === newRow.id ? { ...r, ...newRow } : r));
+          });
+          return;
+        }
+
+        if (payload.eventType === "INSERT") {
+          const newRow = payload.new as LeadPaymentRequest;
+          if (newRow.status !== "pending") return;
+
+          const { data: leadData } = await supabase.from("leads").select(PAYMENT_PAGE_LEAD_COLUMNS).eq("id", newRow.lead_id).single();
+          let requesterName = newRow.requested_by_name || null;
+          if (newRow.requested_by) {
+            const { data: profile } = await supabase.from("profiles_public").select("full_name").eq("id", newRow.requested_by).maybeSingle();
+            if (profile) requesterName = profile.full_name;
+          }
+
+          const enrichedRequest: Row = {
+            ...newRow,
+            lead: leadData as unknown as PaymentPageLead,
+            requester_name: requesterName,
+          };
+
+          queryClient.setQueryData<Row[]>(["lead-payment-requests-page"], (old) => {
+            if (!old) return old;
+            return [enrichedRequest, ...old];
+          });
+        }
+      },
+    );
   }, [queryClient]);
 
   const handleReview = async (row: Row, action: "approved" | "rejected") => {

@@ -315,7 +315,7 @@ export class NoOwnerError extends Error {
 
 export type CrossTabCoordinator = ReturnType<typeof createCrossTabCoordinator>;
 
-function browserLocks(): LockManagerLike | null {
+export function browserLocks(): LockManagerLike | null {
   if (typeof navigator === "undefined") return null;
   const locks = (navigator as Navigator & { locks?: Partial<LockManagerLike> }).locks;
   // Require the full API; partial stand-ins keep the per-tab behaviour.

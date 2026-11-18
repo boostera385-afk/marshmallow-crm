@@ -4,7 +4,7 @@ import { useSharedQuery } from "@/hooks/useCrossTab";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessCxUpdates } from "@/lib/access";
 import { fetchUpdateCounts, fetchUpdateQueue, fetchUpdateRequest, type UpdateRequestKind, type UpdateRequestView } from "@/lib/cx-update-requests";
-import { realtimeBus } from "@/lib/realtime";
+import { realtimeBus, relayTableToBus } from "@/lib/realtime";
 import { useCoalescedRefresh } from "@/hooks/useCoalescedRefresh";
 import { useCallback } from "react";
 
@@ -19,7 +19,12 @@ function useUpdateRefresh(enabled: boolean) {
     if (!enabled) return;
     const listener = () => { void refresh(); };
     realtimeBus.addEventListener("lead_cx_update_requests", listener);
-    return () => realtimeBus.removeEventListener("lead_cx_update_requests", listener);
+    // Subscribed only for roles that see CX/Tech updates, once per browser.
+    const release = relayTableToBus("lead_cx_update_requests");
+    return () => {
+      realtimeBus.removeEventListener("lead_cx_update_requests", listener);
+      release();
+    };
   }, [refresh, enabled]);
 }
 export function useUpdateCount(kind: UpdateRequestKind, requested = true) {

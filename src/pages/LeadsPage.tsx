@@ -32,7 +32,7 @@ import { type DateRange } from "react-day-picker";
 import { ScheduleDateFilter } from "@/components/leads/ScheduleDateFilter";
 import { doesLeadMatchScheduleDateRange, leadNeedsAttention } from "@/lib/schedule-date-filter";
 import { readLeadsCacheEntry, writeLeadsCache } from "@/lib/leadsCache";
-import { subscribeToLeadChanges } from "@/lib/realtime";
+import { subscribeToLeadChanges, subscribeToTableChanges } from "@/lib/realtime";
 import { useRealtimeReconnect } from "@/lib/realtime-health";
 import { isBackgroundPollPaused, isServerLoadRaised } from "@/lib/overload-guard";
 import {
@@ -666,18 +666,11 @@ export default function LeadsPage() {
   // it untouched), so the badge listens to the request table itself.
   useEffect(() => {
     if (!user || !role) return;
-    const channel = supabase
-      .channel("leads-page-quote-approvals")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "lead_quote_approval_requests" },
-        () => setQuoteApprovalVersion((v) => v + 1),
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    // Shared with the sidebar badge and the user's other tabs (one subscription per browser).
+    return subscribeToTableChanges(
+      "lead_quote_approval_requests",
+      () => setQuoteApprovalVersion((v) => v + 1),
+    );
   }, [role, user]);
 
   const visibleMyLeads = useMemo(() => filterLeads([...leads]), [leads, filterLeads]);
