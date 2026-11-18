@@ -169,7 +169,7 @@ function ProcessorBoard() {
       {query.isError && <div role="alert" className="m-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm"><p>{query.error.message}</p><Button className="mt-3" size="sm" variant="outline" onClick={() => void query.refetch()}>Retry loading board</Button></div>}
 
       {query.isLoading ? <div aria-label="Loading jobs" className="space-y-2 p-4">{[1, 2, 3, 4].map((n) => <Skeleton key={n} className="h-10 w-full" />)}</div> : !query.isError && <>
-        {!isMobile ? <div className="processor-table max-h-[70vh] overflow-auto" role="region" aria-label="Board jobs" tabIndex={0}>
+        {!isMobile ? <div className="processor-table relative max-h-[70vh] overflow-auto" role="region" aria-label="Board jobs" tabIndex={0}>
           <table className="w-full table-fixed border-collapse text-left text-xs">
             <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
               <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">

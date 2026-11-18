@@ -92,6 +92,17 @@ describe("Processor Board", () => {
     expect(rowFor("LD-1001").querySelector("[data-overdue]")).toHaveClass("text-red-500");
     expect(rowFor("LD-1002").querySelector("[data-overdue]")).toBeNull();
   });
+  it("keeps the overdue screen-reader label inside the table's scroll box (no empty page scroll below the board)", () => {
+    mount();
+    // .sr-only is position:absolute. Without a positioned scroll box it escapes the
+    // box's clipping and stretches the page down to the last overdue row's offset
+    // (reproduced in Chromium: ~3,360px of empty scroll for 83 rows).
+    const region = screen.getByRole("region", { name: "Board jobs" });
+    const label = screen.getByText("Appointment time has passed");
+    expect(label).toHaveClass("sr-only");
+    expect(region).toContainElement(label);
+    expect(region).toHaveClass("relative", "overflow-auto");
+  });
   it("keeps the server's newest-lead order", () => {
     mount();
     expect(screen.getAllByRole("row").slice(1).map((row) => row.textContent?.match(/#(LD-\d+)/)?.[1])).toEqual(["LD-1002", "LD-1001"]);
