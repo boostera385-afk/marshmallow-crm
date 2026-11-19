@@ -63,9 +63,15 @@ async function renderThread() {
 describe("Processor note thumbs-up", () => {
   it("adds one thumbs-up to a colleague's note and shows the count", async () => {
     await renderThread();
-    await act(async () => { fireEvent.click(screen.getByLabelText("Give a thumbs up")); });
+    const add = screen.getByLabelText("Give a thumbs up");
+    // Empty state is an "add reaction" smiley, not a faded 👍 that looks already given.
+    expect(add).not.toHaveTextContent("👍");
+    expect(screen.getByTestId("note-reaction-add-icon")).toBeInTheDocument();
+    expect(add.className).not.toMatch(/opacity-60/);
+    await act(async () => { fireEvent.click(add); });
     expect(state.inserts).toEqual([{ note_id: "n1", user_id: "me" }]);
-    expect(screen.getByLabelText("Remove your thumbs up")).toHaveTextContent("1");
+    expect(screen.getByLabelText("Remove your thumbs up")).toHaveTextContent("👍1");
+    expect(screen.queryByTestId("note-reaction-add-icon")).toBeNull();
   });
 
   it("removes my thumbs-up when pressed again", async () => {
@@ -80,7 +86,9 @@ describe("Processor note thumbs-up", () => {
   it("shows other processors' thumbs-up to everyone with the count", async () => {
     state.reactions = [{ user_id: "p2" }, { user_id: "p3" }];
     await renderThread();
-    expect(screen.getByLabelText("Give a thumbs up")).toHaveTextContent("2");
+    const others = screen.getByLabelText("Give a thumbs up");
+    expect(others).toHaveTextContent("👍2");
+    expect(others.className).not.toMatch(/opacity-60/);
   });
 
   it("rolls back and reports when the write is refused", async () => {

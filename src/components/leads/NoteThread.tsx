@@ -5,7 +5,7 @@ import { canEditOthersProcessorNotes, canReactToProcessorNotes, isOperatorRole }
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Send, Pencil, Check, X } from "lucide-react";
+import { Send, Pencil, Check, X, SmilePlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { buildTechEntry, countTechs, formatTechCount, nextTechNumber } from "@/lib/lead-techs";
 import { formatUSPhone } from "@/lib/phone";
@@ -506,10 +506,18 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                         aria-label={mine ? "Remove your thumbs up" : "Give a thumbs up"}
                         title={names || "Thumbs up"}
                         className={`inline-flex items-center gap-1 rounded-full border px-1.5 text-[11px] transition-colors ${
-                          mine ? "border-primary/40 bg-primary/10 text-foreground" : "border-border/50 text-muted-foreground opacity-60 hover:opacity-100"
+                          mine
+                            ? "border-primary/40 bg-primary/10 text-foreground"
+                            : reactions.length > 0
+                              ? "border-border/50 text-foreground hover:bg-muted"
+                              : "border-transparent py-0.5 text-muted-foreground hover:border-border/50 hover:bg-muted hover:text-foreground"
                         }`}
                       >
-                        <span aria-hidden>👍</span>{reactions.length > 0 ? reactions.length : null}
+                        {reactions.length > 0 ? (
+                          <><span aria-hidden>👍</span>{reactions.length}</>
+                        ) : (
+                          <SmilePlus aria-hidden data-testid="note-reaction-add-icon" className="h-3.5 w-3.5" />
+                        )}
                       </button>
                     );
                   })()}
