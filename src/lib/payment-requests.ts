@@ -18,6 +18,16 @@ export const PAYMENT_REQUEST_TYPE_LABELS: Record<PaymentRequestType, string> = {
   partial_paid: "Partial Paid",
 };
 
+const PAYMENT_REQUEST_TYPE_TAG_CLASSES: Record<PaymentRequestType, string> = {
+  paid: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  partial_paid: "border-yellow-500/40 bg-yellow-400/15 text-yellow-800 dark:text-yellow-300",
+};
+
+/** Tag colours for a request's outcome: Paid is green, Partial Paid is yellow.
+ * Legacy rows without a request_type were Paid requests. */
+export const paymentRequestTypeTagClass = (requestType?: PaymentRequestType | null) =>
+  PAYMENT_REQUEST_TYPE_TAG_CLASSES[requestType === "partial_paid" ? "partial_paid" : "paid"];
+
 export interface LeadPaymentRequest {
   id: string;
   lead_id: string;
@@ -67,6 +77,15 @@ const table = () => supabase.from("lead_payment_requests");
 
 /** Same gate for both a Paid request and a Partial Paid request. */
 export const canCreatePaymentRequest = (role?: AppRole | null) => role === "processor";
+
+/** An Admin moving a lead to Paid from anything other than Partial Paid picks
+ * Paid or Partial Paid in the confirmation dialog. From Partial Paid, Paid is
+ * the only sensible next step, so no choice is shown. */
+export const shouldOfferPaymentTypeChoice = (
+  role: AppRole | null | undefined,
+  targetType: PaymentRequestType,
+  previousStatus: LeadStatus | null | undefined,
+) => role === "admin" && targetType === "paid" && previousStatus !== "partial_paid";
 
 export const canReviewPaymentRequest = (role: AppRole | null | undefined, request?: LeadPaymentRequest | null) => {
   if (!request || request.status !== "pending") return false;

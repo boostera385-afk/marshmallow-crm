@@ -23,6 +23,7 @@ import {
   canReviewPaymentRequest,
   reviewPaymentRequest,
   PAYMENT_REQUEST_TYPE_LABELS,
+  paymentRequestTypeTagClass,
   type LeadPaymentRequest,
 } from "@/lib/payment-requests";
 import { PAYMENT_PAGE_LEAD_COLUMNS, type PaymentPageLead } from "@/lib/request-page-leads";
@@ -270,7 +271,7 @@ export default function LeadPaymentRequests() {
                         <span className="rounded-full border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">
                           {lead?.job_id || row.lead_id}
                         </span>
-                        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${paymentRequestTypeTagClass(row.request_type)}`}>
                           {PAYMENT_REQUEST_TYPE_LABELS[row.request_type]} request
                         </span>
                       </div>

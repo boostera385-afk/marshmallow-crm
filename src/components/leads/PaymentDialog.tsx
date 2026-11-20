@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { DollarSign, Upload } from 'lucide-react';
 import { PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from '@/lib/payment-requests';
 
@@ -17,9 +18,16 @@ interface Props {
   mode?: 'direct' | 'request';
   /** Which outcome this dialog is recording/requesting. Defaults to 'paid'. */
   requestType?: PaymentRequestType;
+  /** Direct mode only: let the Admin pick Paid or Partial Paid before confirming. */
+  allowTypeChoice?: boolean;
+  onRequestTypeChange?: (requestType: PaymentRequestType) => void;
 }
 
-export default function PaymentDialog({ open, onOpenChange, onConfirm, loading, mode = 'direct', requestType = 'paid' }: Props) {
+const TYPE_CHOICES: PaymentRequestType[] = ['paid', 'partial_paid'];
+
+export default function PaymentDialog({
+  open, onOpenChange, onConfirm, loading, mode = 'direct', requestType = 'paid', allowTypeChoice = false, onRequestTypeChange,
+}: Props) {
   const isRequest = mode === 'request';
   const isPartial = requestType === 'partial_paid';
   const typeLabel = PAYMENT_REQUEST_TYPE_LABELS[requestType];
@@ -74,6 +82,34 @@ export default function PaymentDialog({ open, onOpenChange, onConfirm, loading, 
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {!isRequest && allowTypeChoice && onRequestTypeChange && (
+            <div className="space-y-2">
+              <Label id="payment-type-label" className="text-[11px] font-medium text-muted-foreground/60">Status *</Label>
+              <RadioGroup
+                aria-labelledby="payment-type-label"
+                value={requestType}
+                onValueChange={(value) => onRequestTypeChange(value as PaymentRequestType)}
+                className="grid grid-cols-2 gap-2"
+              >
+                {TYPE_CHOICES.map((type) => (
+                  <Label
+                    key={type}
+                    htmlFor={`payment-type-${type}`}
+                    className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors ${
+                      requestType === type
+                        ? type === 'partial_paid'
+                          ? 'border-yellow-500/50 bg-yellow-400/15 text-yellow-800 dark:text-yellow-300'
+                          : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                        : 'border-border/50 hover:border-border'
+                    }`}
+                  >
+                    <RadioGroupItem id={`payment-type-${type}`} value={type} />
+                    {PAYMENT_REQUEST_TYPE_LABELS[type]}
+                  </Label>
+                ))}
+              </RadioGroup>
+            </div>
+          )}
           <div className="space-y-2">
             <Label className="text-[11px] font-medium text-muted-foreground/60">
               {isPartial ? 'Partial Amount Paid *' : 'Amount Paid *'}
