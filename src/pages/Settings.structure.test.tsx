@@ -157,10 +157,12 @@ describe("Settings > Structure > Org chart", () => {
   it("Expand all opens every box and Collapse all returns to the branch columns", async () => {
     renderSettings("admin");
     await openOrgChart();
+    // Find the toolbar control before the chart contains every expanded button.
+    const collapseAll = screen.getByRole("button", { name: "Collapse all" });
     fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
     expect(box("edge/fn:check-urgent-lead")).toHaveAttribute("aria-expanded", "true");
     expect(childrenOf("edge/fn:check-urgent-lead").getAllByText(/^(CRM|Donut)$/)).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    fireEvent.click(collapseAll);
     expect(box("edge/fn:check-urgent-lead")).toBeNull();
     BRANCHES.forEach((id) => expect(box(id)).toHaveAttribute("aria-expanded", "true"));
   });

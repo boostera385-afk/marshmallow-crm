@@ -74,8 +74,8 @@ describe("one realtime subscription per browser", () => {
 
     const late = tab(env);
     late.relay.subscribe(LEADS, () => {});
-    await flush();
-    expect(late.statuses).toEqual([["leads", "SUBSCRIBED"]]);
+    // Hello and the leader's reply are two separate asynchronous deliveries.
+    await vi.waitFor(() => expect(late.statuses).toEqual([["leads", "SUBSCRIBED"]]));
     expect(open(env)).toHaveLength(1);
   });
 
