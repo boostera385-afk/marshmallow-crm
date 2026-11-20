@@ -58,7 +58,7 @@ import QuoteBreakdownFields from "@/components/leads/QuoteBreakdownFields";
 import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateLaborPercent, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
 import TechnicianShareFields from "@/components/leads/TechnicianShareFields";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
-import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
+import { createPaymentRequest, recordDirectPayment, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
 import StatusBadge from "@/components/leads/StatusBadge";
 import LeadCoverageBadge from "@/components/leads/LeadCoverageBadge";
 import { geocodeAndPersistLeadAddress } from "@/lib/lead-address-geocoding";
@@ -593,7 +593,8 @@ export default function LeadDetailPage() {
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
   };
 
-  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment?: string) => {
+  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment: string | undefined, operationId: string) => {
+    if (paymentLoading) return;
     if (!leadId || !user || !originalLead) {
       toast.error("Save the lead first before recording payment");
       setPaymentOpen(false);
@@ -615,6 +616,7 @@ export default function LeadDetailPage() {
           amount,
           comment,
           screenshotFile,
+          operationId,
         });
         setPaymentOpen(false);
         setForm((prev) => ({ ...prev, status: "payment_requested" }));
@@ -623,40 +625,14 @@ export default function LeadDetailPage() {
         return;
       }
 
-      let screenshotUrl: string | null = null;
-
-      if (screenshotFile) {
-        const optimizedScreenshot = await optimizeImageForUpload(screenshotFile);
-        const ext = optimizedScreenshot.name.split(".").pop();
-        const path = `payments/${leadId}_${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from("lead-photos").upload(path, optimizedScreenshot);
-
-        if (!uploadError) {
-          screenshotUrl = path;
-        }
-      }
-
-      await updateLeadById(leadId, {
-        status: paymentRequestType,
-        amount,
-        payment_amount: amount,
-        payment_screenshot_url: screenshotUrl,
-        last_edited_by: user.id,
-        last_edited_by_name: profile?.full_name || user.email || "Unknown user",
-        updated_at: new Date().toISOString(),
-        last_edited_at: new Date().toISOString(),
+      await recordDirectPayment({
+        lead: originalLead, userId: user.id, requesterRole: role, requestType: paymentRequestType,
+        amount, screenshotFile, operationId,
       });
 
       setPaymentOpen(false);
-      setForm((prev) => ({
-        ...prev,
-        status: paymentRequestType,
-        amount: String(amount),
-        payment_screenshot_url: screenshotUrl || prev.payment_screenshot_url,
-      }));
-
-      await fetchLead();
       toast.success(`Payment recorded & status updated to ${typeLabel}`);
+      void fetchLead().catch(() => toast.error("Payment was saved, but lead refresh failed. Refresh the page."));
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to record payment");
     } finally {

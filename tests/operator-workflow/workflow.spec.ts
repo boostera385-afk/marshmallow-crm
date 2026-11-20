@@ -395,15 +395,22 @@ for (const surface of ["card", "detail"] as const) {
       await mockSession(page, "processor");
       const requests: Record<string, unknown>[] = [];
       const updates: Record<string, unknown>[] = [];
+      let paymentStatus = savedLead.status;
       await page.route("**/rest/v1/lead_payment_requests*", async (route) => {
-        if (route.request().method() !== "POST") return route.fulfill({ json: null });
-        requests.push(route.request().postDataJSON());
+        expect(route.request().method()).not.toBe("POST");
+        return route.fulfill({ json: null });
+      });
+      await page.route("**/rest/v1/rpc/workflow_requests", async (route) => {
+        const input = route.request().postDataJSON().p_input;
+        if (input.kind !== "payment") return route.fulfill({ json: { rows: [], total: 0, count: 0 } });
+        requests.push(input);
         if (denied) return route.fulfill({ status: 403, json: { message: "Synthetic payment denial", code: "42501" } });
-        await route.fulfill({ json: { id: ALERT_ID, ...requests[0] } });
+        paymentStatus = "payment_requested";
+        await route.fulfill({ json: { saved: true, id: ALERT_ID, status: paymentStatus } });
       });
       await page.route("**/rest/v1/leads*", async (route) => {
         if (route.request().method() === "PATCH") updates.push(route.request().postDataJSON());
-        const lead = { ...savedLead, ...(updates.at(-1) ?? {}) };
+        const lead = { ...savedLead, status: paymentStatus };
         await route.fulfill({ json: route.request().headers().accept?.includes("application/vnd.pgrst.object+json") ? lead : [lead] });
       });
       await page.goto(surface === "card" ? "/leads" : `/leads/${JOB_ID}`);
@@ -422,11 +429,11 @@ for (const surface of ["card", "detail"] as const) {
         expect(updates).toEqual([]);
       } else {
         await expect(dialog).not.toBeVisible();
-        expect(updates).toHaveLength(1);
-        expect(updates[0].status).toBe("payment_requested");
+        expect(paymentStatus).toBe("payment_requested");
       }
+      expect(updates).toEqual([]); // Request/lead/audit changes belong to the transaction.
       expect(requests).toHaveLength(1);
-      expect(requests[0]).toMatchObject({ request_type: "partial_paid", amount: 25.5, comment: "Deposit received", requested_by_role: "processor" });
+      expect(requests[0]).toMatchObject({ kind: "payment", action: "create", requestType: "partial_paid", amount: 25.5, comment: "Deposit received" });
     });
   }
 
@@ -436,6 +443,80 @@ for (const surface of ["card", "detail"] as const) {
     await page.getByRole("combobox").filter({ hasText: /^Urgent Job$/ }).first().click();
     await expect(page.getByRole("option", { name: "Partial Paid", exact: true })).toHaveCount(0);
     await expect(page.getByRole("option", { name: "Paid", exact: true })).toHaveCount(0);
+  });
+}
+
+for (const surface of ["card", "detail"] as const) {
+  for (const outcome of ["paid", "partial_paid"] as const) {
+    test(`Payment reliability: Admin ${surface} selects and saves ${outcome} through one atomic RPC`, async ({ page }) => {
+      await mockSession(page, "admin");
+      const calls: Record<string, unknown>[] = [];
+      const writes: unknown[] = [];
+      let status = savedLead.status;
+      await page.route("**/rest/v1/leads*", async (route) => {
+        if (route.request().method() === "PATCH") writes.push(route.request().postDataJSON());
+        const lead = { ...savedLead, status };
+        await route.fulfill({ json: route.request().headers().accept?.includes("application/vnd.pgrst.object+json") ? lead : [lead] });
+      });
+      await page.route("**/rest/v1/rpc/workflow_requests", async (route) => {
+        const input = route.request().postDataJSON().p_input;
+        if (input.kind !== "payment") return route.fulfill({ json: { rows: [], total: 0, count: 0 } });
+        calls.push(input);
+        status = String(input.requestType);
+        await route.fulfill({ json: { saved: true, id: ALERT_ID, status } });
+      });
+      await page.goto(surface === "card" ? "/leads" : `/leads/${JOB_ID}`);
+      await page.getByRole("combobox").filter({ hasText: /^Urgent Job$/ }).first().click();
+      await page.getByRole("option", { name: "Paid", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByRole("radio", { name: "Paid", exact: true })).toBeVisible();
+      await expect(dialog.getByRole("radio", { name: "Partial Paid", exact: true })).toBeVisible();
+      await dialog.getByRole("radio", { name: outcome === "paid" ? "Paid" : "Partial Paid", exact: true }).click();
+      await dialog.getByRole("spinbutton").fill("40");
+      await dialog.getByRole("button", { name: outcome === "paid" ? "Confirm Paid" : "Confirm Partial Paid", exact: true }).click();
+      await expect(dialog).not.toBeVisible();
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ kind: "payment", action: "direct", leadId: JOB_ID, requestType: outcome, amount: 40, expectedStatus: "urgent_job" });
+      expect(calls[0].operationId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(writes).toEqual([]);
+    });
+  }
+  test(`Payment reliability: Admin ${surface} retains screenshot and amount after upload failure and retries safely`, async ({ page }) => {
+    await mockSession(page, "admin");
+    let uploads = 0;
+    const calls: Record<string, unknown>[] = [];
+    await page.route("**/storage/v1/object/lead-photos/**", async (route) => {
+      uploads++;
+      await route.fulfill(uploads === 1
+        ? { status: 403, json: { message: "Synthetic upload denied" } }
+        : { status: 200, json: { Key: "lead-photos/proof.png" } });
+    });
+    await page.route("**/rest/v1/rpc/workflow_requests", async (route) => {
+      const input = route.request().postDataJSON().p_input;
+      if (input.kind !== "payment") return route.fulfill({ json: { rows: [], total: 0, count: 0 } });
+      calls.push(input);
+      await route.fulfill({ json: { saved: true, id: ALERT_ID, status: "paid" } });
+    });
+    await page.goto(surface === "card" ? "/leads" : `/leads/${JOB_ID}`);
+    await page.getByRole("combobox").filter({ hasText: /^Urgent Job$/ }).first().click();
+    await page.getByRole("option", { name: "Paid", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("spinbutton").fill("40");
+    await dialog.getByLabel("Payment Screenshot", { exact: true }).setInputFiles({
+      name: "proof.png", mimeType: "image/png",
+      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/h1UAAAAASUVORK5CYII=", "base64"),
+    });
+    await dialog.getByRole("button", { name: "Confirm Paid", exact: true }).click();
+    await expect(page.getByText(/Payment screenshot upload failed/).first()).toBeVisible();
+    expect(calls).toEqual([]);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("spinbutton")).toHaveValue("40");
+    await expect(dialog.getByRole("img", { name: "Payment screenshot" })).toBeVisible();
+    await dialog.getByRole("button", { name: "Confirm Paid", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    expect(uploads).toBe(2);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].screenshotPath).toMatch(new RegExp(`^payments/${JOB_ID}/${USER_ID}/`));
   });
 }
 

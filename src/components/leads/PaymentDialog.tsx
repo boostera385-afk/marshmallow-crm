@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
@@ -13,7 +13,7 @@ import { PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from '@/lib/paym
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (amount: number, screenshotFile: File | null, comment?: string) => void;
+  onConfirm: (amount: number, screenshotFile: File | null, comment: string | undefined, operationId: string) => void | Promise<void>;
   loading?: boolean;
   mode?: 'direct' | 'request';
   /** Which outcome this dialog is recording/requesting. Defaults to 'paid'. */
@@ -35,6 +35,10 @@ export default function PaymentDialog({
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [comment, setComment] = useState('');
+  const operationId = useRef<string | null>(null);
+  const saving = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+  const busy = loading || submitting;
 
   // A failed save leaves the dialog open: keep its amount/evidence for retry.
   // Only an acknowledged save or an explicit close discards the draft.
@@ -44,6 +48,7 @@ export default function PaymentDialog({
     setFile(null);
     setPreview(null);
     setComment('');
+    operationId.current = null;
   }, [open]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,14 +63,22 @@ export default function PaymentDialog({
     }
   };
 
-  const handleConfirm = () => {
-    const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) return;
-    onConfirm(parsedAmount, file, comment.trim() || undefined);
+  const handleConfirm = async () => {
+    const parsedAmount = Number(amount);
+    if (saving.current || busy || !Number.isFinite(parsedAmount) || parsedAmount <= 0) return;
+    saving.current = true;
+    setSubmitting(true);
+    operationId.current ??= crypto.randomUUID();
+    try {
+      await onConfirm(parsedAmount, file, comment.trim() || undefined, operationId.current);
+    } finally {
+      saving.current = false;
+      setSubmitting(false);
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!saving.current && !busy) onOpenChange(next); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -88,6 +101,7 @@ export default function PaymentDialog({
               <RadioGroup
                 aria-labelledby="payment-type-label"
                 value={requestType}
+                disabled={busy}
                 onValueChange={(value) => onRequestTypeChange(value as PaymentRequestType)}
                 className="grid grid-cols-2 gap-2"
               >
@@ -117,6 +131,8 @@ export default function PaymentDialog({
             <div className="relative">
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
               <Input
+                aria-label={isPartial ? 'Partial Amount Paid' : 'Amount Paid'}
+                disabled={busy}
                 type="number"
                 step="0.01"
                 min="0"
@@ -135,7 +151,7 @@ export default function PaymentDialog({
               {preview ? (
                 <div className="space-y-2">
                   <img src={preview} alt="Payment screenshot" className="max-h-40 mx-auto rounded-lg" />
-                  <Button variant="ghost" size="sm" onClick={() => { setFile(null); setPreview(null); }}>
+                  <Button disabled={busy} variant="ghost" size="sm" onClick={() => { setFile(null); setPreview(null); }}>
                     Remove
                   </Button>
                 </div>
@@ -146,7 +162,7 @@ export default function PaymentDialog({
                   </div>
                   <span className="text-[13px] font-medium">Click to upload screenshot</span>
                   <span className="text-[10px] text-muted-foreground/50">PNG, JPG up to 5MB</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                  <input aria-label="Payment Screenshot" disabled={busy} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                 </label>
               )}
             </div>
@@ -155,6 +171,7 @@ export default function PaymentDialog({
             <div className="space-y-2">
               <Label className="text-[11px] font-medium text-muted-foreground/60">Comment (optional)</Label>
               <Textarea
+                disabled={busy}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Add any context for the Admin reviewing this request..."
@@ -165,13 +182,13 @@ export default function PaymentDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={busy} variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             onClick={handleConfirm}
-            disabled={!amount || parseFloat(amount) <= 0 || loading}
+            disabled={!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || busy}
             className="bg-[hsl(var(--success))] hover:bg-[hsl(var(--success)/0.9)] text-[hsl(var(--success-foreground))]"
           >
-            {loading ? 'Saving...' : isRequest ? 'Send request' : `Confirm ${typeLabel}`}
+            {busy ? 'Saving...' : isRequest ? 'Send request' : `Confirm ${typeLabel}`}
           </Button>
         </DialogFooter>
       </DialogContent>

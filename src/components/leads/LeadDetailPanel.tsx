@@ -72,7 +72,7 @@ import QuoteBreakdownFields from "./QuoteBreakdownFields";
 import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateLaborPercent, validateQuoteBreakdown, type QuoteFormValue } from "@/lib/quote-breakdown";
 import TechnicianShareFields from "./TechnicianShareFields";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
-import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
+import { createPaymentRequest, recordDirectPayment, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 
@@ -495,7 +495,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
     }
   };
 
-  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment?: string) => {
+  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment: string | undefined, operationId: string) => {
     if (!user || !lead || paymentLoading) return;
     setPaymentLoading(true);
     try {
@@ -509,6 +509,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
           amount,
           comment,
           screenshotFile,
+          operationId,
         });
         setForm((prev) => ({ ...prev, status: "payment_requested" }));
         setPaymentOpen(false);
@@ -518,56 +519,11 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
         toast.success(`${PAYMENT_REQUEST_TYPE_LABELS[paymentRequestType]} request sent for Admin approval`);
         return;
       }
-      const currentUserName = profile?.full_name || user.email || "Unknown user";
-      let screenshotUrl: string | null = null;
-      if (screenshotFile) {
-        const optimizedScreenshot = await optimizeImageForUpload(screenshotFile);
-        const ext = optimizedScreenshot.name.split(".").pop();
-        const path = `payments/${leadId}_${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from("lead-photos").upload(path, optimizedScreenshot);
-        if (uploadError) throw uploadError;
-        screenshotUrl = path;
-      }
-
-      await updateLeadById(leadId, {
-        status: paymentRequestType,
-        amount,
-        payment_amount: amount,
-        payment_screenshot_url: screenshotUrl,
-        cs_tag: null,
-        last_edited_by: user.id,
-        last_edited_by_name: currentUserName,
-        last_edited_at: new Date().toISOString(),
+      await recordDirectPayment({
+        lead, userId: user.id, requesterRole: role, requestType: paymentRequestType,
+        amount, screenshotFile, operationId,
       });
       setPaymentOpen(false);
-      setForm((prev) => ({ ...prev, status: paymentRequestType, amount, payment_amount: amount, payment_screenshot_url: screenshotUrl }));
-      await logActivity(user.id, "payment_recorded", "lead", leadId, {
-        target_name: lead.job_id,
-        customer_name: lead.customer_name,
-        job_id: lead.job_id,
-        amount,
-        status_from: lead.status,
-        status_to: paymentRequestType,
-        screenshot_uploaded: !!screenshotUrl,
-        changes: {
-          status: {
-            before: lead.status,
-            after: paymentRequestType,
-          },
-          payment_amount: {
-            before: lead.payment_amount ?? null,
-            after: amount,
-          },
-          payment_screenshot_url: {
-            before: lead.payment_screenshot_url ?? null,
-            after: screenshotUrl ?? null,
-          },
-          amount: {
-            before: lead.amount ?? null,
-            after: amount,
-          },
-        },
-      });
 
       toast.success(`Payment recorded & status updated to ${PAYMENT_REQUEST_TYPE_LABELS[paymentRequestType]}`);
       queryClient.invalidateQueries({ queryKey: ["lead", leadId] });

@@ -18,7 +18,7 @@ describe("payment confirmation outcomes", () => {
       fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "25.50" } });
       fireEvent.change(screen.getByRole("textbox"), { target: { value: "  Deposit received  " } });
       fireEvent.click(submit);
-      expect(onConfirm).toHaveBeenCalledExactlyOnceWith(25.5, null, "Deposit received");
+      expect(onConfirm).toHaveBeenCalledExactlyOnceWith(25.5, null, "Deposit received", expect.any(String));
       expect(screen.getByRole("spinbutton")).toHaveValue(25.5);
       expect(screen.getByRole("textbox")).toHaveValue("  Deposit received  ");
     });
@@ -29,7 +29,7 @@ describe("payment confirmation outcomes", () => {
       expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
       fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "50" } });
       fireEvent.click(screen.getByRole("button", { name: `Confirm ${label}` }));
-      expect(onConfirm).toHaveBeenCalledExactlyOnceWith(50, null, undefined);
+      expect(onConfirm).toHaveBeenCalledExactlyOnceWith(50, null, undefined, expect.any(String));
     });
   }
 
@@ -52,7 +52,7 @@ describe("payment confirmation outcomes", () => {
     expect(screen.getByRole("dialog", { name: "Partial Paid Confirmation" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "40" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm Partial Paid" }));
-    expect(onConfirm).toHaveBeenCalledExactlyOnceWith(40, null, undefined);
+    expect(onConfirm).toHaveBeenCalledExactlyOnceWith(40, null, undefined, expect.any(String));
   });
 
   it("shows no status choice unless allowed, and never in request mode", () => {
