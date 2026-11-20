@@ -72,7 +72,7 @@ import QuoteBreakdownFields from "./QuoteBreakdownFields";
 import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateLaborPercent, validateQuoteBreakdown, type QuoteFormValue } from "@/lib/quote-breakdown";
 import TechnicianShareFields from "./TechnicianShareFields";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
-import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
+import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 
@@ -188,6 +188,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentRequestType, setPaymentRequestType] = useState<PaymentRequestType>("paid");
+  const [paymentTypeChoice, setPaymentTypeChoice] = useState(false);
   const [cancelRequestOpen, setCancelRequestOpen] = useState(false);
   const [cancelRequestLoading, setCancelRequestLoading] = useState(false);
   const [adminCancelOpen, setAdminCancelOpen] = useState(false);
@@ -340,6 +341,7 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
     }
     if (key === "status" && (value === "paid" || value === "partial_paid")) {
       setPaymentRequestType(value);
+      setPaymentTypeChoice(shouldOfferPaymentTypeChoice(role, value, lead?.status));
       setPaymentOpen(true);
       return;
     }
@@ -1381,6 +1383,8 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
           loading={paymentLoading}
           mode={isProcessor ? "request" : "direct"}
           requestType={paymentRequestType}
+          allowTypeChoice={paymentTypeChoice}
+          onRequestTypeChange={setPaymentRequestType}
         />
 
         <CancellationRequestSheet

@@ -33,6 +33,35 @@ describe("payment confirmation outcomes", () => {
     });
   }
 
+  it("lets the Admin switch a Paid confirmation to Partial Paid", () => {
+    const onRequestTypeChange = vi.fn();
+    const { rerender } = render(
+      <PaymentDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} requestType="paid" allowTypeChoice onRequestTypeChange={onRequestTypeChange} />,
+    );
+    const group = screen.getByRole("radiogroup", { name: "Status *" });
+    expect(group).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Paid" })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: "Partial Paid" }));
+    expect(onRequestTypeChange).toHaveBeenCalledExactlyOnceWith("partial_paid");
+
+    const onConfirm = vi.fn();
+    rerender(
+      <PaymentDialog open onOpenChange={vi.fn()} onConfirm={onConfirm} requestType="partial_paid" allowTypeChoice onRequestTypeChange={onRequestTypeChange} />,
+    );
+    expect(screen.getByRole("radio", { name: "Partial Paid" })).toBeChecked();
+    expect(screen.getByRole("dialog", { name: "Partial Paid Confirmation" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "40" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Partial Paid" }));
+    expect(onConfirm).toHaveBeenCalledExactlyOnceWith(40, null, undefined);
+  });
+
+  it("shows no status choice unless allowed, and never in request mode", () => {
+    const { rerender } = render(<PaymentDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} onRequestTypeChange={vi.fn()} />);
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+    rerender(<PaymentDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} mode="request" allowTypeChoice onRequestTypeChange={vi.fn()} />);
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+  });
+
   it("disables submission while saving", () => {
     render(<PaymentDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} loading requestType="partial_paid" mode="request" />);
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "50" } });

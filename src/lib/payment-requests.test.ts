@@ -50,6 +50,8 @@ vi.mock("@/lib/image-upload", () => ({ optimizeImageForUpload: vi.fn((f: File) =
 import {
   canCreatePaymentRequest,
   canReviewPaymentRequest,
+  paymentRequestTypeTagClass,
+  shouldOfferPaymentTypeChoice,
   createPaymentRequest,
   reviewPaymentRequest,
   PAYMENT_REQUEST_TYPE_LABELS,
@@ -111,6 +113,34 @@ describe("payment request role gates", () => {
     expect(canReviewPaymentRequest("processor", pendingPaid)).toBe(false);
     expect(canReviewPaymentRequest("admin", { ...pendingPaid, status: "approved" })).toBe(false);
     expect(canReviewPaymentRequest("admin", null)).toBe(false);
+  });
+});
+
+describe("Admin Paid confirmation type choice", () => {
+  it("offers Paid / Partial Paid when an Admin moves a non-Partial-Paid lead to Paid", () => {
+    expect(shouldOfferPaymentTypeChoice("admin", "paid", "job_done")).toBe(true);
+    expect(shouldOfferPaymentTypeChoice("admin", "paid", "payment_pending")).toBe(true);
+    expect(shouldOfferPaymentTypeChoice("admin", "paid", undefined)).toBe(true);
+  });
+
+  it("goes straight to Paid when the lead was already Partial Paid", () => {
+    expect(shouldOfferPaymentTypeChoice("admin", "paid", "partial_paid")).toBe(false);
+  });
+
+  it("does not offer the choice to other roles or for a Partial Paid selection", () => {
+    expect(shouldOfferPaymentTypeChoice("processor", "paid", "job_done")).toBe(false);
+    expect(shouldOfferPaymentTypeChoice("customer_service", "paid", "job_done")).toBe(false);
+    expect(shouldOfferPaymentTypeChoice(null, "paid", "job_done")).toBe(false);
+    expect(shouldOfferPaymentTypeChoice("admin", "partial_paid", "job_done")).toBe(false);
+  });
+});
+
+describe("payment request type tag colours", () => {
+  it("shows Partial Paid requests in yellow and Paid (including legacy rows) in green", () => {
+    expect(paymentRequestTypeTagClass("partial_paid")).toContain("yellow");
+    expect(paymentRequestTypeTagClass("partial_paid")).not.toContain("emerald");
+    expect(paymentRequestTypeTagClass("paid")).toContain("emerald");
+    expect(paymentRequestTypeTagClass(undefined)).toBe(paymentRequestTypeTagClass("paid"));
   });
 });
 

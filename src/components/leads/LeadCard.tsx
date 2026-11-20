@@ -80,7 +80,7 @@ import {
   createCancellationRequest,
   fetchPendingCancellationRequest,
 } from "@/lib/cancellation-requests";
-import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, type PaymentRequestType } from "@/lib/payment-requests";
+import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
 import type { LeadCancellationRequest } from "@/types";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { getAssignableLeadTags, isQuotationMaster } from "@/lib/lead-tags";
@@ -750,6 +750,7 @@ function LeadCard({
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentRequestType, setPaymentRequestType] = useState<PaymentRequestType>("paid");
+  const [paymentTypeChoice, setPaymentTypeChoice] = useState(false);
   const [cancelRequestOpen, setCancelRequestOpen] = useState(false);
   const [cancelRequestLoading, setCancelRequestLoading] = useState(false);
   const [cancelReviewLoading, setCancelReviewLoading] = useState(false);
@@ -1060,6 +1061,7 @@ function LeadCard({
 
     if (newStatus === "paid" || newStatus === "partial_paid") {
       setPaymentRequestType(newStatus);
+      setPaymentTypeChoice(shouldOfferPaymentTypeChoice(role, newStatus, lead.status));
       setPaymentOpen(true);
       return;
     }
@@ -2105,6 +2107,8 @@ function LeadCard({
           loading={paymentLoading}
           mode={isProcessor ? "request" : "direct"}
           requestType={paymentRequestType}
+          allowTypeChoice={paymentTypeChoice}
+          onRequestTypeChange={setPaymentRequestType}
         />
 
         <CancellationRequestSheet
