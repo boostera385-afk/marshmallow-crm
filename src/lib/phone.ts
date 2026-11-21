@@ -10,6 +10,53 @@ export function formatUSPhone(value: string): string {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
+/**
+ * The national (10-digit) part of a typed or pasted US number. Accepts any
+ * spacing/punctuation (spaces, NBSP, dots, dashes, parens) and drops a leading
+ * US country code: "+1 305 555 0123", "1-305-555-0123", "305.555.0123" all give
+ * "3055550123". Extra digits are kept so callers can flag them, never guess.
+ */
+export function usNationalDigits(value: string): string {
+  const trimmed = value.trim();
+  const digits = stripPhone(trimmed);
+  if (digits.startsWith("1") && (digits.length === 11 || trimmed.startsWith("+1"))) {
+    return digits.slice(1);
+  }
+  return digits;
+}
+
+/**
+ * Format a phone field while the user types or pastes. Unlike formatUSPhone it
+ * never discards digits past the tenth: they stay visible so validateUSPhone
+ * can report them instead of silently saving a different number.
+ */
+export function formatUSPhoneInput(value: string): string {
+  const digits = usNationalDigits(value);
+  const main = formatUSPhone(digits.slice(0, 10));
+  return digits.length > 10 ? `${main} ${digits.slice(10)}` : main;
+}
+
+/** Validate an optional US phone field. Empty is allowed; returns an error message or null. */
+export function validateUSPhone(value: string | null | undefined): string | null {
+  const raw = String(value ?? "");
+  if (!raw.trim()) return null;
+  const digits = usNationalDigits(raw);
+  if (digits.length === 0) return "Enter a phone number using digits";
+  if (digits.length < 10) return `Phone number is incomplete — enter all 10 digits (${digits.length} entered)`;
+  if (digits.length > 10) return "Too many digits — enter a 10-digit US phone number";
+  if (/^[01]/.test(digits)) return "Area code can't start with 0 or 1";
+  return null;
+}
+
+/** First invalid phone among labelled fields, as "<Label>: <reason>", or null when all are valid/empty. */
+export function firstPhoneError(fields: ReadonlyArray<readonly [label: string, value: string | null | undefined]>): string | null {
+  for (const [label, value] of fields) {
+    const error = validateUSPhone(value);
+    if (error) return `${label}: ${error}`;
+  }
+  return null;
+}
+
 /** Strip formatting to get raw digits */
 export function stripPhone(value: string): string {
   return value.replace(/\D/g, "");

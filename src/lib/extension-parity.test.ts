@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 const background = readFileSync("tmp_extension/quo-crm-extension/background.js", "utf8").replace(/\r\n/g, "\n");
 const panel = readFileSync("tmp_extension/quo-crm-extension/sidepanel.js", "utf8");
 const DonutQuote = runInNewContext(readFileSync("tmp_extension/quo-crm-extension/quote-breakdown.js", "utf8") + "; globalThis.DonutQuote");
+const DonutPhone = runInNewContext(readFileSync("tmp_extension/quo-crm-extension/phone-format.js", "utf8") + "; globalThis.DonutPhone");
 
 describe("Donut shared-flow regression checks", () => {
   it("uses the same authenticated address function and keeps returned unit details", async () => {
@@ -32,11 +33,29 @@ describe("Donut shared-flow regression checks", () => {
     const create = runInNewContext(`${handler}; handleCreateLead`, {
       clearFeedback: vi.fn(), createLeadButton: button, chrome: { runtime: { sendMessage } }, showFeedback,
       escapeHtml: (text: string) => text, renderDraft: vi.fn(), resetTransientFormState: vi.fn(),
+      DonutPhone, form: { customerNumber: { value: "(415) 555-0123", focus: vi.fn() } },
     });
     await create({ preventDefault: vi.fn() });
     expect(showFeedback).toHaveBeenCalledWith(expect.stringContaining("Lead saved. Draft cleanup failed"), "info", true);
     expect(button.disabled).toBe(false);
     expect(sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks Create Lead in the panel for an incomplete customer phone and focuses the field", async () => {
+    const showFeedback = vi.fn();
+    const button = { disabled: false, innerHTML: "" };
+    const sendMessage = vi.fn();
+    const focus = vi.fn();
+    const handler = panel.slice(panel.indexOf("async function handleCreateLead("), panel.indexOf("const UPDATE_SCHEDULE_BUTTON_HTML"));
+    const create = runInNewContext(`${handler}; handleCreateLead`, {
+      clearFeedback: vi.fn(), createLeadButton: button, chrome: { runtime: { sendMessage } }, showFeedback,
+      DonutPhone, form: { customerNumber: { value: "(415) 555", focus } },
+    });
+    await create({ preventDefault: vi.fn() });
+    expect(showFeedback).toHaveBeenCalledWith("Customer Phone: Phone number is incomplete — enter all 10 digits (6 entered)", "error");
+    expect(focus).toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(button.disabled).toBe(false);
   });
 
   it("refuses overlapping extension submissions", async () => {
@@ -81,7 +100,7 @@ describe("Donut shared-flow regression checks", () => {
       PENDING_JOB_KEY: "job", PENDING_DRAFT_KEY: "identity", LEAD_INSERT_TIMEOUT_MS: 45000,
       generateJobId: () => "fixture-job", reserveJobId: async (job: string, identity: string) => { storage.job = job; storage.identity = identity; },
       releaseJobId: release, findLeadByJobId: find, comparePhones: (a: string, b: string) => a === b,
-      normalizeLeadStatus: () => "default", normalizeLeadTerms: () => "quoted", DonutQuote, AbortController, setTimeout, clearTimeout,
+      normalizeLeadStatus: () => "default", normalizeLeadTerms: () => "quoted", DonutQuote, DonutPhone, AbortController, setTimeout, clearTimeout,
       fetch: async () => ({ ok: true, headers: { get: () => "image/png" }, blob: async () => new Blob(["fixture"]) }),
       supabaseClient: { auth: { getUser: async () => ({ data: { user: { id: "fixture-user" } } }) },
         from: (table: string) => table === "leads" ? { insert } : photoQuery,
@@ -96,5 +115,24 @@ describe("Donut shared-flow regression checks", () => {
     expect(release).not.toHaveBeenCalled();
     draft.serviceDetails = "Changed capture";
     await expect(save()).rejects.toThrow("different draft");
+  });
+
+  it.each([
+    ["(415) 555-01", "Customer Phone: Phone number is incomplete — enter all 10 digits (8 entered)"],
+    ["(130) 555-5012", "Customer Phone: Area code can't start with 0 or 1"],
+    ["(415) 555-0123 99", "Customer Phone: Too many digits — enter a 10-digit US phone number"],
+  ])("refuses to save customer phone %j and never inserts a lead", async (customerNumber, message) => {
+    const draft = { customerName: "Fixture Customer", customerNumber, customerAddress: "", serviceName: "", serviceDetails: "", scheduleRequirement: "", quote: "", terms: "", laborAmount: "", materialsIncluded: "no", materialAmount: "", leadStatus: "default", sourceUrl: "", numberName: "", referenceName: "", photos: [] };
+    const handler = background.slice(background.indexOf("async function saveLeadDraft("), background.indexOf("/**\n * Run the conversation check"));
+    const insert = vi.fn();
+    const reserveJobId = vi.fn();
+    const save = runInNewContext(`${handler}; saveLeadDraft`, {
+      getDraft: async () => draft, DonutQuote, DonutPhone, reserveJobId,
+      chrome: { storage: { local: { get: async () => ({}) } } },
+      supabaseClient: { auth: { getUser: async () => ({ data: { user: { id: "fixture-user" } } }) }, from: () => ({ insert }) },
+    });
+    await expect(save()).rejects.toThrow(message);
+    expect(reserveJobId).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
   });
 });
