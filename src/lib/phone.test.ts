@@ -8,13 +8,14 @@ import {
   formatUSPhoneInput,
   hasContactNumber,
   normalizePhoneE164,
+  phoneOverflowError,
   usNationalDigits,
   validateUSPhone,
 } from "@/lib/phone";
 
 const donutPhone = runInNewContext(
   readFileSync("tmp_extension/quo-crm-extension/phone-format.js", "utf8") + "; globalThis.DonutPhone",
-) as { format: (v: string) => string; validate: (v: string) => string | null; nationalDigits: (v: string) => string };
+) as { format: (v: string) => string; validate: (v: string) => string | null; nationalDigits: (v: string) => string; overflowError: (v: string) => string | null };
 
 describe("formatUSPhone", () => {
   it("formats a 10-digit US phone number", () => {
@@ -132,6 +133,22 @@ describe("validateUSPhone", () => {
   });
 });
 
+describe("phoneOverflowError", () => {
+  it("allows up to 10 national digits, including a pasted +1 / leading 1", () => {
+    expect(phoneOverflowError("(305) 555-0123")).toBeNull();
+    expect(phoneOverflowError("+1 305 555 0123")).toBeNull();
+    expect(phoneOverflowError("1 305 555 0123")).toBeNull();
+    expect(phoneOverflowError("305")).toBeNull();
+  });
+
+  it("refuses an 11th digit or a long paste with the digit count", () => {
+    expect(phoneOverflowError("(305) 555-01234")).toBe(
+      "Only 10 digits allowed — that would make 11. Enter a US number like (305) 555-0123",
+    );
+    expect(phoneOverflowError("+44 20 7946 0958")).toMatch(/that would make 12/);
+  });
+});
+
 describe("firstPhoneError", () => {
   it("names the first invalid field", () => {
     expect(firstPhoneError([["Cell Phone", "(305) 555-0123"], ["Landline", "(212) 55"]])).toBe(
@@ -156,6 +173,10 @@ describe("Donut phone-format.js parity", () => {
 
   it.each(samples)("validates %j exactly like the CRM", (input) => {
     expect(donutPhone.validate(input)).toBe(validateUSPhone(input));
+  });
+
+  it.each([...samples, "(305) 555-01234"])("applies the same 10-digit limit to %j", (input) => {
+    expect(donutPhone.overflowError(input)).toBe(phoneOverflowError(input));
   });
 
   it("no longer mangles a pasted +1 number (was \"+13 0555 5012 3\")", () => {

@@ -240,12 +240,13 @@
                   </button>
                 </div>
                 <div class="input-wrap">
-                  <input type="tel" name="customerNumber" class="form-input" placeholder="(555) 000-0000" />
+                  <input type="tel" name="customerNumber" class="form-input" placeholder="(555) 000-0000" inputmode="tel" autocomplete="off" aria-describedby="customer-phone-error" />
                   <button type="button" id="check-expected-area" class="input-adornment-btn" title="Check likely area from phone area code">
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
                   </button>
                 </div>
                 <div id="expected-area-result" class="inline-area-badge" hidden></div>
+                <div id="customer-phone-error" class="inline-area-badge expected-area-result expected-area-result--error" role="alert" hidden></div>
               </div>
             </div>
 
