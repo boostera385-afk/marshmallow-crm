@@ -1,7 +1,7 @@
 {
   "name": "Donut",
-  "version": "1.7.6",
-  "releasedAt": "2026-11-16T10:02:54.196Z",
-  "summary": "Diagnostic/Service Call fee is now saved as the lead's Diagnostic Fee (its own field), not as labor.",
-  "sourceSha256": "ad73aaf9c122862508979d475027b6045c0a1ec5be1ca70b5c632175d6aac67d"
+  "version": "1.7.7",
+  "releasedAt": "2026-11-21T05:30:01.521Z",
+  "summary": "Customer Phone: pasted numbers like +1 305 555 0123 are normalized to (305) 555-0123; incomplete or invalid numbers are blocked with a clear error.",
+  "sourceSha256": "bfefde58170d9bd77897fc7fee61c8164fe45e75a80c80b6207264451cc72b77"
 }

@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { geocodeAddress } from "@/lib/geo";
-import { formatUSPhone, stripPhone } from "@/lib/phone";
+import { formatUSPhone, formatUSPhoneInput, stripPhone, validateUSPhone } from "@/lib/phone";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { lookupZipCentroid, resolveZip } from "@/lib/zipCentroids";
 import { TECHNICIANS_QUERY_KEY, upsertTechnicianInList } from "@/lib/technicians";
 import { useQueryClient } from "@tanstack/react-query";
@@ -95,7 +96,7 @@ export function TechnicianDialog({ open, onOpenChange, technician, onSaved }: Pr
     const cleanName = name.trim();
     const cleanArea = area.trim();
     const cleanService = service.trim();
-    const cleanPhone = formatUSPhone(phone);
+    const cleanPhone = formatUSPhoneInput(phone);
     const phoneDigits = stripPhone(cleanPhone);
 
     // Required fields: Technician Name, OPR Code, Number, Service, and Area.
@@ -107,8 +108,9 @@ export function TechnicianDialog({ open, onOpenChange, technician, onSaved }: Pr
       setPhoneError("Phone number is required");
       return;
     }
-    if (phoneDigits.length !== 10) {
-      setPhoneError("Enter a valid 10-digit U.S. phone number");
+    const invalidPhone = validateUSPhone(cleanPhone);
+    if (invalidPhone) {
+      setPhoneError(invalidPhone);
       return;
     }
     if (!cleanService) {
@@ -281,17 +283,13 @@ export function TechnicianDialog({ open, onOpenChange, technician, onSaved }: Pr
 
           <div className="space-y-1.5">
             <Label htmlFor="tech-phone">Phone Number <span className="text-destructive">*</span></Label>
-            <Input
+            <PhoneInput
               id="tech-phone"
-              type="tel"
               value={phone}
-              onChange={(e) => { setPhone(formatUSPhone(e.target.value)); if (phoneError) setPhoneError(null); }}
+              onValueChange={(value) => { setPhone(value); if (phoneError) setPhoneError(null); }}
               placeholder="e.g. (305) 555-0123"
-              inputMode="tel"
-              autoComplete="tel"
-              maxLength={14}
+              error={phoneError}
             />
-            {phoneError && <p className="text-[11px] text-destructive">{phoneError}</p>}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="tech-area">Area <span className="text-destructive">*</span></Label>

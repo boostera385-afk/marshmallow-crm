@@ -7,7 +7,8 @@ import type { ChangeEvent, ElementType } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { logActivity } from "@/lib/activity";
-import { formatUSPhone, hasContactNumber } from "@/lib/phone";
+import { firstPhoneError, formatUSPhone, formatUSPhoneInput, hasContactNumber } from "@/lib/phone";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -530,7 +531,7 @@ export default function LeadDetailPage() {
     }
 
     if (key === "customer_phone" || key === "customer_landline" || key === "tech_number") {
-      setForm((prev) => ({ ...prev, [key]: formatUSPhone(value) }));
+      setForm((prev) => ({ ...prev, [key]: formatUSPhoneInput(value) }));
       return;
     }
 
@@ -725,6 +726,23 @@ export default function LeadDetailPage() {
     // A cell phone or a landline - either one is enough.
     if (!hasContactNumber(form.customer_phone, form.customer_landline)) {
       toast.error("Enter a cell phone or a landline");
+      return;
+    }
+
+    // Only numbers the user entered or edited are checked, so a legacy saved value
+    // never blocks saving unrelated changes.
+    const savedPhone = (saved: string | null | undefined) => (saved ? formatUSPhone(saved) : "");
+    const phoneError = firstPhoneError(
+      ([
+        ["Cell Phone", form.customer_phone, originalLead?.customer_phone],
+        ["Landline", form.customer_landline, originalLead?.customer_landline],
+        ["Tech Number", form.tech_number, originalLead?.tech_number],
+      ] as const)
+        .filter(([, value, saved]) => isNew || value !== savedPhone(saved))
+        .map(([label, value]) => [label, value] as const),
+    );
+    if (phoneError) {
+      toast.error(phoneError);
       return;
     }
 
@@ -1506,10 +1524,9 @@ export default function LeadDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className={labelClass}>Cell Phone</Label>
-                <Input
+                <PhoneInput
                   value={form.customer_phone}
-                  onChange={(e) => update("customer_phone", e.target.value)}
-                  maxLength={14}
+                  onValueChange={(value) => update("customer_phone", value)}
                   className={`${fieldClass} ${isDuplicate ? "border-destructive ring-1 ring-destructive" : ""}`}
                   readOnly={isProcessor || isOpr}
                 />
@@ -1534,10 +1551,9 @@ export default function LeadDetailPage() {
 
               <div className="space-y-1.5">
                 <Label className={labelClass}>Landline</Label>
-                <Input
+                <PhoneInput
                   value={form.customer_landline}
-                  onChange={(e) => update("customer_landline", e.target.value)}
-                  maxLength={14}
+                  onValueChange={(value) => update("customer_landline", value)}
                   className={fieldClass}
                   readOnly={isProcessor || isOpr}
                 />
@@ -1676,10 +1692,9 @@ export default function LeadDetailPage() {
 
                     <div className="space-y-1.5">
                       <Label className={labelClass}>Tech Number</Label>
-                    <Input
+                    <PhoneInput
                       value={form.tech_number}
-                      onChange={(e) => update("tech_number", e.target.value)}
-                      maxLength={14}
+                      onValueChange={(value) => update("tech_number", value)}
                       className={fieldClass}
                       readOnly={isOpr}
                     />
