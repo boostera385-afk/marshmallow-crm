@@ -108,9 +108,20 @@ export function formatSheetPhone(lead: { customer_phone?: string | null; custome
   return "";
 }
 
+/**
+ * Lead photos (including payment screenshots) live in a private bucket, so the
+ * sheet carries a count, never a storage link: a shared sheet must not hand out
+ * customer images. Staff open the lead in Marshmallow to view them.
+ */
+export function formatSheetPictures(count: number): string {
+  if (count <= 0) return "";
+  return `${count} ${count === 1 ? "photo" : "photos"} — view in Marshmallow`;
+}
+
 export function formatLeadForGoogleSheet(
   lead: Lead,
   noteSummary?: NoteSummary,
+  /** Storage paths of the lead's photos; only their count reaches the sheet. */
   photoUrls?: string[]
 ): GoogleSheetLeadRow {
   const addressParts = [lead.address, lead.city, lead.state, lead.zip_code].filter(Boolean);
@@ -125,7 +136,7 @@ export function formatLeadForGoogleSheet(
     ? CS_TAG_LABELS[lead.cs_tag as CsTag] || lead.cs_tag
     : "";
 
-  const picture = photoUrls && photoUrls.length > 0 ? photoUrls.join("\n") : "";
+  const picture = formatSheetPictures(photoUrls?.length ?? 0);
 
   // Format Lead Creation Date
   let leadCreationDate = "";
@@ -266,9 +277,8 @@ export async function fetchAllLeadsWithDetails(): Promise<GoogleSheetLeadRow[]> 
         if (!photoUrlsByLead[p.lead_id]) {
           photoUrlsByLead[p.lead_id] = [];
         }
-        // Build public URL from Supabase storage
-        const publicUrl = supabase.storage.from("lead-photos").getPublicUrl(p.photo_url).data.publicUrl;
-        photoUrlsByLead[p.lead_id].push(publicUrl || p.photo_url);
+        // Private bucket: keep the path; formatLeadForGoogleSheet emits a count only.
+        photoUrlsByLead[p.lead_id].push(p.photo_url);
       });
     }
   }
