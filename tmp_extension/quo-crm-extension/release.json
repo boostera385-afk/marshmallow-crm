@@ -1,7 +1,7 @@
 {
   "name": "Donut",
-  "version": "1.7.6",
-  "releasedAt": "2026-11-16T10:02:54.196Z",
-  "summary": "Diagnostic/Service Call fee is now saved as the lead's Diagnostic Fee (its own field), not as labor.",
-  "sourceSha256": "ad73aaf9c122862508979d475027b6045c0a1ec5be1ca70b5c632175d6aac67d"
+  "version": "1.7.8",
+  "releasedAt": "2026-11-21T07:40:59.078Z",
+  "summary": "Customer Phone: more than 10 digits can't be typed or pasted (clear message under the field); incomplete numbers show an error when you leave the field; spaces and +1 are fixed automatically.",
+  "sourceSha256": "d7485980c8802432ac1ab1b8bdb937cc0c5f156cec36a0a3708f5484b69d084b"
 }

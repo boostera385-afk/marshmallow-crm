@@ -7,7 +7,8 @@ import type { ChangeEvent, ElementType } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { logActivity } from "@/lib/activity";
-import { formatUSPhone, hasContactNumber } from "@/lib/phone";
+import { firstPhoneError, formatUSPhone, formatUSPhoneInput, hasContactNumber } from "@/lib/phone";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,7 +59,7 @@ import QuoteBreakdownFields from "@/components/leads/QuoteBreakdownFields";
 import { hasMaterialCharge, termsAllowMaterials, termsRecordAmount, validateDiagnosticFee, validateLaborPercent, validateQuoteBreakdown, type QuoteTerms } from "@/lib/quote-breakdown";
 import TechnicianShareFields from "@/components/leads/TechnicianShareFields";
 import { operatorQuoteFormValue } from "@/lib/operator-quote";
-import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
+import { createPaymentRequest, recordDirectPayment, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
 import StatusBadge from "@/components/leads/StatusBadge";
 import LeadCoverageBadge from "@/components/leads/LeadCoverageBadge";
 import { geocodeAndPersistLeadAddress } from "@/lib/lead-address-geocoding";
@@ -530,7 +531,7 @@ export default function LeadDetailPage() {
     }
 
     if (key === "customer_phone" || key === "customer_landline" || key === "tech_number") {
-      setForm((prev) => ({ ...prev, [key]: formatUSPhone(value) }));
+      setForm((prev) => ({ ...prev, [key]: formatUSPhoneInput(value) }));
       return;
     }
 
@@ -593,7 +594,8 @@ export default function LeadDetailPage() {
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
   };
 
-  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment?: string) => {
+  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment: string | undefined, operationId: string) => {
+    if (paymentLoading) return;
     if (!leadId || !user || !originalLead) {
       toast.error("Save the lead first before recording payment");
       setPaymentOpen(false);
@@ -615,6 +617,7 @@ export default function LeadDetailPage() {
           amount,
           comment,
           screenshotFile,
+          operationId,
         });
         setPaymentOpen(false);
         setForm((prev) => ({ ...prev, status: "payment_requested" }));
@@ -623,40 +626,14 @@ export default function LeadDetailPage() {
         return;
       }
 
-      let screenshotUrl: string | null = null;
-
-      if (screenshotFile) {
-        const optimizedScreenshot = await optimizeImageForUpload(screenshotFile);
-        const ext = optimizedScreenshot.name.split(".").pop();
-        const path = `payments/${leadId}_${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from("lead-photos").upload(path, optimizedScreenshot);
-
-        if (!uploadError) {
-          screenshotUrl = path;
-        }
-      }
-
-      await updateLeadById(leadId, {
-        status: paymentRequestType,
-        amount,
-        payment_amount: amount,
-        payment_screenshot_url: screenshotUrl,
-        last_edited_by: user.id,
-        last_edited_by_name: profile?.full_name || user.email || "Unknown user",
-        updated_at: new Date().toISOString(),
-        last_edited_at: new Date().toISOString(),
+      await recordDirectPayment({
+        lead: originalLead, userId: user.id, requesterRole: role, requestType: paymentRequestType,
+        amount, screenshotFile, operationId,
       });
 
       setPaymentOpen(false);
-      setForm((prev) => ({
-        ...prev,
-        status: paymentRequestType,
-        amount: String(amount),
-        payment_screenshot_url: screenshotUrl || prev.payment_screenshot_url,
-      }));
-
-      await fetchLead();
       toast.success(`Payment recorded & status updated to ${typeLabel}`);
+      void fetchLead().catch(() => toast.error("Payment was saved, but lead refresh failed. Refresh the page."));
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to record payment");
     } finally {
@@ -749,6 +726,23 @@ export default function LeadDetailPage() {
     // A cell phone or a landline - either one is enough.
     if (!hasContactNumber(form.customer_phone, form.customer_landline)) {
       toast.error("Enter a cell phone or a landline");
+      return;
+    }
+
+    // Only numbers the user entered or edited are checked, so a legacy saved value
+    // never blocks saving unrelated changes.
+    const savedPhone = (saved: string | null | undefined) => (saved ? formatUSPhone(saved) : "");
+    const phoneError = firstPhoneError(
+      ([
+        ["Cell Phone", form.customer_phone, originalLead?.customer_phone],
+        ["Landline", form.customer_landline, originalLead?.customer_landline],
+        ["Tech Number", form.tech_number, originalLead?.tech_number],
+      ] as const)
+        .filter(([, value, saved]) => isNew || value !== savedPhone(saved))
+        .map(([label, value]) => [label, value] as const),
+    );
+    if (phoneError) {
+      toast.error(phoneError);
       return;
     }
 
@@ -1530,10 +1524,9 @@ export default function LeadDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className={labelClass}>Cell Phone</Label>
-                <Input
+                <PhoneInput
                   value={form.customer_phone}
-                  onChange={(e) => update("customer_phone", e.target.value)}
-                  maxLength={14}
+                  onValueChange={(value) => update("customer_phone", value)}
                   className={`${fieldClass} ${isDuplicate ? "border-destructive ring-1 ring-destructive" : ""}`}
                   readOnly={isProcessor || isOpr}
                 />
@@ -1558,10 +1551,9 @@ export default function LeadDetailPage() {
 
               <div className="space-y-1.5">
                 <Label className={labelClass}>Landline</Label>
-                <Input
+                <PhoneInput
                   value={form.customer_landline}
-                  onChange={(e) => update("customer_landline", e.target.value)}
-                  maxLength={14}
+                  onValueChange={(value) => update("customer_landline", value)}
                   className={fieldClass}
                   readOnly={isProcessor || isOpr}
                 />
@@ -1700,10 +1692,9 @@ export default function LeadDetailPage() {
 
                     <div className="space-y-1.5">
                       <Label className={labelClass}>Tech Number</Label>
-                    <Input
+                    <PhoneInput
                       value={form.tech_number}
-                      onChange={(e) => update("tech_number", e.target.value)}
-                      maxLength={14}
+                      onValueChange={(value) => update("tech_number", value)}
                       className={fieldClass}
                       readOnly={isOpr}
                     />

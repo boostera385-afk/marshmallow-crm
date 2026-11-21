@@ -80,7 +80,7 @@ import {
   createCancellationRequest,
   fetchPendingCancellationRequest,
 } from "@/lib/cancellation-requests";
-import { createPaymentRequest, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
+import { createPaymentRequest, recordDirectPayment, PAYMENT_REQUEST_TYPE_LABELS, shouldOfferPaymentTypeChoice, type PaymentRequestType } from "@/lib/payment-requests";
 import type { LeadCancellationRequest } from "@/types";
 import { optimizeImageForUpload } from "@/lib/image-upload";
 import { getAssignableLeadTags, isQuotationMaster } from "@/lib/lead-tags";
@@ -1197,8 +1197,8 @@ function LeadCard({
       setCancelRequestLoading(false);
     }
   };
-  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment?: string) => {
-    if (!user) return;
+  const handlePaymentConfirm = async (amount: number, screenshotFile: File | null, comment: string | undefined, operationId: string) => {
+    if (!user || paymentLoading) return;
     setPaymentLoading(true);
     try {
       const typeLabel = PAYMENT_REQUEST_TYPE_LABELS[paymentRequestType];
@@ -1214,6 +1214,7 @@ function LeadCard({
           amount,
           comment,
           screenshotFile,
+          operationId,
         });
         toast.success(`${typeLabel} request sent for Admin approval`);
         setPaymentOpen(false);
@@ -1221,47 +1222,9 @@ function LeadCard({
         return;
       }
 
-      // Admin (or any other bypass) -> mark Paid/Partial Paid directly
-      let screenshotUrl: string | null = null;
-      if (screenshotFile) {
-        const optimizedScreenshot = await optimizeImageForUpload(screenshotFile);
-        const ext = optimizedScreenshot.name.split(".").pop() || "jpg";
-        const path = `payments/${lead.id}_${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from("lead-photos").upload(path, optimizedScreenshot);
-        // Never record the payment without the proof that was attached to it.
-        // Swallowing this marked the lead Paid with no screenshot and still
-        // reported success, so the proof was lost with nobody told. The
-        // cancellation proof and the Processor payment request both throw here.
-        if (uploadError) throw uploadError;
-        screenshotUrl = path;
-      }
-
-      const { error } = await supabase
-        .from("leads")
-        .update({
-          status: paymentRequestType as LeadStatus,
-          amount,
-          payment_amount: amount,
-          payment_screenshot_url: screenshotUrl,
-          last_edited_by: user?.id,
-          last_edited_by_name: profile?.full_name || user?.email || "Unknown user",
-          updated_at: new Date().toISOString(),
-          last_edited_at: new Date().toISOString(),
-        })
-        .eq("id", lead.id);
-
-      if (error) {
-        toast.error("Failed to update status");
-        return;
-      }
-
-      await logActivity(user.id, "payment_recorded", "lead", lead.id, {
-        target_name: lead.job_id,
-        customer_name: lead.customer_name,
-        job_id: lead.job_id,
-        amount,
-        status_from: lead.status,
-        status_to: paymentRequestType,
+      await recordDirectPayment({
+        lead, userId: user.id, requesterRole: role, requestType: paymentRequestType,
+        amount, screenshotFile, operationId,
       });
 
       toast.success(`Payment recorded & status updated to ${typeLabel}`);

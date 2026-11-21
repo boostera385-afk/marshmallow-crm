@@ -1,8 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, Lead, LeadStatus } from "@/types";
-import { logActivity } from "@/lib/activity";
+import { z } from "zod";
 import { optimizeImageForUpload } from "@/lib/image-upload";
-import { updateLeadById } from "@/lib/lead-updates";
 import type { ReviewActionLead } from "@/lib/request-page-leads";
 
 export const PAYMENT_REQUEST_STATUS: LeadStatus = "payment_requested" as LeadStatus;
@@ -58,6 +57,7 @@ type CreateArgs = {
   amount: number;
   comment?: string | null;
   screenshotFile?: File | null;
+  operationId: string;
 };
 
 type ReviewArgs = {
@@ -71,6 +71,7 @@ type ReviewArgs = {
   reviewerRole: AppRole;
   action: "approved" | "rejected";
   reviewNote?: string | null;
+  operationId: string;
 };
 
 const table = () => supabase.from("lead_payment_requests");
@@ -78,14 +79,13 @@ const table = () => supabase.from("lead_payment_requests");
 /** Same gate for both a Paid request and a Partial Paid request. */
 export const canCreatePaymentRequest = (role?: AppRole | null) => role === "processor";
 
-/** An Admin moving a lead to Paid from anything other than Partial Paid picks
- * Paid or Partial Paid in the confirmation dialog. From Partial Paid, Paid is
- * the only sensible next step, so no choice is shown. */
+/** Admins choose either outcome for every non-terminal lead, including a
+ * further partial payment on an already Partial Paid lead. */
 export const shouldOfferPaymentTypeChoice = (
   role: AppRole | null | undefined,
   targetType: PaymentRequestType,
   previousStatus: LeadStatus | null | undefined,
-) => role === "admin" && targetType === "paid" && previousStatus !== "partial_paid";
+) => role === "admin" && targetType === "paid" && previousStatus !== "paid";
 
 export const canReviewPaymentRequest = (role: AppRole | null | undefined, request?: LeadPaymentRequest | null) => {
   if (!request || request.status !== "pending") return false;
@@ -122,142 +122,95 @@ export async function fetchPendingPaymentRequest(leadId: string): Promise<LeadPa
 export async function createPaymentRequest({
   lead,
   userId,
-  userName,
   requesterRole,
   requestType,
   amount,
   comment,
   screenshotFile,
-}: CreateArgs): Promise<LeadPaymentRequest> {
+  operationId,
+}: CreateArgs) {
   if (!canCreatePaymentRequest(requesterRole)) {
     throw new Error(`Only Processors can request ${PAYMENT_REQUEST_TYPE_LABELS[requestType]} approval`);
   }
-  if (!(amount > 0)) throw new Error("Amount is required");
-
-  const { data: existing } = await table()
-    .select("id")
-    .eq("lead_id", lead.id)
-    .eq("status", "pending")
-    .maybeSingle();
-  if (existing) throw new Error("A pending payment request already exists for this lead");
-
-  let screenshotPath: string | null = null;
-  if (screenshotFile) {
-    const optimized = await optimizeImageForUpload(screenshotFile);
-    const ext = optimized.name.split(".").pop() || "jpg";
-    screenshotPath = `payment-requests/${lead.id}_${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage.from("lead-photos").upload(screenshotPath, optimized);
-    if (uploadError) throw uploadError;
-  }
-
-  const { data, error } = await table()
-    .insert({
-      lead_id: lead.id,
-      previous_status: lead.status,
-      requested_by: userId,
-      requested_by_name: userName || null,
-      requested_by_role: requesterRole,
-      request_type: requestType,
-      amount,
-      screenshot_path: screenshotPath,
-      comment: comment?.trim() || null,
-      status: "pending",
-    } as never)
-    .select("*")
-    .single();
-
-  if (error) throw new Error(error.message || "Failed to create payment request");
-
-  await updateLeadById(lead.id, {
-    status: PAYMENT_REQUEST_STATUS,
-    cs_tag: null,
-    last_edited_by: userId,
-    last_edited_by_name: userName || null,
-    updated_at: new Date().toISOString(),
-    last_edited_at: new Date().toISOString(),
+  validateAmount(amount);
+  const screenshotPath = await uploadPaymentEvidence("payment-requests", lead.id, userId, operationId, screenshotFile);
+  return callPaymentWorkflow({
+    kind: "payment", action: "create", operationId, leadId: lead.id,
+    expectedStatus: lead.status, requestType, amount, screenshotPath, comment: comment?.trim() || null,
   });
-
-  // Admins are notified by the database (lead_payment_requests_notify).
-  await logActivity(userId, "payment_requested", "lead", lead.id, {
-    target_name: lead.job_id,
-    customer_name: lead.customer_name,
-    job_id: lead.job_id,
-    requested_by_role: requesterRole,
-    request_type: requestType,
-    amount,
-    comment: comment || null,
-    screenshot_path: screenshotPath,
-    status_from: lead.status,
-    status_to: PAYMENT_REQUEST_STATUS,
-  });
-
-  return data as unknown as LeadPaymentRequest;
 }
 
 export async function reviewPaymentRequest({
   request,
   lead,
-  reviewerId,
-  reviewerName,
   reviewerRole,
   action,
   reviewNote,
+  operationId,
 }: ReviewArgs) {
   if (!canReviewPaymentRequest(reviewerRole, request)) {
     throw new Error(`Only Admins can review ${PAYMENT_REQUEST_TYPE_LABELS[request.request_type]} requests`);
   }
 
-  const now = new Date().toISOString();
-  const { error: requestError } = await table()
-    .update({
-      status: action,
-      reviewed_by: reviewerId,
-      reviewed_at: now,
-      review_note: reviewNote?.trim() || null,
-    } as never)
-    .eq("id", request.id);
-  if (requestError) throw new Error(requestError.message || "Failed to review payment request");
+  return callPaymentWorkflow({
+    kind: "payment", action: "review", operationId, leadId: lead.id,
+    requestId: request.id, decision: action, comment: reviewNote?.trim() || null,
+  });
+}
 
-  // request_type decides the outcome status: 'paid' requests always resolved
-  // to 'paid' before this type existed, so a missing/legacy value defaults to it.
-  const outcomeStatus: LeadStatus = request.request_type === "partial_paid" ? "partial_paid" : "paid";
+const paymentResultSchema = z.object({
+  saved: z.literal(true), id: z.string().uuid(), status: z.string().min(1),
+});
 
-  if (action === "approved") {
-    await updateLeadById(lead.id, {
-      status: outcomeStatus,
-      amount: request.amount,
-      payment_amount: request.amount,
-      payment_screenshot_url: request.screenshot_path,
-      cs_tag: null,
-      last_edited_by: reviewerId,
-      last_edited_by_name: reviewerName || null,
-      updated_at: now,
-      last_edited_at: now,
-    });
-  } else {
-    await updateLeadById(lead.id, {
-      status: request.previous_status,
-      last_edited_by: reviewerId,
-      last_edited_by_name: reviewerName || null,
-      updated_at: now,
-      last_edited_at: now,
-    });
+async function callPaymentWorkflow(input: Record<string, string | number | null>) {
+  const { data, error } = await supabase.rpc("workflow_requests", { p_input: input });
+  if (error) throw new Error(error.message || "Payment was not confirmed. Keep this dialog open and retry.");
+  const parsed = paymentResultSchema.safeParse(data);
+  if (!parsed.success) throw new Error("Payment acknowledgement was unavailable. Keep this dialog open and retry.");
+  return parsed.data;
+}
+
+function validateAmount(amount: number) {
+  if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001) {
+    throw new Error("Enter a positive payment amount with at most two decimal places");
   }
+}
 
-  await logActivity(
-    reviewerId,
-    action === "approved" ? "payment_approved" : "payment_rejected",
-    "lead",
-    lead.id,
-    {
-      target_name: lead.job_id,
-      customer_name: lead.customer_name,
-      job_id: lead.job_id,
-      requested_by_role: request.requested_by_role,
-      request_type: request.request_type,
-      amount: request.amount,
-      review_note: reviewNote || null,
-      status_to: action === "approved" ? outcomeStatus : request.previous_status,
-    },
-  );
+// A failed/uncertain RPC retries the same successfully uploaded File without
+// uploading it again. Weak keys release drafts when their dialogs are closed.
+const evidenceUploads = new WeakMap<File, Map<string, Promise<string>>>();
+async function uploadPaymentEvidence(
+  prefix: string, leadId: string, userId: string, operationId: string, file?: File | null,
+) {
+  if (!file) return null;
+  let uploads = evidenceUploads.get(file);
+  if (!uploads) { uploads = new Map(); evidenceUploads.set(file, uploads); }
+  const key = `${prefix}/${leadId}/${userId}/${operationId}`;
+  let upload = uploads.get(key);
+  if (!upload) {
+    upload = (async () => {
+      const optimized = await optimizeImageForUpload(file);
+      const extension = optimized.name.split(".").pop() || "jpg";
+      const path = `${key}/${crypto.randomUUID()}.${extension}`;
+      const { error } = await supabase.storage.from("lead-photos").upload(path, optimized);
+      if (error) throw new Error("Payment screenshot upload failed. Your payment was not submitted. Please retry.");
+      return path;
+    })();
+    uploads.set(key, upload);
+    void upload.catch(() => uploads?.delete(key));
+  }
+  return upload;
+}
+
+/** The server derives actor, current status and audit data; no browser bypass. */
+export async function recordDirectPayment({
+  lead, userId, requesterRole, requestType, amount, screenshotFile, operationId,
+}: CreateArgs) {
+  if (requesterRole !== "admin") throw new Error("Only Admins can record payments directly");
+  validateAmount(amount);
+  const screenshotPath = await uploadPaymentEvidence("payments", lead.id, userId, operationId, screenshotFile);
+  return callPaymentWorkflow({
+    kind: "payment", action: "direct", operationId, leadId: lead.id,
+    expectedStatus: lead.status, requestType, amount, screenshotPath,
+  });
 }

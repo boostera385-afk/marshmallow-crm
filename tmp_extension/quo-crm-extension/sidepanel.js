@@ -164,6 +164,7 @@ const findAddressBtn = document.getElementById("find-address");
 const coveragePreview = document.getElementById("coverage-preview");
 const checkExpectedAreaBtn = document.getElementById("check-expected-area");
 const expectedAreaResult = document.getElementById("expected-area-result");
+const customerPhoneError = document.getElementById("customer-phone-error");
 const photosPreviewContainer = document.getElementById("photos-preview-container");
 const noPhotosLabel = document.getElementById("no-photos-label");
 const photoLightbox = document.getElementById("photo-lightbox");
@@ -278,6 +279,10 @@ async function initialize() {
   form.addEventListener("input", handleFormInput);
   form.addEventListener("change", handleFormInput);
   form.addEventListener("submit", handleCreateLead);
+  // Incomplete or invalid numbers are reported when the user leaves the field.
+  form.customerNumber?.addEventListener("blur", () => {
+    showCustomerPhoneError(DonutPhone.validate(form.customerNumber.value));
+  });
   clearButton.addEventListener("click", handleClearForm);
   if (autoPickDirectionBtn) {
     autoPickDirectionBtn.addEventListener("click", handleAutoPickDirection);
@@ -794,6 +799,14 @@ async function handleFormInput(event) {
   }
 
   if (target.name === "customerNumber") {
+    const tooLong = DonutPhone.overflowError(target.value);
+    if (tooLong) {
+      // Refuse the keystroke/paste: keep the last valid number instead of truncating.
+      target.value = formatPhoneNumber(currentDraft?.customerNumber || "");
+      showCustomerPhoneError(tooLong);
+      return;
+    }
+    showCustomerPhoneError(null);
     formatPhoneInput(target);
     value = target.value;
   }
@@ -916,6 +929,13 @@ function renderUrgentIssues(issues) {
 async function handleCreateLead(event) {
   event.preventDefault();
   clearFeedback();
+  const phoneError = DonutPhone.validate(form.customerNumber?.value);
+  if (phoneError) {
+    showFeedback(`Customer Phone: ${phoneError}`, "error");
+    showCustomerPhoneError(phoneError);
+    form.customerNumber?.focus();
+    return;
+  }
   createLeadButton.disabled = true;
   createLeadButton.innerHTML = `<svg class="spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="animation: spin 0.8s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-linecap="round"/></svg><span>Creating...</span>`;
 
@@ -1073,6 +1093,7 @@ function resetLeadCheckState({ clearMessage = true } = {}) {
 }
 
 function resetTransientFormState() {
+  showCustomerPhoneError(null);
   suppressAddressLookup = false;
   hideAddressSuggestions();
   resetLeadCheckState();
@@ -1859,55 +1880,18 @@ function clearCheckLeadFeedback() {
 
 // Phone formatting helper
 function formatPhoneNumber(value) {
-  if (!value) return "";
-  const hasPlus = value.trim().startsWith("+");
-  const digits = value.replace(/\D/g, "");
-  
-  if (digits.length === 0) {
-    return hasPlus ? "+" : "";
+  return DonutPhone.format(value);
+}
+
+function showCustomerPhoneError(message) {
+  const input = form?.customerNumber;
+  if (input) {
+    if (message) input.setAttribute("aria-invalid", "true");
+    else input.removeAttribute("aria-invalid");
   }
-  
-  const prefix = hasPlus ? "+" : "";
-  
-  if (hasPlus) {
-    if (digits.length <= 3) {
-      return prefix + digits;
-    }
-    if (digits.length <= 7) {
-      return `${prefix}${digits.slice(0, 2)} ${digits.slice(2)}`;
-    }
-    if (digits.length <= 10) {
-      return `${prefix}${digits.slice(0, 2)} ${digits.slice(2, 6)} ${digits.slice(6)}`;
-    }
-    return `${prefix}${digits.slice(0, 2)} ${digits.slice(2, 6)} ${digits.slice(6, 10)} ${digits.slice(10)}`;
-  }
-  
-  if (digits.startsWith("1")) {
-    if (digits.length <= 1) {
-      return "1";
-    }
-    if (digits.length <= 4) {
-      return `1 (${digits.slice(1)}`;
-    }
-    if (digits.length <= 7) {
-      return `1 (${digits.slice(1, 4)}) ${digits.slice(4)}`;
-    }
-    if (digits.length <= 11) {
-      return `1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
-    }
-    return `1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 11)} ext. ${digits.slice(11)}`;
-  }
-  
-  if (digits.length <= 3) {
-    return `(${digits}`;
-  }
-  if (digits.length <= 6) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-  }
-  if (digits.length <= 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)} ext. ${digits.slice(10)}`;
+  if (!customerPhoneError) return;
+  customerPhoneError.textContent = message || "";
+  customerPhoneError.hidden = !message;
 }
 
 function formatPhoneInput(input) {

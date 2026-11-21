@@ -17,15 +17,16 @@ export async function updateLeadById(leadId: string, changes: LeadUpdatePayload)
     }
   }
 
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from("leads")
-    .update(cleanChanges as never)
+    .update(cleanChanges as never, { count: "exact" })
     .eq("id", leadId);
 
   if (error) {
     console.error("updateLeadById failed:", error);
     throw new Error(error.message || NO_ROW_UPDATED_MESSAGE);
   }
+  if (count !== 1) throw new Error(NO_ROW_UPDATED_MESSAGE);
 
   return { id: leadId };
 }

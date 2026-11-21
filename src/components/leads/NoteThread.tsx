@@ -8,7 +8,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, Pencil, Check, X, SmilePlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { buildTechEntry, countTechs, formatTechCount, nextTechNumber } from "@/lib/lead-techs";
-import { formatUSPhone } from "@/lib/phone";
+import { validateUSPhone } from "@/lib/phone";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { realtimeBus, relayTableToBus } from "@/lib/realtime";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -249,6 +250,11 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
   // Sent to the thread as an ordinary note, the same as typing one.
   const submitTech = async () => {
     if (!user || !techName.trim() || addingTech) return;
+    const phoneError = validateUSPhone(techPhone);
+    if (phoneError) {
+      toast.error(`Tech phone: ${phoneError}`);
+      return;
+    }
     setAddingTech(true);
 
     const entry = buildTechEntry(nextTech, {
@@ -553,15 +559,17 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                   placeholder="Name"
                   className="h-8 flex-1 rounded-lg text-[12px]"
                 />
-                <Input
-                  value={techPhone}
-                  // Formatted as it is typed, so it always reads (000) 000-0000.
-                  onChange={(e) => setTechPhone(formatUSPhone(e.target.value))}
-                  onKeyDown={handleTechKeyDown}
-                  placeholder="(000) 000-0000"
-                  inputMode="tel"
-                  className="h-8 flex-1 rounded-lg text-[12px]"
-                />
+                <div className="flex flex-1 flex-col gap-1">
+                  <PhoneInput
+                    value={techPhone}
+                    // Formatted as it is typed or pasted, so it always reads (000) 000-0000.
+                    onValueChange={setTechPhone}
+                    onKeyDown={handleTechKeyDown}
+                    placeholder="(000) 000-0000"
+                    aria-label="Tech phone"
+                    className="h-8 rounded-lg text-[12px]"
+                  />
+                </div>
               </div>
 
               <div className="flex gap-1.5">

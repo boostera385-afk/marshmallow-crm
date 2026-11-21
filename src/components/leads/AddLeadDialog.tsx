@@ -26,7 +26,8 @@ import {
 import { LEAD_STATUS_CONFIG, type LeadStatus } from "@/types";
 import { getChangeableStatuses, canChangeStatus } from "@/lib/constants";
 import { useDuplicatePhoneCheck } from "@/hooks/useDuplicatePhoneCheck";
-import { formatUSPhone, hasContactNumber } from "@/lib/phone";
+import { firstPhoneError, formatUSPhoneInput, hasContactNumber } from "@/lib/phone";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { logActivity } from "@/lib/activity";
 import { showsUrgentCheck } from "@/lib/urgent-verification";
 import { optimizeImageForUpload } from "@/lib/image-upload";
@@ -170,7 +171,7 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
   const update = (key: string, value: string) => {
     setShouldResetOnClose(false);
     if (key === "customer_phone" || key === "customer_landline" || key === "tech_number") {
-      setForm((prev) => ({ ...prev, [key]: formatUSPhone(value) }));
+      setForm((prev) => ({ ...prev, [key]: formatUSPhoneInput(value) }));
     } else {
       setForm((prev) => ({ ...prev, [key]: value }));
     }
@@ -238,6 +239,15 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
     // A cell phone or a landline - either one is enough.
     if (!hasContactNumber(form.customer_phone, form.customer_landline)) {
       toast.error("Enter a cell phone or a landline");
+      return;
+    }
+    const phoneError = firstPhoneError([
+      ["Cell Phone", form.customer_phone],
+      ["Landline", form.customer_landline],
+      ["Tech Number", form.tech_number],
+    ]);
+    if (phoneError) {
+      toast.error(phoneError);
       return;
     }
     if (!form.number_name.trim()) {
@@ -595,11 +605,10 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className={labelClass}>Cell Phone</Label>
-                <Input
+                <PhoneInput
                   value={form.customer_phone}
-                  onChange={(e) => update("customer_phone", e.target.value)}
+                  onValueChange={(value) => update("customer_phone", value)}
                   placeholder="(555) 123-4567"
-                  maxLength={14}
                   className={`${fieldClass} ${isDuplicate ? "border-destructive ring-1 ring-destructive/40" : ""}`}
                 />
                 {isDuplicate && (
@@ -614,11 +623,10 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
 
               <div className="space-y-1.5">
                 <Label className={labelClass}>Landline</Label>
-                <Input
+                <PhoneInput
                   value={form.customer_landline}
-                  onChange={(e) => update("customer_landline", e.target.value)}
+                  onValueChange={(value) => update("customer_landline", value)}
                   placeholder="(555) 123-4567"
-                  maxLength={14}
                   className={fieldClass}
                 />
               </div>
@@ -774,11 +782,10 @@ const AddLeadDialog = ({ open, onOpenChange, onSuccess, initialData, onUrgentChe
 
                     <div className="space-y-1.5">
                       <Label className={labelClass}>Tech Number</Label>
-                      <Input
+                      <PhoneInput
                         value={form.tech_number}
-                        onChange={(e) => update("tech_number", e.target.value)}
+                        onValueChange={(value) => update("tech_number", value)}
                         placeholder="(555) 123-4567"
-                        maxLength={14}
                         className={fieldClass}
                       />
                     </div>

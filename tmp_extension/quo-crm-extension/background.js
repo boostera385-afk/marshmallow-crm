@@ -1,4 +1,4 @@
-importScripts("supabase.js", "quote-breakdown.js");
+importScripts("supabase.js", "quote-breakdown.js", "phone-format.js");
 
 const SUPABASE_URL = "https://kxiqholnmhkwhdkhtopp.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4aXFob2xubWhrd2hka2h0b3BwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxNjU0OTcsImV4cCI6MjA4ODc0MTQ5N30.yDiNd6Sl2jWbkNN0Wf5cjClVJKoQXAd8q8kkBUWep7o";
@@ -652,6 +652,10 @@ async function saveLeadDraft() {
   if (!draft.customerName.trim() && !draft.customerNumber.trim()) {
     throw new Error("Customer Name or Customer Number is required.");
   }
+  const phoneError = DonutPhone.validate(draft.customerNumber);
+  if (phoneError) {
+    throw new Error(`Customer Phone: ${phoneError}`);
+  }
 
   // Reuse a reserved job id across retries. leads.job_id is unique, so a repeat
   // attempt can only ever re-find this lead, never create a second one.
@@ -1224,55 +1228,7 @@ async function getExtensionReport(dateFrom, dateTo) {
 
 // Phone formatting helper
 function formatPhoneNumber(value) {
-  if (!value) return "";
-  const hasPlus = value.trim().startsWith("+");
-  const digits = value.replace(/\D/g, "");
-  
-  if (digits.length === 0) {
-    return hasPlus ? "+" : "";
-  }
-  
-  const prefix = hasPlus ? "+" : "";
-  
-  if (hasPlus) {
-    if (digits.length <= 3) {
-      return prefix + digits;
-    }
-    if (digits.length <= 7) {
-      return `${prefix}${digits.slice(0, 2)} ${digits.slice(2)}`;
-    }
-    if (digits.length <= 10) {
-      return `${prefix}${digits.slice(0, 2)} ${digits.slice(2, 6)} ${digits.slice(6)}`;
-    }
-    return `${prefix}${digits.slice(0, 2)} ${digits.slice(2, 6)} ${digits.slice(6, 10)} ${digits.slice(10)}`;
-  }
-  
-  if (digits.startsWith("1")) {
-    if (digits.length <= 1) {
-      return "1";
-    }
-    if (digits.length <= 4) {
-      return `1 (${digits.slice(1)}`;
-    }
-    if (digits.length <= 7) {
-      return `1 (${digits.slice(1, 4)}) ${digits.slice(4)}`;
-    }
-    if (digits.length <= 11) {
-      return `1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
-    }
-    return `1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 11)} ext. ${digits.slice(11)}`;
-  }
-  
-  if (digits.length <= 3) {
-    return `(${digits}`;
-  }
-  if (digits.length <= 6) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-  }
-  if (digits.length <= 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)} ext. ${digits.slice(10)}`;
+  return DonutPhone.format(value);
 }
 
 let preparingPhotos = false;

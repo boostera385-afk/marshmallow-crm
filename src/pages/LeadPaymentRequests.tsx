@@ -28,7 +28,8 @@ import {
 } from "@/lib/payment-requests";
 import { PAYMENT_PAGE_LEAD_COLUMNS, type PaymentPageLead } from "@/lib/request-page-leads";
 import { toast } from "sonner";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createCoalescedRefresh } from "@/lib/coalesced-refresh";
 import { getSignedUrl } from "@/lib/storage";
 
 type Row = LeadPaymentRequest & { lead?: PaymentPageLead | null; requester_name?: string | null };
@@ -72,9 +73,17 @@ export default function LeadPaymentRequests() {
   const { role, user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [approvedSuggestions, setApprovedSuggestions] = useState<ApprovedSuggestion[]>([]);
+  const reviewing = useRef(new Set<string>());
+  const operations = useRef(new Map<string, string>());
+  const [busyRequests, setBusyRequests] = useState<Set<string>>(new Set());
+  const queryKey = useMemo(() => ["lead-payment-requests-page", user?.id, role] as const, [user?.id, role]);
+  const scope = `${user?.id}:${role}`;
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
 
-  const { data: requests = [], isLoading } = useQuery<Row[]>({
-    queryKey: ["lead-payment-requests-page"],
+  const { data: requests = [], isLoading, isError, error, refetch } = useQuery<Row[]>({
+    queryKey,
+    enabled: Boolean(user) && role === "admin",
     queryFn: async () => {
       const { data: rows, error } = await supabase.from("lead_payment_requests")
         .select("*")
@@ -83,15 +92,19 @@ export default function LeadPaymentRequests() {
       if (error) throw error;
 
       const reqs = (rows ?? []) as unknown as LeadPaymentRequest[];
-      const leadIds = reqs.map((r) => r.lead_id);
-      const requesterIds = reqs.map((r) => r.requested_by).filter(Boolean) as string[];
+      const leadIds = [...new Set(reqs.map((r) => r.lead_id))];
+      const requesterIds = [...new Set(reqs.flatMap((r) => r.requested_by ? [r.requested_by] : []))];
 
-      const [{ data: leads }, { data: profiles }] = await Promise.all([
-        leadIds.length ? supabase.from("leads").select(PAYMENT_PAGE_LEAD_COLUMNS).in("id", leadIds) : Promise.resolve({ data: [] }),
+      const [leadResult, profileResult] = await Promise.all([
+        leadIds.length ? supabase.from("leads").select(PAYMENT_PAGE_LEAD_COLUMNS).in("id", leadIds) : Promise.resolve({ data: [], error: null }),
         requesterIds.length
           ? supabase.from("profiles_public" as never).select("id, full_name").in("id", requesterIds)
-          : Promise.resolve({ data: [] }),
+          : Promise.resolve({ data: [], error: null }),
       ]);
+      if (leadResult.error) throw new Error("Payment leads could not be loaded. Please retry.");
+      if (profileResult.error) throw new Error("Payment requesters could not be loaded. Please retry.");
+      const leads = leadResult.data;
+      const profiles = profileResult.data;
       const leadMap = new Map(((leads ?? []) as unknown as PaymentPageLead[]).map((l) => [l.id, l]));
       const profMap = new Map(((profiles ?? []) as { id: string; full_name: string }[]).map((p) => [p.id, p.full_name]));
 
@@ -104,57 +117,31 @@ export default function LeadPaymentRequests() {
   });
 
   useEffect(() => {
-    // Shared with the sidebar badge and the user's other tabs (one subscription per browser).
-    return subscribeToTableChanges<RealtimePostgresChangesPayload<LeadPaymentRequest>>(
-      "lead_payment_requests",
-      async (payload) => {
-        if (payload.eventType === "DELETE") {
-          const oldRow = payload.old;
-          queryClient.setQueryData<Row[]>(["lead-payment-requests-page"], (old) => {
-            if (!old) return old;
-            return old.filter((r) => r.id !== oldRow.id);
-          });
-          return;
-        }
-
-        if (payload.eventType === "UPDATE") {
-          const newRow = payload.new as LeadPaymentRequest;
-          queryClient.setQueryData<Row[]>(["lead-payment-requests-page"], (old) => {
-            if (!old) return old;
-            if (newRow.status !== "pending") return old.filter((r) => r.id !== newRow.id);
-            return old.map((r) => (r.id === newRow.id ? { ...r, ...newRow } : r));
-          });
-          return;
-        }
-
-        if (payload.eventType === "INSERT") {
-          const newRow = payload.new as LeadPaymentRequest;
-          if (newRow.status !== "pending") return;
-
-          const { data: leadData } = await supabase.from("leads").select(PAYMENT_PAGE_LEAD_COLUMNS).eq("id", newRow.lead_id).single();
-          let requesterName = newRow.requested_by_name || null;
-          if (newRow.requested_by) {
-            const { data: profile } = await supabase.from("profiles_public").select("full_name").eq("id", newRow.requested_by).maybeSingle();
-            if (profile) requesterName = profile.full_name;
-          }
-
-          const enrichedRequest: Row = {
-            ...newRow,
-            lead: leadData as unknown as PaymentPageLead,
-            requester_name: requesterName,
-          };
-
-          queryClient.setQueryData<Row[]>(["lead-payment-requests-page"], (old) => {
-            if (!old) return old;
-            return [enrichedRequest, ...old];
-          });
-        }
-      },
+    if (!user || role !== "admin") return;
+    const refresh = createCoalescedRefresh(
+      () => queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false }),
+      () => toast.error("Payment queue refresh failed. Please retry."),
     );
-  }, [queryClient]);
+    const release = subscribeToTableChanges<RealtimePostgresChangesPayload<LeadPaymentRequest>>(
+      "lead_payment_requests", () => { void refresh.request(); },
+    );
+    return () => { refresh.dispose(); release(); };
+  }, [queryClient, queryKey, role, user]);
+
+  useEffect(() => {
+    setApprovedSuggestions([]);
+    reviewing.current.clear();
+    operations.current.clear();
+    setBusyRequests(new Set());
+  }, [user?.id, role]);
 
   const handleReview = async (row: Row, action: "approved" | "rejected") => {
-    if (!user || !row.lead) return;
+    if (!user || !row.lead || reviewing.current.has(row.id)) return false;
+    reviewing.current.add(row.id);
+    setBusyRequests(new Set(reviewing.current));
+    const key = `${row.id}:${action}`;
+    let operationId = operations.current.get(key);
+    if (!operationId) { operationId = crypto.randomUUID(); operations.current.set(key, operationId); }
     try {
       await reviewPaymentRequest({
         request: row,
@@ -163,23 +150,33 @@ export default function LeadPaymentRequests() {
         reviewerName: profile?.full_name || user.email || "Unknown user",
         reviewerRole: role,
         action,
+        operationId,
       });
+      if (currentScope.current !== scope) return false;
       const typeLabel = PAYMENT_REQUEST_TYPE_LABELS[row.request_type];
       toast.success(action === "approved" ? `Lead marked ${typeLabel}` : `${typeLabel} request rejected`);
-      queryClient.invalidateQueries({ queryKey: ["lead-payment-requests-page"] });
+      queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       queryClient.invalidateQueries({ queryKey: ["pending-payment-requests-count"] });
+      return true;
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to review request");
+      if (currentScope.current === scope) toast.error(err instanceof Error ? err.message : "Failed to review request");
+      return false;
+    } finally {
+      if (currentScope.current === scope) {
+        reviewing.current.delete(row.id);
+        setBusyRequests(new Set(reviewing.current));
+      }
     }
   };
 
   const handleApprove = async (row: Row) => {
     if (!user || !row.lead) return;
     const lead = row.lead;
+    if (!await handleReview(row, "approved")) return;
 
     setApprovedSuggestions((prev) => [
-      ...prev,
+      ...prev.filter((suggestion) => suggestion.id !== row.id),
       {
         id: row.id,
         leadId: lead.id,
@@ -193,7 +190,6 @@ export default function LeadPaymentRequests() {
       },
     ]);
 
-    await handleReview(row, "approved");
   };
 
   const dismissSuggestion = (id: string) => {
@@ -247,9 +243,15 @@ export default function LeadPaymentRequests() {
         </div>
       )}
 
+      {isError && (
+        <div role="alert" className="rounded-xl border border-destructive/40 p-4">
+          <p>{error instanceof Error ? error.message : "Payment requests could not be loaded."}</p>
+          <Button variant="outline" onClick={() => { void refetch(); }}>Retry payment requests</Button>
+        </div>
+      )}
       {isLoading ? (
         <div className="h-40 rounded-2xl border border-border/40 skeleton-shimmer" />
-      ) : requests.length === 0 && approvedSuggestions.length === 0 ? (
+      ) : !isError && requests.length === 0 && approvedSuggestions.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground">
             No pending payment requests.
@@ -318,6 +320,7 @@ export default function LeadPaymentRequests() {
                       {canReview ? (
                         <>
                           <Button
+                            disabled={busyRequests.has(row.id)}
                             className="gap-1.5"
                             onClick={() => handleApprove(row)}
                           >
@@ -326,7 +329,7 @@ export default function LeadPaymentRequests() {
                           </Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="outline" className="gap-1.5">
+                              <Button disabled={busyRequests.has(row.id)} variant="outline" className="gap-1.5">
                                 <XCircle className="h-4 w-4" />
                                 Decline request
                               </Button>
@@ -340,7 +343,7 @@ export default function LeadPaymentRequests() {
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Go back</AlertDialogCancel>
-                                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => handleReview(row, "rejected")}>Decline request</AlertDialogAction>
+                                <AlertDialogAction disabled={busyRequests.has(row.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { void handleReview(row, "rejected"); }}>Decline request</AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>

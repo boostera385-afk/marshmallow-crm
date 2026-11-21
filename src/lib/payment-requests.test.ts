@@ -1,262 +1,145 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-
-// A tiny chainable Supabase query-builder stand-in, mirroring the pattern in
-// cancellation-requests.test.ts. Non-terminal methods return the builder itself
-// (awaiting a plain object with no `.then` just resolves to that object, so a
-// destructured `error` comes out undefined == no error); terminal reads resolve
-// with whatever the test configured.
-const insertSpy = vi.fn();
-const updateSpy = vi.fn();
-let existingPending: unknown = null;
-let insertError: { message: string } | null = null;
-let reviewError: { message: string } | null = null;
-
-function makeBuilder() {
-  const b: Record<string, unknown> = {};
-  const self = () => b;
-  b.select = vi.fn(self);
-  b.eq = vi.fn(self);
-  b.order = vi.fn(self);
-  b.limit = vi.fn(self);
-  b.maybeSingle = vi.fn(() => Promise.resolve({ data: existingPending, error: null }));
-  b.single = vi.fn(() => Promise.resolve({ data: { id: "req-1" }, error: insertError }));
-  b.insert = vi.fn((payload: unknown) => {
-    insertSpy(payload);
-    return b;
-  });
-  b.update = vi.fn((payload: unknown) => {
-    updateSpy(payload);
-    b.error = reviewError;
-    return b;
-  });
-  return b;
-}
-
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
-    from: vi.fn(() => makeBuilder()),
-    storage: { from: vi.fn(() => ({ upload: vi.fn(() => Promise.resolve({ error: null })) })) },
-  },
-}));
-
-const { logActivitySpy, updateLeadByIdSpy } = vi.hoisted(() => ({
-  logActivitySpy: vi.fn(() => Promise.resolve()),
-  updateLeadByIdSpy: vi.fn(() => Promise.resolve()),
-}));
-vi.mock("@/lib/activity", () => ({ logActivity: logActivitySpy }));
-vi.mock("@/lib/lead-updates", () => ({ updateLeadById: updateLeadByIdSpy }));
-vi.mock("@/lib/image-upload", () => ({ optimizeImageForUpload: vi.fn((f: File) => Promise.resolve(f)) }));
-
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { LeadPaymentRequest } from "./payment-requests";
 import {
-  canCreatePaymentRequest,
-  canReviewPaymentRequest,
-  paymentRequestTypeTagClass,
-  shouldOfferPaymentTypeChoice,
-  createPaymentRequest,
-  reviewPaymentRequest,
-  PAYMENT_REQUEST_TYPE_LABELS,
-  type LeadPaymentRequest,
+  canCreatePaymentRequest, canReviewPaymentRequest, createPaymentRequest,
+  paymentRequestTypeTagClass, PAYMENT_REQUEST_TYPE_LABELS, recordDirectPayment,
+  reviewPaymentRequest, shouldOfferPaymentTypeChoice,
 } from "./payment-requests";
 
-const lead = { id: "lead-1", job_id: "LD-1", customer_name: "Aaron", status: "job_done" } as never;
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), upload: vi.fn() }));
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: { rpc: mocks.rpc, from: mocks.from, storage: { from: () => ({ upload: mocks.upload }) } },
+}));
+vi.mock("@/lib/image-upload", () => ({ optimizeImageForUpload: async (file: File) => file }));
 
-const baseArgs = {
-  lead,
-  userId: "user-1",
-  userName: "Processor Pat",
-  requesterRole: "processor" as const,
-  amount: 100,
+const ID = "00000000-0000-4000-8000-000000000001";
+const OP = "00000000-0000-4000-8000-000000000002";
+const lead = { id: ID, job_id: "MM-1", customer_name: "Synthetic", status: "job_done" } as never;
+const args = { lead, userId: ID, requesterRole: "processor" as const, amount: 25.5, operationId: OP };
+const request: LeadPaymentRequest = {
+  id: ID, lead_id: ID, previous_status: "job_done", requested_by: ID, requested_by_role: "processor",
+  request_type: "paid", amount: 25.5, screenshot_path: null, comment: null, status: "pending",
+  reviewed_by: null, reviewed_at: null, review_note: null, created_at: "", updated_at: "",
 };
-
-const baseRequest: LeadPaymentRequest = {
-  id: "req-1",
-  lead_id: "lead-1",
-  previous_status: "job_done" as never,
-  requested_by: "user-1",
-  requested_by_name: "Processor Pat",
-  requested_by_role: "processor",
-  request_type: "paid",
-  amount: 100,
-  screenshot_path: null,
-  comment: null,
-  status: "pending",
-  reviewed_by: null,
-  reviewed_at: null,
-  review_note: null,
-  created_at: "2026-11-14T00:00:00Z",
-  updated_at: "2026-11-14T00:00:00Z",
-};
-
+const review = { request, lead, reviewerId: ID, reviewerRole: "admin" as const, action: "approved" as const, operationId: OP };
 beforeEach(() => {
   vi.clearAllMocks();
-  insertSpy.mockClear();
-  updateSpy.mockClear();
-  existingPending = null;
-  insertError = null;
-  reviewError = null;
+  mocks.rpc.mockResolvedValue({ data: { saved: true, id: ID, status: "payment_requested" }, error: null });
+  mocks.upload.mockResolvedValue({ error: null });
 });
 
-describe("payment request role gates", () => {
-  it("only Processors can create either request type", () => {
-    expect(canCreatePaymentRequest("processor")).toBe(true);
-    expect(canCreatePaymentRequest("admin")).toBe(false);
-    expect(canCreatePaymentRequest("customer_service")).toBe(false);
-    expect(canCreatePaymentRequest("opr")).toBe(false);
-    expect(canCreatePaymentRequest(null)).toBe(false);
-  });
-
-  it("only Admin can review a pending request, of either type", () => {
-    const pendingPaid = { ...baseRequest, request_type: "paid" as const };
-    const pendingPartial = { ...baseRequest, request_type: "partial_paid" as const };
-    expect(canReviewPaymentRequest("admin", pendingPaid)).toBe(true);
-    expect(canReviewPaymentRequest("admin", pendingPartial)).toBe(true);
-    expect(canReviewPaymentRequest("processor", pendingPaid)).toBe(false);
-    expect(canReviewPaymentRequest("admin", { ...pendingPaid, status: "approved" })).toBe(false);
-    expect(canReviewPaymentRequest("admin", null)).toBe(false);
-  });
-});
-
-describe("Admin Paid confirmation type choice", () => {
-  it("offers Paid / Partial Paid when an Admin moves a non-Partial-Paid lead to Paid", () => {
-    expect(shouldOfferPaymentTypeChoice("admin", "paid", "job_done")).toBe(true);
-    expect(shouldOfferPaymentTypeChoice("admin", "paid", "payment_pending")).toBe(true);
-    expect(shouldOfferPaymentTypeChoice("admin", "paid", undefined)).toBe(true);
-  });
-
-  it("goes straight to Paid when the lead was already Partial Paid", () => {
-    expect(shouldOfferPaymentTypeChoice("admin", "paid", "partial_paid")).toBe(false);
-  });
-
-  it("does not offer the choice to other roles or for a Partial Paid selection", () => {
+describe("payment permissions and presentation", () => {
+  it.each(["admin", "processor", "customer_service", "cs_admin", "opr", "opr_admin", null] as const)(
+    "preserves independent request and review gates for %s", (role) => {
+      expect(canCreatePaymentRequest(role)).toBe(role === "processor");
+      expect(canReviewPaymentRequest(role, request)).toBe(role === "admin");
+      expect(canReviewPaymentRequest(role, { ...request, status: "approved" })).toBe(false);
+    },
+  );
+  it("offers Admin both outcomes even for an already Partial Paid lead, never a Paid lead", () => {
+    for (const previous of ["job_done", "partial_paid", "payment_pending"] as const) {
+      expect(shouldOfferPaymentTypeChoice("admin", "paid", previous)).toBe(true);
+    }
+    expect(shouldOfferPaymentTypeChoice("admin", "paid", "paid")).toBe(false);
     expect(shouldOfferPaymentTypeChoice("processor", "paid", "job_done")).toBe(false);
-    expect(shouldOfferPaymentTypeChoice("customer_service", "paid", "job_done")).toBe(false);
     expect(shouldOfferPaymentTypeChoice(null, "paid", "job_done")).toBe(false);
     expect(shouldOfferPaymentTypeChoice("admin", "partial_paid", "job_done")).toBe(false);
   });
-});
-
-describe("payment request type tag colours", () => {
-  it("shows Partial Paid requests in yellow and Paid (including legacy rows) in green", () => {
+  it("keeps Partial Paid yellow and Paid/legacy green with distinct labels", () => {
     expect(paymentRequestTypeTagClass("partial_paid")).toContain("yellow");
     expect(paymentRequestTypeTagClass("partial_paid")).not.toContain("emerald");
     expect(paymentRequestTypeTagClass("paid")).toContain("emerald");
-    expect(paymentRequestTypeTagClass(undefined)).toBe(paymentRequestTypeTagClass("paid"));
+    expect(paymentRequestTypeTagClass(null)).toBe(paymentRequestTypeTagClass("paid"));
+    expect(PAYMENT_REQUEST_TYPE_LABELS).toEqual({ paid: "Paid", partial_paid: "Partial Paid" });
   });
 });
 
-describe("createPaymentRequest", () => {
-  it("does not move or audit a lead when the request insert fails", async () => {
-    insertError = { message: "Request denied" };
-    await expect(createPaymentRequest({ ...baseArgs, requestType: "partial_paid" })).rejects.toThrow("Request denied");
-    expect(updateLeadByIdSpy).not.toHaveBeenCalled();
-    expect(logActivitySpy).not.toHaveBeenCalled();
+describe("atomic payment transport", () => {
+  it.each(["paid", "partial_paid"] as const)("creates %s using exactly one RPC and no client writes", async (requestType) => {
+    const result = await createPaymentRequest({ ...args, requestType, comment: "  Deposit  " });
+    expect(result.saved).toBe(true);
+    expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith("workflow_requests", { p_input: {
+      kind: "payment", action: "create", leadId: ID, operationId: OP, expectedStatus: "job_done",
+      requestType, amount: 25.5, screenshotPath: null, comment: "Deposit",
+    } });
+    expect(mocks.from).not.toHaveBeenCalled();
   });
-  it("inserts a paid request and moves the lead to payment_requested", async () => {
-    await createPaymentRequest({ ...baseArgs, requestType: "paid" });
-
-    expect(insertSpy).toHaveBeenCalledTimes(1);
-    const row = insertSpy.mock.calls[0][0] as Record<string, unknown>;
-    expect(row.request_type).toBe("paid");
-    expect(row.amount).toBe(100);
-    expect(row.status).toBe("pending");
-    expect(updateLeadByIdSpy).toHaveBeenCalledWith("lead-1", expect.objectContaining({ status: "payment_requested" }));
-    expect(logActivitySpy).toHaveBeenCalledWith(
-      "user-1", "payment_requested", "lead", "lead-1",
-      expect.objectContaining({ request_type: "paid", amount: 100 }),
-    );
+  it.each([0, -1, Infinity, NaN, 1.001])("rejects invalid amount %s before uploads or RPCs", async (amount) => {
+    await expect(createPaymentRequest({ ...args, amount, requestType: "paid" })).rejects.toThrow(/positive/);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.upload).not.toHaveBeenCalled();
   });
-
-  it("inserts a partial_paid request the same way", async () => {
-    await createPaymentRequest({ ...baseArgs, requestType: "partial_paid" });
-
-    const row = insertSpy.mock.calls[0][0] as Record<string, unknown>;
-    expect(row.request_type).toBe("partial_paid");
-    expect(insertSpy).toHaveBeenCalledTimes(1);
-    expect(updateLeadByIdSpy).toHaveBeenCalledTimes(1);
-    // Still lands in the shared pending queue, not a separate status.
-    expect(updateLeadByIdSpy).toHaveBeenCalledWith("lead-1", expect.objectContaining({ status: "payment_requested" }));
+  it("rejects a non-Processor request before contacting the backend", async () => {
+    await expect(createPaymentRequest({ ...args, requesterRole: "admin", requestType: "partial_paid" })).rejects.toThrow(/Processors/);
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
-
-  it("refuses a non-Processor, naming the request type", async () => {
-    await expect(
-      createPaymentRequest({ ...baseArgs, requesterRole: "admin", requestType: "partial_paid" }),
-    ).rejects.toThrow(/Partial Paid/);
-    expect(insertSpy).not.toHaveBeenCalled();
+  it.each(["Request denied", "This lead already has a pending payment request"])("surfaces server rejection: %s", async (message) => {
+    mocks.rpc.mockResolvedValue({ error: { message }, data: null });
+    await expect(createPaymentRequest({ ...args, requestType: "paid" })).rejects.toThrow(message);
+    expect(mocks.from).not.toHaveBeenCalled();
   });
-
-  it("requires a positive amount", async () => {
-    await expect(createPaymentRequest({ ...baseArgs, requestType: "paid", amount: 0 })).rejects.toThrow(/required/i);
-    expect(insertSpy).not.toHaveBeenCalled();
+  it.each(["paid", "partial_paid"] as const)("records direct %s with the same authenticated authority", async (requestType) => {
+    await recordDirectPayment({ ...args, requesterRole: "admin", requestType });
+    expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith("workflow_requests", { p_input: expect.objectContaining({
+      action: "direct", requestType, expectedStatus: "job_done", operationId: OP,
+    }) });
+    expect(mocks.from).not.toHaveBeenCalled();
   });
-
-  it("refuses a second pending request of either type for the same lead", async () => {
-    existingPending = { id: "already-open" };
-    await expect(createPaymentRequest({ ...baseArgs, requestType: "partial_paid" })).rejects.toThrow(/pending payment request/i);
-    expect(insertSpy).not.toHaveBeenCalled();
+  it("does not give a Processor a direct-payment bypass", async () => {
+    await expect(recordDirectPayment({ ...args, requestType: "paid" })).rejects.toThrow(/Admins/);
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
-});
-
-describe("reviewPaymentRequest", () => {
-  it("does not apply an outcome when the review write is denied", async () => {
-    reviewError = { message: "Review denied" };
-    await expect(reviewPaymentRequest({ request: baseRequest, lead, reviewerId: "admin-1", reviewerRole: "admin", action: "approved" })).rejects.toThrow("Review denied");
-    expect(updateLeadByIdSpy).not.toHaveBeenCalled();
-    expect(logActivitySpy).not.toHaveBeenCalled();
+  it.each(["approved", "rejected"] as const)("reviews %s without trusting browser amount, previous status or requested outcome", async (action) => {
+    await reviewPaymentRequest({ ...review, action, request: { ...request, request_type: "partial_paid", amount: 999 }, reviewNote: " Checked " });
+    expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith("workflow_requests", { p_input: {
+      kind: "payment", action: "review", operationId: OP, leadId: ID, requestId: ID, decision: action, comment: "Checked",
+    } });
+    expect(mocks.from).not.toHaveBeenCalled();
   });
-  it("approves a paid request to status 'paid'", async () => {
-    await reviewPaymentRequest({
-      request: { ...baseRequest, request_type: "paid" },
-      lead,
-      reviewerId: "admin-1",
-      reviewerRole: "admin",
-      action: "approved",
-    });
-
-    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ status: "approved" }));
-    expect(updateLeadByIdSpy).toHaveBeenCalledWith("lead-1", expect.objectContaining({ status: "paid", amount: 100 }));
+  it("surfaces a denied or concurrently reviewed request without an independent lead update", async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: "Already reviewed" } });
+    await expect(reviewPaymentRequest(review)).rejects.toThrow("Already reviewed");
+    expect(mocks.from).not.toHaveBeenCalled();
   });
-
-  it("approves a partial_paid request to status 'partial_paid', never 'paid'", async () => {
-    await reviewPaymentRequest({
-      request: { ...baseRequest, request_type: "partial_paid" },
-      lead,
-      reviewerId: "admin-1",
-      reviewerRole: "admin",
-      action: "approved",
-    });
-
-    expect(updateLeadByIdSpy).toHaveBeenCalledWith("lead-1", expect.objectContaining({ status: "partial_paid", amount: 100 }));
+  it("refuses non-Admin and already-reviewed requests", async () => {
+    await expect(reviewPaymentRequest({ ...review, reviewerRole: "processor" })).rejects.toThrow(/Admins/);
+    await expect(reviewPaymentRequest({ ...review, request: { ...request, status: "approved" } })).rejects.toThrow(/Admins/);
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
-
-  it("rejects a request back to its previous status, regardless of type", async () => {
-    await reviewPaymentRequest({
-      request: { ...baseRequest, request_type: "partial_paid", previous_status: "job_done" as never },
-      lead,
-      reviewerId: "admin-1",
-      reviewerRole: "admin",
-      action: "rejected",
-    });
-
-    expect(updateLeadByIdSpy).toHaveBeenCalledWith("lead-1", expect.objectContaining({ status: "job_done" }));
-  });
-
-  it("refuses a non-Admin reviewer, naming the request type", async () => {
-    await expect(
-      reviewPaymentRequest({
-        request: { ...baseRequest, request_type: "partial_paid" },
-        lead,
-        reviewerId: "proc-1",
-        reviewerRole: "processor",
-        action: "approved",
-      }),
-    ).rejects.toThrow(/Partial Paid/);
-    expect(updateLeadByIdSpy).not.toHaveBeenCalled();
+  it.each([null, [], { saved: true }, { saved: false, id: ID, status: "paid" }])(
+    "never reports success without a valid saved-row acknowledgement: %j", async (data) => {
+      mocks.rpc.mockResolvedValue({ data, error: null });
+      await expect(recordDirectPayment({ ...args, requesterRole: "admin", requestType: "paid" })).rejects.toThrow(/acknowledgement/);
+    },
+  );
+  it("retries the same operation ID and payload after an uncertain response", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: { message: "Connection lost" } });
+    const input = { ...args, requestType: "paid" as const };
+    await expect(createPaymentRequest(input)).rejects.toThrow("Connection lost");
+    await createPaymentRequest(input);
+    expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);
   });
 });
 
-describe("PAYMENT_REQUEST_TYPE_LABELS", () => {
-  it("has a human label for both request types", () => {
-    expect(PAYMENT_REQUEST_TYPE_LABELS.paid).toBe("Paid");
-    expect(PAYMENT_REQUEST_TYPE_LABELS.partial_paid).toBe("Partial Paid");
+describe("payment evidence", () => {
+  it.each(["create", "direct"] as const)("%s never submits a payment after upload failure, and can retry", async (action) => {
+    const screenshotFile = new File(["proof"], "proof.png", { type: "image/png" });
+    const input = { ...args, requestType: "partial_paid" as const, screenshotFile };
+    const save = () => action === "create" ? createPaymentRequest(input) : recordDirectPayment({ ...input, requesterRole: "admin" });
+    mocks.upload.mockResolvedValueOnce({ error: { message: "Denied" } });
+    await expect(save()).rejects.toThrow(/screenshot upload failed/);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    await save();
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.upload).toHaveBeenCalledTimes(2);
+  });
+  it("deduplicates evidence uploads for uncertain/concurrent retries and keeps the saved path", async () => {
+    const input = { ...args, requestType: "paid" as const, screenshotFile: new File(["proof"], "proof.png") };
+    await Promise.all([createPaymentRequest(input), createPaymentRequest(input)]);
+    expect(mocks.upload).toHaveBeenCalledTimes(1);
+    const path = mocks.upload.mock.calls[0][0];
+    expect(path).toMatch(new RegExp(`^payment-requests/${ID}/${ID}/${OP}/`));
+    expect(mocks.rpc.mock.calls[0][1].p_input.screenshotPath).toBe(path);
+    expect(mocks.rpc.mock.calls[1][1].p_input.screenshotPath).toBe(path);
   });
 });
