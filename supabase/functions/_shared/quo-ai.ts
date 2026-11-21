@@ -369,10 +369,59 @@ export function normalizeQuoPayload(payload: JsonObject, eventType = "message.re
 }
 
 
+function constantTimeEqual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function decodeBase64(value: string): Uint8Array | null {
+  try {
+    const binary = atob(value.trim());
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
+async function hmacBase64(key: Uint8Array, data: string) {
+  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data)));
+  return btoa(String.fromCharCode(...digest));
+}
+
+/**
+ * OpenPhone/Quo delivery header: `hmac;1;<timestamp>;<base64 digest>`, where the
+ * digest is HMAC-SHA256 over `<timestamp>.<raw body>` keyed with the
+ * base64-decoded signing secret. Older/forwarded deliveries are tried with the
+ * raw secret too. Each path still requires a valid HMAC from our secret.
+ */
+async function verifyOpenPhoneHmacHeader(rawBody: string, header: string, secret: string) {
+  const parts = header.split(";");
+  if (parts.length !== 4 || parts[0] !== "hmac" || parts[1] !== "1") return false;
+  const [, , timestamp, provided] = parts;
+  if (!/^\d+$/.test(timestamp) || !provided) return false;
+  const signed = `${timestamp}.${rawBody}`;
+  const keys = [decodeBase64(secret), new TextEncoder().encode(secret)].filter((key): key is Uint8Array => Boolean(key?.length));
+  for (const key of keys) {
+    if (constantTimeEqual(await hmacBase64(key, signed), provided.trim())) return true;
+  }
+  return false;
+}
+
 export async function verifySignature(rawBody: string, signature: string | null, secret: string | undefined) {
   if (!secret || !signature) return false;
 
   let signHash = signature.trim();
+
+  if (signHash.startsWith("hmac;")) {
+    try {
+      return await verifyOpenPhoneHmacHeader(rawBody, signHash, secret);
+    } catch {
+      return false;
+    }
+  }
 
   // Handle OpenPhone format: t=1643052145,v1=9131de4fc...
   if (signHash.includes("v1=")) {
@@ -398,12 +447,7 @@ export async function verifySignature(rawBody: string, signature: string | null,
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
 
-    if (expected.length !== normalized.length) return false;
-    let diff = 0;
-    for (let i = 0; i < expected.length; i++) {
-      diff |= expected.charCodeAt(i) ^ normalized.charCodeAt(i);
-    }
-    return diff === 0;
+    return constantTimeEqual(expected, normalized);
   } catch {
     return false;
   }
