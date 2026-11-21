@@ -164,6 +164,7 @@ const findAddressBtn = document.getElementById("find-address");
 const coveragePreview = document.getElementById("coverage-preview");
 const checkExpectedAreaBtn = document.getElementById("check-expected-area");
 const expectedAreaResult = document.getElementById("expected-area-result");
+const customerPhoneError = document.getElementById("customer-phone-error");
 const photosPreviewContainer = document.getElementById("photos-preview-container");
 const noPhotosLabel = document.getElementById("no-photos-label");
 const photoLightbox = document.getElementById("photo-lightbox");
@@ -278,6 +279,10 @@ async function initialize() {
   form.addEventListener("input", handleFormInput);
   form.addEventListener("change", handleFormInput);
   form.addEventListener("submit", handleCreateLead);
+  // Incomplete or invalid numbers are reported when the user leaves the field.
+  form.customerNumber?.addEventListener("blur", () => {
+    showCustomerPhoneError(DonutPhone.validate(form.customerNumber.value));
+  });
   clearButton.addEventListener("click", handleClearForm);
   if (autoPickDirectionBtn) {
     autoPickDirectionBtn.addEventListener("click", handleAutoPickDirection);
@@ -794,6 +799,14 @@ async function handleFormInput(event) {
   }
 
   if (target.name === "customerNumber") {
+    const tooLong = DonutPhone.overflowError(target.value);
+    if (tooLong) {
+      // Refuse the keystroke/paste: keep the last valid number instead of truncating.
+      target.value = formatPhoneNumber(currentDraft?.customerNumber || "");
+      showCustomerPhoneError(tooLong);
+      return;
+    }
+    showCustomerPhoneError(null);
     formatPhoneInput(target);
     value = target.value;
   }
@@ -919,6 +932,7 @@ async function handleCreateLead(event) {
   const phoneError = DonutPhone.validate(form.customerNumber?.value);
   if (phoneError) {
     showFeedback(`Customer Phone: ${phoneError}`, "error");
+    showCustomerPhoneError(phoneError);
     form.customerNumber?.focus();
     return;
   }
@@ -1079,6 +1093,7 @@ function resetLeadCheckState({ clearMessage = true } = {}) {
 }
 
 function resetTransientFormState() {
+  showCustomerPhoneError(null);
   suppressAddressLookup = false;
   hideAddressSuggestions();
   resetLeadCheckState();
@@ -1866,6 +1881,17 @@ function clearCheckLeadFeedback() {
 // Phone formatting helper
 function formatPhoneNumber(value) {
   return DonutPhone.format(value);
+}
+
+function showCustomerPhoneError(message) {
+  const input = form?.customerNumber;
+  if (input) {
+    if (message) input.setAttribute("aria-invalid", "true");
+    else input.removeAttribute("aria-invalid");
+  }
+  if (!customerPhoneError) return;
+  customerPhoneError.textContent = message || "";
+  customerPhoneError.hidden = !message;
 }
 
 function formatPhoneInput(input) {

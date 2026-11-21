@@ -1,7 +1,7 @@
 {
   "name": "Donut",
-  "version": "1.7.7",
-  "releasedAt": "2026-11-21T05:30:01.521Z",
-  "summary": "Customer Phone: pasted numbers like +1 305 555 0123 are normalized to (305) 555-0123; incomplete or invalid numbers are blocked with a clear error.",
-  "sourceSha256": "bfefde58170d9bd77897fc7fee61c8164fe45e75a80c80b6207264451cc72b77"
+  "version": "1.7.8",
+  "releasedAt": "2026-11-21T07:40:59.078Z",
+  "summary": "Customer Phone: more than 10 digits can't be typed or pasted (clear message under the field); incomplete numbers show an error when you leave the field; spaces and +1 are fixed automatically.",
+  "sourceSha256": "d7485980c8802432ac1ab1b8bdb937cc0c5f156cec36a0a3708f5484b69d084b"
 }

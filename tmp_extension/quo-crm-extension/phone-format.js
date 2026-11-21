@@ -1,5 +1,5 @@
 // Shared by the native panel and service worker; mirrors src/lib/phone.ts
-// (usNationalDigits / formatUSPhoneInput / validateUSPhone). No network work.
+// (usNationalDigits / formatUSPhoneInput / validateUSPhone / phoneOverflowError). No network work.
 globalThis.DonutPhone = (() => {
   function nationalDigits(value) {
     const trimmed = String(value ?? "").trim();
@@ -35,5 +35,11 @@ globalThis.DonutPhone = (() => {
     return null;
   }
 
-  return { nationalDigits, format, validate };
+  // Input that would exceed 10 digits is refused (not truncated); returns the message or null.
+  function overflowError(value) {
+    const count = nationalDigits(value).length;
+    return count > 10 ? `Only 10 digits allowed — that would make ${count}. Enter a US number like (305) 555-0123` : null;
+  }
+
+  return { nationalDigits, format, validate, overflowError };
 })();

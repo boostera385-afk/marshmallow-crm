@@ -36,6 +36,16 @@ export function formatUSPhoneInput(value: string): string {
   return digits.length > 10 ? `${main} ${digits.slice(10)}` : main;
 }
 
+/**
+ * Error for input that would push a phone field past 10 digits (after a US
+ * country code is removed), or null when the input fits. Fields refuse such
+ * input instead of truncating it into a different number.
+ */
+export function phoneOverflowError(value: string): string | null {
+  const count = usNationalDigits(value).length;
+  return count > 10 ? `Only 10 digits allowed — that would make ${count}. Enter a US number like (305) 555-0123` : null;
+}
+
 /** Validate an optional US phone field. Empty is allowed; returns an error message or null. */
 export function validateUSPhone(value: string | null | undefined): string | null {
   const raw = String(value ?? "");

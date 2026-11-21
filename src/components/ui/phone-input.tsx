@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { Input } from "@/components/ui/input";
-import { formatUSPhoneInput, stripPhone, validateUSPhone } from "@/lib/phone";
+import { formatUSPhoneInput, phoneOverflowError, stripPhone, validateUSPhone } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 
 type PhoneInputProps = Omit<React.ComponentProps<"input">, "value" | "onChange" | "maxLength" | "type"> & {
@@ -26,15 +26,17 @@ function caretAfterDigits(formatted: string, digitCount: number): number {
 
 /**
  * US phone field: formats typed and pasted numbers to (XXX) XXX-XXXX, keeps the
- * caret in place for mid-field edits, and reports an incomplete/invalid number
- * after the user leaves the field. No maxLength: the browser would truncate a
- * paste such as "+1 305 555 0123" before it could be normalized.
+ * caret in place for mid-field edits, refuses input past 10 digits with a message,
+ * and reports an incomplete/invalid number after the user leaves the field. No
+ * maxLength: the browser would truncate a paste such as "+1 305 555 0123"
+ * before its country code could be removed.
  */
 export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
   ({ value, onValueChange, error, onBlur, className, id, readOnly, disabled, ...props }, ref) => {
     const innerRef = React.useRef<HTMLInputElement>(null);
     const pendingCaret = React.useRef<number | null>(null);
     const [touched, setTouched] = React.useState(false);
+    const [overflow, setOverflow] = React.useState<string | null>(null);
     const generatedId = React.useId();
     const inputId = id ?? generatedId;
     const errorId = `${inputId}-error`;
@@ -50,6 +52,13 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
 
     const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
       const raw = event.target.value;
+      const tooLong = phoneOverflowError(raw);
+      if (tooLong) {
+        // Refuse the keystroke/paste: the field keeps its last valid value.
+        setOverflow(tooLong);
+        return;
+      }
+      setOverflow(null);
       const formatted = formatUSPhoneInput(raw);
       const selection = event.target.selectionStart ?? raw.length;
       if (selection < raw.length) {
@@ -62,7 +71,7 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
     };
 
     const locked = readOnly || disabled;
-    const message = error ?? (touched && !locked ? validateUSPhone(value) : null);
+    const message = error ?? overflow ?? (touched && !locked ? validateUSPhone(value) : null);
 
     return (
       <>
@@ -79,6 +88,7 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
           onChange={handleChange}
           onBlur={(event) => {
             setTouched(true);
+            setOverflow(null);
             onBlur?.(event);
           }}
           aria-invalid={message ? true : undefined}

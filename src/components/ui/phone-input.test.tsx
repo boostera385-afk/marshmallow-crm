@@ -64,6 +64,30 @@ describe("PhoneInput", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("refuses an 11th digit, keeps the 10-digit number and shows why", () => {
+    const onValue = vi.fn();
+    render(<Harness initial="(305) 555-0123" onValue={onValue} />);
+    fireEvent.change(input(), { target: { value: "(305) 555-01234" } });
+    expect(onValue).not.toHaveBeenCalled();
+    expect(input().value).toBe("(305) 555-0123");
+    expect(screen.getByRole("alert")).toHaveTextContent("Only 10 digits allowed — that would make 11");
+  });
+
+  it("refuses a long paste instead of truncating it into a different number", () => {
+    render(<Harness />);
+    fireEvent.change(input(), { target: { value: "+44 20 7946 0958" } });
+    expect(input().value).toBe("");
+    expect(screen.getByRole("alert")).toHaveTextContent("that would make 12");
+  });
+
+  it("clears the too-many-digits message on the next valid edit", () => {
+    render(<Harness initial="(305) 555-0123" />);
+    fireEvent.change(input(), { target: { value: "(305) 555-01234" } });
+    fireEvent.change(input(), { target: { value: "(305) 555-012" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(input().value).toBe("(305) 555-012");
+  });
+
   it("shows a parent-supplied error", () => {
     render(<Harness error="Phone number is required" />);
     expect(screen.getByRole("alert")).toHaveTextContent("Phone number is required");

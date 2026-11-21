@@ -46,16 +46,62 @@ describe("Donut shared-flow regression checks", () => {
     const button = { disabled: false, innerHTML: "" };
     const sendMessage = vi.fn();
     const focus = vi.fn();
+    const showCustomerPhoneError = vi.fn();
     const handler = panel.slice(panel.indexOf("async function handleCreateLead("), panel.indexOf("const UPDATE_SCHEDULE_BUTTON_HTML"));
     const create = runInNewContext(`${handler}; handleCreateLead`, {
       clearFeedback: vi.fn(), createLeadButton: button, chrome: { runtime: { sendMessage } }, showFeedback,
-      DonutPhone, form: { customerNumber: { value: "(415) 555", focus } },
+      DonutPhone, form: { customerNumber: { value: "(415) 555", focus } }, showCustomerPhoneError,
     });
     await create({ preventDefault: vi.fn() });
     expect(showFeedback).toHaveBeenCalledWith("Customer Phone: Phone number is incomplete — enter all 10 digits (6 entered)", "error");
     expect(focus).toHaveBeenCalled();
+    expect(showCustomerPhoneError).toHaveBeenCalledWith("Phone number is incomplete — enter all 10 digits (6 entered)");
     expect(sendMessage).not.toHaveBeenCalled();
     expect(button.disabled).toBe(false);
+  });
+
+  describe("Donut Customer Phone input", () => {
+    const start = panel.indexOf("async function handleFormInput(");
+    const handler = panel.slice(start, panel.indexOf("\n}", start) + 2);
+    const setup = (previous: string) => {
+      const sendMessage = vi.fn();
+      const showCustomerPhoneError = vi.fn();
+      const ctx = {
+        EDITABLE_FIELDS: ["customerNumber"], currentDraft: { customerNumber: previous }, DonutPhone, showCustomerPhoneError,
+        formatPhoneNumber: (v: string) => DonutPhone.format(v),
+        formatPhoneInput: (input: { value: string }) => { input.value = DonutPhone.format(input.value); },
+        invalidateLeadCheckWhenPhoneChanges: vi.fn(), updateScheduleRequirementButtonState: vi.fn(), updateQuoteFieldVisibility: vi.fn(),
+        chrome: { runtime: { sendMessage } }, form: {},
+      };
+      const handle = runInNewContext(`${handler}; handleFormInput`, ctx);
+      return { handle, sendMessage, showCustomerPhoneError };
+    };
+
+    it("auto-fixes a pasted number with spaces and country code", async () => {
+      const { handle, sendMessage, showCustomerPhoneError } = setup("");
+      const target = { name: "customerNumber", type: "tel", value: " +1 305 555 0123 " };
+      await handle({ target });
+      expect(target.value).toBe("(305) 555-0123");
+      expect(showCustomerPhoneError).toHaveBeenCalledWith(null);
+      expect(sendMessage).toHaveBeenCalledWith({ type: "UPDATE_DRAFT", payload: { customerNumber: "(305) 555-0123" } });
+    });
+
+    it("refuses an 11th digit, keeps the previous number and explains why", async () => {
+      const { handle, sendMessage, showCustomerPhoneError } = setup("(305) 555-0123");
+      const target = { name: "customerNumber", type: "tel", value: "(305) 555-01234" };
+      await handle({ target });
+      expect(target.value).toBe("(305) 555-0123");
+      expect(showCustomerPhoneError).toHaveBeenCalledWith(expect.stringContaining("Only 10 digits allowed — that would make 11"));
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("refuses a long non-US paste instead of truncating it", async () => {
+      const { handle, sendMessage } = setup("");
+      const target = { name: "customerNumber", type: "tel", value: "+44 20 7946 0958" };
+      await handle({ target });
+      expect(target.value).toBe("");
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
   });
 
   it("refuses overlapping extension submissions", async () => {
