@@ -54,6 +54,39 @@ describe.each([false,true])("shared Quo webhook (paused audit=%s)",(logPaused) =
     expect((await m.request(payload,{"openphone-signature":signature})).status).toBe(200);
     expect(m.rpc.mock.calls[0][1].p_input.signature_verified).toBe(true);
   });
+  describe("OpenPhone hmac;1;<timestamp>;<base64> header", () => {
+    // Synthetic base64 signing key, never a real secret.
+    const secret = Buffer.from("synthetic-openphone-signing-key-bytes").toString("base64");
+    const sign = (body: string, timestamp = "1700000000000", key: Buffer | string = Buffer.from(secret, "base64")) =>
+      `hmac;1;${timestamp};${createHmac("sha256", key).update(`${timestamp}.${body}`).digest("base64")}`;
+
+    it("verifies a delivery signed with the base64-decoded key over timestamp.body",async () => {
+      const m=setup(logPaused); m.env.QUO_WEBHOOK_SECRET=secret; m.env.QUO_ENFORCE_SIGNATURE="true";
+      expect((await m.request(payload,{"openphone-signature":sign(JSON.stringify(payload))})).status).toBe(200);
+      expect(m.rpc.mock.calls[0][1].p_input.signature_verified).toBe(true);
+    });
+    it("rejects a body changed after signing",async () => {
+      const m=setup(logPaused); m.env.QUO_WEBHOOK_SECRET=secret; m.env.QUO_ENFORCE_SIGNATURE="true";
+      const header=sign(JSON.stringify(payload));
+      const tampered={ ...payload, data:{ object:{ ...payload.data.object, text:"Forged text" } } };
+      expect((await m.request(tampered,{"openphone-signature":header})).status).toBe(401);
+      expect(m.createClient).not.toHaveBeenCalled(); expect(m.rpc).not.toHaveBeenCalled();
+    });
+    it("rejects a header signed with another key or a moved timestamp",async () => {
+      const m=setup(logPaused); m.env.QUO_WEBHOOK_SECRET=secret; m.env.QUO_ENFORCE_SIGNATURE="true";
+      const body=JSON.stringify(payload);
+      expect((await m.request(payload,{"openphone-signature":sign(body,"1700000000000",Buffer.from("attacker-key"))})).status).toBe(401);
+      const moved=sign(body).replace(";1700000000000;",";1700000009999;");
+      expect((await m.request(payload,{"openphone-signature":moved})).status).toBe(401);
+      expect((await m.request(payload,{"openphone-signature":"hmac;1;notatime;abc"})).status).toBe(401);
+      expect(m.rpc).not.toHaveBeenCalled();
+    });
+    it("records an unverified delivery without rejecting it while enforcement is off",async () => {
+      const m=setup(logPaused); m.env.QUO_WEBHOOK_SECRET=secret;
+      expect((await m.request(payload,{"openphone-signature":"hmac;1;1700000000000;Zm9yZ2Vk"})).status).toBe(200);
+      expect(m.rpc.mock.calls[0][1].p_input.signature_verified).toBe(false);
+    });
+  });
   it("honours ingestion pause without saving messages",async () => {
     const m=setup(logPaused); m.state.paused=true;
     expect(await (await m.request()).json()).toMatchObject({ paused:true,ignored:true });

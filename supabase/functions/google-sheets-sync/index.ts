@@ -136,7 +136,8 @@ function formatLeadRow(
     "Service Details": asString(lead.service_details),
     "Number Name": asString(lead.number_name),
     "Schedule Requirements": asString(lead.customer_schedule_requirements),
-    Pictures: photos.join("\n"),
+    // Private bucket: a count only, never a storage link (see src/lib/google-sheets.ts).
+    Pictures: photos.length ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"} — view in Marshmallow` : "",
     Tag: TAG_LABELS[tag] || tag,
     Status: STATUS_LABELS[status] || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
     "Tech Name": asString(lead.tech_name),
@@ -334,8 +335,7 @@ async function makeOps(admin: ReturnType<typeof createClient>, jobs: QueueJob[])
       const leadId = asString(photo.lead_id);
       const path = asString(photo.photo_url);
       if (!path) continue;
-      const url = admin.storage.from("lead-photos").getPublicUrl(path).data.publicUrl || path;
-      photosByLead.set(leadId, [...(photosByLead.get(leadId) ?? []), url]);
+      photosByLead.set(leadId, [...(photosByLead.get(leadId) ?? []), path]);
     }
   }
 

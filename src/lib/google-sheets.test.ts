@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { formatLeadForGoogleSheet, type GoogleSheetLeadRow } from "./google-sheets";
+import { formatLeadForGoogleSheet, formatSheetPictures, type GoogleSheetLeadRow } from "./google-sheets";
 import type { Lead } from "@/types";
+
+describe("formatSheetPictures (private lead-photos bucket)", () => {
+  it("shows a photo count, never a storage path or link", () => {
+    expect(formatSheetPictures(0)).toBe("");
+    expect(formatSheetPictures(1)).toBe("1 photo — view in Marshmallow");
+    expect(formatSheetPictures(3)).toBe("3 photos — view in Marshmallow");
+  });
+});
 
 describe("formatLeadForGoogleSheet", () => {
   const mockLead: Lead = {
@@ -51,7 +59,7 @@ describe("formatLeadForGoogleSheet", () => {
         processor: "[10:30 AM] Mike: Parts ready",
         opr: "[10:45 AM] Dave: Dispatched tech",
       },
-      ["https://supabase.co/storage/v1/object/public/lead-photos/photo1.jpg"]
+      ["lead-123/photo1.jpg"]
     );
 
     // Verify all 17 keys exist in exact requested order
@@ -64,7 +72,7 @@ describe("formatLeadForGoogleSheet", () => {
     expect(formatted["Service Details"]).toBe("AC blowing warm air");
     expect(formatted["Number Name"]).toBe("Main Marketing Line");
     expect(formatted["Schedule Requirements"]).toBe("Available after 3 PM on weekdays");
-    expect(formatted["Pictures"]).toBe("https://supabase.co/storage/v1/object/public/lead-photos/photo1.jpg");
+    expect(formatted["Pictures"]).toBe("1 photo — view in Marshmallow");
     expect(formatted["Tag"]).toBe("Booked");
     expect(formatted["Status"]).toBe("Waiting Customer Response");
     expect(formatted["Tech Name"]).toBe("Alex Smith");
@@ -99,6 +107,35 @@ describe("formatLeadForGoogleSheet", () => {
     expect(formatted["Cs Notes"]).toBe("");
     expect(formatted["Processor Notes"]).toBe("");
     expect(formatted["Opr Notes"]).toBe("");
+  });
+
+  it("exports a photo count without any storage URL or path for a lead's photos", async () => {
+    const { fetchAllLeadsWithDetails } = await import("./google-sheets");
+    const { supabase } = await import("@/integrations/supabase/client");
+    const originalFrom = supabase.from;
+    const photoRows = [
+      { lead_id: "lead-123", photo_url: "lead-123/payment-screenshot.jpg" },
+      { lead_id: "lead-123", photo_url: "lead-123/job.jpg" },
+    ];
+    (supabase as unknown as { from: (table: string) => unknown }).from = (table: string) => {
+      if (table === "leads") {
+        return { select: () => ({ order: () => ({ range: (from: number) =>
+          Promise.resolve({ data: from === 0 ? [mockLead] : [], error: null }) }) }) };
+      }
+      if (table === "profiles_public") return { select: () => Promise.resolve({ data: [], error: null }) };
+      if (table === "lead_notes" || table === "lead_photos") {
+        return { select: () => ({ in: () => ({ order: () =>
+          Promise.resolve({ data: table === "lead_photos" ? photoRows : [], error: null }) }) }) };
+      }
+      return originalFrom.call(supabase, table as Parameters<typeof supabase.from>[0]);
+    };
+    try {
+      const [row] = await fetchAllLeadsWithDetails();
+      expect(row["Pictures"]).toBe("2 photos — view in Marshmallow");
+      expect(JSON.stringify(row)).not.toMatch(/storage\/v1|payment-screenshot|lead-123\/job/);
+    } finally {
+      supabase.from = originalFrom;
+    }
   });
 
   it("should fetch all leads across multiple pages beyond 1000 rows limit", async () => {
