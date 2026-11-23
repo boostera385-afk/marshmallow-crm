@@ -54,7 +54,7 @@ BEGIN
       AND (SELECT count(*)=2 FROM public.activity_logs) THEN 'PASS' ELSE 'FAIL' END);
   denied:=false;
   BEGIN PERFORM pg_temp.payment_call('review',1,5,jsonb_build_object('requestId',r->>'id','decision','rejected'));
-  EXCEPTION WHEN serialization_failure THEN denied:=true; END;
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN denied:=true; END;
   INSERT INTO checks VALUES('stale/conflicting second review cannot overwrite approval',CASE WHEN denied THEN 'PASS' ELSE 'FAIL' END);
 
   PERFORM set_config('request.jwt.claim.sub','18000000-0000-4000-8000-000000000002',true);
@@ -83,7 +83,7 @@ BEGIN
     CASE WHEN (SELECT status='paid' FROM public.leads WHERE job_id='TEST-5') THEN 'PASS' ELSE 'FAIL' END);
   denied:=false;
   BEGIN PERFORM pg_temp.payment_call('direct',6,12,jsonb_build_object('expectedStatus','scheduled'));
-  EXCEPTION WHEN serialization_failure THEN denied:=true; END;
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN denied:=true; END;
   INSERT INTO checks VALUES('stale lead version fails without mutation',CASE WHEN denied THEN 'PASS' ELSE 'FAIL' END);
   denied:=false;
   BEGIN PERFORM pg_temp.payment_call('direct',99,13);
@@ -109,7 +109,7 @@ BEGIN
     CASE WHEN (SELECT payment_screenshot_url LIKE '%proof.png' FROM public.leads WHERE job_id='TEST-6') THEN 'PASS' ELSE 'FAIL' END);
   denied:=false;
   BEGIN PERFORM pg_temp.payment_call('direct',6,14,jsonb_build_object('amount',50));
-  EXCEPTION WHEN serialization_failure THEN denied:=true; END;
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN denied:=true; END;
   INSERT INTO checks VALUES('operation ID cannot be reused for different details',CASE WHEN denied THEN 'PASS' ELSE 'FAIL' END);
 
   FOR role_row IN SELECT * FROM public.user_roles WHERE role<>'admin' LOOP

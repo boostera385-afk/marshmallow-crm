@@ -25,7 +25,7 @@ async function rpc(db: CopilotRpcClient, name: string, args?: Record<string, unk
   const { data, error } = await db.rpc(name, args);
   if (error) {
     if (error.code === "42501") throw new CopilotError("You do not have access to this Copilot feature.", 403, "access_denied");
-    if (error.code === "40001") throw new CopilotError("Configuration changed in another session. Reload saved settings before saving.", 409, "config_conflict");
+    if (error.code === "40001" || error.code === "PT409") throw new CopilotError("Configuration changed in another session. Reload saved settings before saving.", 409, "config_conflict");
     if (error.message === "Choose a date range of at most 31 days") throw new CopilotError(error.message, 400, "invalid_range");
     if (error.message === "Invalid timezone") throw new CopilotError("Choose a valid IANA business timezone, such as America/New_York.", 400, "invalid_timezone");
     if (/limit reached|budget reached|Please wait|already reserved/.test(error.message)) throw new CopilotError(error.message, 429, /budget reached/.test(error.message) ? "budget_reached" : /Daily/.test(error.message) ? "daily_limit" : "request_throttled");

@@ -23,4 +23,20 @@ describe("workflow inbox HTTP boundary", () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: { code: "42501", message: "Admin only" } });
     expect((await createWorkflowInboxHandler(async () => ({ userId: id, db: { rpc } }))(request({ area: "schedule", action: "status" }))).status).toBe(403);
   });
+  it.each(["PT409", "40001"])("returns a stale schedule-monitor save (%s) once as 409 with its refresh message", async (code) => {
+    const message = "Monitor configuration changed. Refresh and review it before saving.";
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { code, message } });
+    const response = await createWorkflowInboxHandler(async () => ({ userId: id, db: { rpc } }))(request({
+      area: "schedule", action: "configure", mode: "automatic", reason: "Synthetic enablement reason", expectedChangedAt: "2000-01-01T00:00:00Z",
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: message });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+  it("keeps unknown backend errors behind the generic unavailable message", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { code: "XX000", message: "internal detail" } });
+    const response = await createWorkflowInboxHandler(async () => ({ userId: id, db: { rpc } }))(request({ area: "schedule", action: "status" }));
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(await response.json())).not.toContain("internal detail");
+  });
 });

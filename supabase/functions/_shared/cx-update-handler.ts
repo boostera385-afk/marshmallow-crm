@@ -43,7 +43,7 @@ export function createCxUpdateHandler(authenticate: (req: Request) => Promise<{ 
       } });
       if (error) {
         if (error.code === "42501") return json({ error: error.message }, 403);
-        if (error.code === "23505" || error.code === "40001") return json({ error: error.message }, 409);
+        if (error.code === "23505" || error.code === "40001" || error.code === "PT409") return json({ error: error.message }, 409);
         if (error.code === "22023") return json({ error: error.message }, 400);
         console.error("workflow_requests rpc failed", { kind: body.kind, action: body.action, code: error.code ?? null });
         return json({ error: `Update requests are unavailable (code ${error.code ?? "unknown"}). Try again shortly.`, code: error.code ?? null }, 503);

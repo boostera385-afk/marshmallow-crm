@@ -16,6 +16,15 @@ Format per entry:
 
 ## Unreleased
 <!-- Staged on main / preview but not yet Published to users. Move to a dated entry on Publish. -->
+- CX/Tech updates, schedule-monitor settings, Copilot settings and Quo webhook ingestion: a stale or
+  conflicting save now fails once with its refresh message instead of risking the same endless
+  server retry. Needs Edge Functions cx-update-requests, workflow-inbox and marshmallow-copilot
+  deployed and the CRM published, then migrations `20261231000400`, `000500` and `000600`.
+  2026-11-23: migrations applied and Edge Functions cx-update-requests and workflow-inbox deployed;
+  marshmallow-copilot (paused) not redeployed; CRM Publish still needed for direct CX/Tech saves.
+- Payments: a stale "record payment" no longer makes the server retry it forever (one call
+  looped ~once a second for 23 hours on 2026-11-21/22). The user now gets the "Lead status
+  changed. Refresh" message once. Needs migration `20261231000300`; no CRM or Donut change.
 - AI schedule confirmation: a customer text confirming the schedule moves a Waiting for CX for
   schedule confirmation lead to Ready to schedule (marked AI) and notifies CS, CS Admin, Admin
   and Processor with the job details. Needs migration `20261130000000`, worker deployment and an

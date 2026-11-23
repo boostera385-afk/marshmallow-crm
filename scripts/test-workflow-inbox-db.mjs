@@ -19,7 +19,9 @@ try {
     "supabase/migrations/20261130000000_ai_schedule_confirmation.sql",
     "supabase/migrations/20261201000000_ai_schedule_confirmation_calls.sql", "supabase/migrations/20261202000000_ai_schedule_new_schedule_tag.sql",
     "supabase/migrations/20261202010000_schedule_new_alert_compat.sql",
-    "supabase/migrations/20261206000000_notification_access_on_read.sql"]) {
+    "supabase/migrations/20261206000000_notification_access_on_read.sql",
+    // Conflicts must raise non-retryable PT409, never 40001 (PostgREST retries that forever).
+    "supabase/migrations/20261231000500_workflow_conflicts_non_retryable.sql"]) {
     await db.exec(await sql(file));
     await db.exec(await sql(file));
   }

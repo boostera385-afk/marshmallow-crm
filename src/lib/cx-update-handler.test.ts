@@ -21,7 +21,7 @@ describe("CX Edge Function boundary", () => {
     expect((await handler(request(body))).status).toBe(400);
     expect(rpc).not.toHaveBeenCalled();
   });
-  it.each([["42501", 403], ["23505", 409], ["40001", 409], ["22023", 400], ["PGRST202", 503]])("maps backend %s to %s", async (code, status) => {
+  it.each([["42501", 403], ["23505", 409], ["40001", 409], ["PT409", 409], ["22023", 400], ["PGRST202", 503]])("maps backend %s to %s", async (code, status) => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: { code, message: "Synthetic denial" } });
     const handler = createCxUpdateHandler(async () => ({ userId: id, db: { rpc } }));
     expect((await handler(request({ kind: "cx", action: "count" }))).status).toBe(status);

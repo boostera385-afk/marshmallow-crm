@@ -12,7 +12,8 @@ const db = new PGlite();
 const sql = (file) => readFile(path.join(root,file),"utf8");
 try {
   await db.exec(await sql("supabase/tests/fixtures/performance-optimization.sql"));
-  for (const file of ["supabase/migrations/20261211000000_webhook_retention_index.sql", "supabase/migrations/20261211001000_webhook_retention_batch.sql", "supabase/migrations/20261211002000_atomic_quo_ingestion.sql"]) {
+  for (const file of ["supabase/migrations/20261211000000_webhook_retention_index.sql", "supabase/migrations/20261211001000_webhook_retention_batch.sql", "supabase/migrations/20261211002000_atomic_quo_ingestion.sql",
+    "supabase/migrations/20261231000600_quo_ingestion_conflict_non_retryable.sql"]) {
     await db.exec(await sql(file));
     await db.exec(await sql(file));
   }

@@ -101,6 +101,16 @@ describe("atomic payment transport", () => {
     await expect(reviewPaymentRequest(review)).rejects.toThrow("Already reviewed");
     expect(mocks.from).not.toHaveBeenCalled();
   });
+  it("shows the backend's non-retryable PT409 stale-status conflict once, with no retry or client write", async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: {
+      code: "PT409", message: "Lead status changed. Refresh before recording payment.",
+    } });
+    await expect(recordDirectPayment({ ...args, requesterRole: "admin", requestType: "paid" }))
+      .rejects.toThrow("Lead status changed. Refresh before recording payment.");
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc.mock.calls[0][1].p_input).toMatchObject({ action: "direct", expectedStatus: "job_done" });
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
   it("refuses non-Admin and already-reviewed requests", async () => {
     await expect(reviewPaymentRequest({ ...review, reviewerRole: "processor" })).rejects.toThrow(/Admins/);
     await expect(reviewPaymentRequest({ ...review, request: { ...request, status: "approved" } })).rejects.toThrow(/Admins/);
