@@ -64,8 +64,9 @@ export function toWorkflowRequestInput(call: UpdateRequestCall) {
   return input;
 }
 
-/** Messages the database function writes for the user (permission, validation, conflicts). */
-const APP_ERROR_CODES = new Set(["42501", "22023", "23505", "40001"]);
+/** Messages the database function writes for the user (permission, validation, conflicts).
+ * PT409 is the non-retryable conflict code; 40001 stays accepted for rollout. */
+const APP_ERROR_CODES = new Set(["42501", "22023", "23505", "40001", "PT409"]);
 /** The API answers with these while it is briefly unavailable; one retry lets it self-heal. */
 const TRANSIENT_STATUS = new Set([429, 502, 503, 504]);
 export const UPDATE_RETRY_DELAY_MS = 1500;

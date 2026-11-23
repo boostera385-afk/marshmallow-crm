@@ -238,8 +238,8 @@ describe("authenticated Copilot handler", () => {
     expect(generate.mock.calls[0][2]).toBeUndefined(); expect(JSON.stringify(generate.mock.calls[0])).not.toContain("PRIVATE");
     expect(db.rpc.mock.calls.some((call) => call[0] === "copilot_lead_brief")).toBe(false);
   });
-  it("returns stale settings conflict without saving", async () => {
-    db.rpc.mockImplementation(async (name) => ({ data: null, error: name === "copilot_configure_checked" ? { code: "40001", message: "stale" } : null }));
+  it.each(["PT409", "40001"])("returns stale settings conflict (%s) without saving", async (code) => {
+    db.rpc.mockImplementation(async (name) => ({ data: null, error: name === "copilot_configure_checked" ? { code, message: "stale" } : null }));
     const response = await handle(request({ action: "configure", config: { enabled: true, ai_enabled: true, monthly_budget_cents: 1000, daily_ai_limit: 20, timezone: "UTC" }, expected: {} }));
     expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ code: "config_conflict" });
   });

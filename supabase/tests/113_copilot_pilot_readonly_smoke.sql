@@ -29,7 +29,7 @@ BEGIN
  BEGIN
   PERFORM public.copilot_configure_checked('{}'::jsonb,true,false,1000,20,'America/New_York');
   PERFORM pg_temp.pilot_smoke_check('Stale expected config is rejected before writes',false);
- EXCEPTION WHEN serialization_failure THEN
+ EXCEPTION WHEN SQLSTATE 'PT409' THEN
   PERFORM pg_temp.pilot_smoke_check('Stale expected config is rejected before writes',true);
  END;
  PERFORM pg_temp.pilot_smoke_check('Saved configuration remains unchanged',(public.copilot_get_settings()->'config')=settings);

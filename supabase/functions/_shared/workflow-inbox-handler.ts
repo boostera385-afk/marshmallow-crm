@@ -33,7 +33,11 @@ export function createWorkflowInboxHandler(authenticate: (req: Request) => Promi
       if (body.action === "alerts" && (typeof input.after !== "string" || !Number.isFinite(Date.parse(input.after)))) return reply({ error: "Alert cursor required" }, 400);
       for (const key of ["since", "until"]) if (input[key] && (typeof input[key] !== "string" || !Number.isFinite(Date.parse(input[key])))) return reply({ error: "Invalid date" }, 400);
       const { data, error } = await db.rpc(schedule ? "schedule_monitor_admin" : "workflow_notifications", { p_input: input });
-      if (error) return reply({ error: ["42501", "22023", "40001"].includes(error.code ?? "") ? error.message : "Inbox unavailable. Ask Admin to check backend installation." }, error.code === "42501" ? 403 : error.code === "22023" ? 400 : error.code === "40001" ? 409 : 503);
+      if (error) {
+        // PT409 is the non-retryable conflict code; 40001 stays accepted for rollout.
+        const conflict = error.code === "40001" || error.code === "PT409";
+        return reply({ error: conflict || ["42501", "22023"].includes(error.code ?? "") ? error.message : "Inbox unavailable. Ask Admin to check backend installation." }, error.code === "42501" ? 403 : error.code === "22023" ? 400 : conflict ? 409 : 503);
+      }
       return reply(data);
     } catch (error) {
       return reply({ error: error instanceof SyntaxError ? "Invalid JSON request" : "Inbox unavailable. Try again." }, error instanceof SyntaxError ? 400 : 503);

@@ -14,7 +14,7 @@ SELECT pg_temp.pilot_check('Checked save has audit timestamp',public.copilot_dia
 DO $$ BEGIN
  BEGIN PERFORM public.copilot_configure_checked('{"enabled":true,"ai_enabled":false,"monthly_budget_cents":1000,"daily_ai_limit":20,"timezone":"America/New_York"}'::jsonb,true,false,1000,20,'UTC');
   PERFORM pg_temp.pilot_check('Stale save cannot overwrite AI',false);
- EXCEPTION WHEN serialization_failure THEN PERFORM pg_temp.pilot_check('Stale save cannot overwrite AI',(public.copilot_get_settings()->'config'->>'ai_enabled')::boolean); END;
+ EXCEPTION WHEN SQLSTATE 'PT409' THEN PERFORM pg_temp.pilot_check('Stale save cannot overwrite AI',(public.copilot_get_settings()->'config'->>'ai_enabled')::boolean); END;
 END; $$;
 SELECT public.copilot_set_permission('customer_service',NULL,true);
 SELECT public.copilot_set_permission('opr',NULL,true);

@@ -55,7 +55,7 @@ SELECT pg_temp.check_result('Follow-up reopens same request and preserves histor
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','15000000-0000-4000-8000-000000000003',true);
 SET LOCAL ROLE authenticated;
-SELECT pg_temp.check_error('Stale reply cannot answer reopened revision',$q$SELECT public.workflow_requests('{"kind":"cx","action":"complete","requestId":"15000000-0000-4000-8000-000000000020","text":"Old reply","revision":1}')$q$,'40001');
+SELECT pg_temp.check_error('Stale reply cannot answer reopened revision',$q$SELECT public.workflow_requests('{"kind":"cx","action":"complete","requestId":"15000000-0000-4000-8000-000000000020","text":"Old reply","revision":1}')$q$,'PT409');
 SELECT public.workflow_requests('{"kind":"cx","action":"complete","requestId":"15000000-0000-4000-8000-000000000020","text":"2 PM","revision":3}');
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','15000000-0000-4000-8000-000000000002',true);

@@ -126,9 +126,9 @@ describe("CX/Tech updates call the database function directly", () => {
   });
 
   it("does not retry a save that the database rejected, and shows its message", async () => {
-    for (const [code, message] of [["23505", "Another request is awaiting a response"], ["40001", "This request changed. Refresh before saving."], ["22023", "Enter an update (1–4000 characters)"]]) {
+    for (const [code, message] of [["23505", "Another request is awaiting a response"], ["PT409", "This request changed. Refresh before saving."], ["40001", "This request is resolved"], ["22023", "Enter an update (1–4000 characters)"]]) {
       rpc.mockReset();
-      rpc.mockResolvedValue(rpcError(code === "40001" ? 409 : 400, code, message));
+      rpc.mockResolvedValue(rpcError(code === "PT409" || code === "40001" ? 409 : 400, code, message));
       await expect(completeCxRequest(id, "Done", 1)).rejects.toThrow(message);
       expect(rpc).toHaveBeenCalledTimes(1);
     }

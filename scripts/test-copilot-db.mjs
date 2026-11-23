@@ -30,6 +30,10 @@ try {
   const features = await sql("supabase/migrations/20261015060558_copilot_current_feature_access.sql");
   await db.exec(features);
   await db.exec(features);
+  // Stale saves must raise non-retryable PT409, never 40001 (PostgREST retries that forever).
+  const conflicts = await sql("supabase/migrations/20261231000400_copilot_config_conflict_non_retryable.sql");
+  await db.exec(conflicts);
+  await db.exec(conflicts);
   const after = matrix(await db.exec(baseline));
   if (before.length !== 6 || JSON.stringify(before) !== JSON.stringify(after)) throw new Error("Existing lead visibility matrix changed");
   // Reproduce shared-production schema USAGE for the CX-update workflow. This
