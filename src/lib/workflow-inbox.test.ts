@@ -72,6 +72,13 @@ describe("schedule monitor keeps the Edge Function (degraded-runtime recovery)",
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a stale monitor configuration conflict (409) once without retrying", async () => {
+    mocks.invoke.mockResolvedValue(httpError(409, { error: "Monitor configuration changed. Refresh and review it before saving." }));
+    await expect(workflowCall("schedule", { action: "configure", mode: "automatic", reason: "Synthetic stale enablement" }))
+      .rejects.toThrow("Monitor configuration changed. Refresh and review it before saving.");
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps app-authored permission and availability errors as-is", async () => {
     mocks.invoke.mockResolvedValue(httpError(403, { error: "You do not have access to this inbox." }));
     await expect(workflowCall("schedule", { action: "status", offset: 0 }))
