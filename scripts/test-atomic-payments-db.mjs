@@ -17,6 +17,10 @@ try {
   const migration = await sql("supabase/migrations/20261231000000_atomic_payment_workflow.sql");
   await db.exec(migration);
   await db.exec(migration);
+  // Conflicts must not use 40001: PostgREST retries that SQLSTATE forever.
+  const nonRetryable = await sql("supabase/migrations/20261231000300_payment_workflow_non_retryable_conflicts.sql");
+  await db.exec(nonRetryable);
+  await db.exec(nonRetryable);
   const results = (await db.exec(await sql("supabase/tests/181_atomic_payment_workflow.sql")))
     .flatMap((result) => result.rows).filter((row) => typeof row.name === "string" && typeof row.result === "string");
   console.table(results);
