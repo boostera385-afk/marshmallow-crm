@@ -68,7 +68,7 @@ import { canAddLeadViaExtension, canAddManualLead, isOperatorRole } from "@/lib/
 import { motion } from "framer-motion";
 import { heroTitle, premiumEase, cardGridContainer, cardGridItem } from "@/lib/motion";
 import { formatDistanceToNow } from "date-fns";
-import { urgentAiStatusClass } from "@/lib/urgent-ai-status";
+import { UrgentAiStatusBadge } from "@/components/leads/UrgentAiStatusBadge";
 
 import { formatDateTime } from "@/lib/date-time-format";
 import { formatClockTime } from "@/lib/time-value";
@@ -1655,13 +1655,13 @@ export default function LeadsPage() {
             <table className="w-full table-fixed border-collapse text-left text-xs">
               <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
                 <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-2 py-1.5 font-semibold w-[14%]">Customer</th>
-                  <th className="px-2 py-1.5 font-semibold w-[16%]">Service</th>
-                  <th className="px-2 py-1.5 font-semibold w-[14%]">AI Status</th>
-                  <th className="px-2 py-1.5 font-semibold w-[16%]">Area</th>
-                  <th className="px-2 py-1.5 font-semibold w-[18%]">Schedule</th>
-                  <th className="px-2 py-1.5 font-semibold w-[10%]">Terms</th>
-                  <th className="px-2 py-1.5 font-semibold text-right w-[12%]">Date</th>
+                  <th className="px-2 py-1.5 font-semibold w-[12%]">Customer</th>
+                  <th className="px-2 py-1.5 font-semibold w-[15%]">Service</th>
+                  <th className="px-2 py-1.5 font-semibold w-[19%]">AI Status</th>
+                  <th className="px-2 py-1.5 font-semibold w-[14%]">Area</th>
+                  <th className="px-2 py-1.5 font-semibold w-[16%]">Schedule</th>
+                  <th className="px-2 py-1.5 font-semibold w-[13%]">Terms</th>
+                  <th className="px-2 py-1.5 font-semibold text-right w-[11%]">Date</th>
                 </tr>
               </thead>
               <tbody>
@@ -1683,11 +1683,9 @@ export default function LeadsPage() {
                     >
                       <CopyableCell text={l.customer_name || l.job_id || "—"} defaultWidth={false} className="font-medium text-foreground" />
                       <CopyableCell text={l.service_type || "—"} defaultWidth={false} className="text-muted-foreground" />
-                      <td className="px-2 py-2 text-[11px] font-medium whitespace-nowrap">
+                      <td className="overflow-hidden px-2 py-2 text-[11px] font-medium">
                         {l.lead_ai_statuses?.status ? (
-                          <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 ${urgentAiStatusClass(l.lead_ai_statuses.status)}`}>
-                            {l.lead_ai_statuses.status}
-                          </span>
+                          <UrgentAiStatusBadge status={l.lead_ai_statuses.status} />
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
@@ -1700,9 +1698,14 @@ export default function LeadsPage() {
                           className={isTodayOrTomorrow(l.customer_schedule_requirements) ? "text-red-500 font-bold animate-pulse" : "text-muted-foreground"} 
                           truncate={false} 
                         />
-                      <td className="whitespace-nowrap px-2 py-2 text-foreground">
-                        {l.terms === "free_estimate" ? "Free Estimate" : l.terms === "quoted" ? "Quoted" : l.terms === "diagnostic_service_call" ? "Diagnostic/Service Call" : <span className="text-muted-foreground">—</span>}
-                      </td>
+                      {(() => {
+                        const termsLabel = l.terms === "free_estimate" ? "Free Estimate" : l.terms === "quoted" ? "Quoted" : l.terms === "diagnostic_service_call" ? "Diagnostic/Service Call" : null;
+                        return (
+                          <td className="truncate whitespace-nowrap px-2 py-2 text-foreground" title={termsLabel ?? undefined}>
+                            {termsLabel ?? <span className="text-muted-foreground">—</span>}
+                          </td>
+                        );
+                      })()}
                       <td className="whitespace-nowrap px-2 py-2 text-right text-muted-foreground">
                         {dateStr}
                       </td>

@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, Pencil, Check, X, SmilePlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { buildTechEntry, countTechs, formatTechCount, nextTechNumber } from "@/lib/lead-techs";
+import { techNoteDisplay } from "@/lib/tech-note-colors";
 import { validateUSPhone } from "@/lib/phone";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { realtimeBus, relayTableToBus } from "@/lib/realtime";
@@ -414,6 +415,8 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
           {notes.map((note) => {
             const isMe = note.user_id === user?.id;
             const isEditing = editingId === note.id;
+            // Processor tech entries get their tech's colour, whoever wrote them.
+            const tech = noteType === "processor" ? techNoteDisplay(note.content) : null;
             return (
               <motion.div
                 key={note.id}
@@ -464,15 +467,27 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                     </div>
                   ) : (
                     <div
+                      data-tech-number={tech?.techNumber}
                       className={`group/note relative rounded-[16px] px-3 py-2 text-[13px] leading-relaxed ${
-                        isMe
+                        tech
+                          ? `border text-left ${tech.color.bubble} ${isMe ? "rounded-tr-sm" : "rounded-tl-sm"}`
+                          : isMe
                           ? "border border-primary/15 bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(223_85%_60%))] text-primary-foreground rounded-tr-sm shadow-[0_12px_22px_-18px_hsl(var(--primary)/0.55)]"
                           : "crm-lead-card-inner rounded-tl-sm text-foreground shadow-[0_14px_22px_-20px_rgba(59,130,246,0.12)] dark:shadow-none"
                       }`}
                     >
-                      {note.content}
+                      {tech ? (
+                        <>
+                          <span className={`mb-1 inline-block rounded-full border px-1.5 text-[10px] font-bold uppercase tracking-wide ${tech.color.chip}`}>
+                            Tech {tech.techNumber}
+                          </span>
+                          <span className="block whitespace-pre-wrap">{tech.body}</span>
+                        </>
+                      ) : (
+                        note.content
+                      )}
                       {note.edited_at && (
-                        <span className={`mt-1 block text-[10px] italic ${isMe ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
+                        <span className={`mt-1 block text-[10px] italic ${isMe && !tech ? "text-primary-foreground/75" : "opacity-75"}`}>
                           Edited by {(note.edited_by ? profiles[note.edited_by] || resolvedProfiles[note.edited_by] : null) || note.edited_by_name || "Unknown"}
                           {" · "}
                           {formatDateTime(note.edited_at, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
