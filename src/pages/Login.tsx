@@ -9,6 +9,7 @@ import { Mail, Lock, ArrowRight, ShieldCheck, Wrench, KeyRound, Eye, EyeOff } fr
 import { motion } from "framer-motion";
 import { heroTitle, premiumEase } from "@/lib/motion";
 import marshmallowLogo from "@/assets/marshmallow-logo.png.asset.json";
+import { LegalFooter } from "@/components/layout/LegalFooter";
 
 const Login = () => {
   const {
@@ -188,14 +189,14 @@ const Login = () => {
 
   if (accessCodeRequired) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-8 relative overflow-hidden">
+      <div className="flex min-h-screen flex-col items-center bg-background p-8 relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(var(--primary)/0.03),transparent_70%)]" />
 
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.5, ease: premiumEase }}
-          className="w-full max-w-sm space-y-8 relative z-10"
+          className="my-auto w-full max-w-sm space-y-8 relative z-10"
         >
           <div className="text-center space-y-4">
             <motion.div
@@ -275,20 +276,21 @@ const Login = () => {
               )}
           </motion.div>
         </motion.div>
+        <LegalFooter className="relative z-10 pt-8" />
       </div>
     );
   }
 
   if (mfaRequired) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-8 relative overflow-hidden">
+      <div className="flex min-h-screen flex-col items-center bg-background p-8 relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(var(--primary)/0.03),transparent_70%)]" />
 
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.5, ease: premiumEase }}
-          className="w-full max-w-sm space-y-8 relative z-10"
+          className="my-auto w-full max-w-sm space-y-8 relative z-10"
         >
           <div className="text-center space-y-4">
             <motion.div
@@ -368,6 +370,7 @@ const Login = () => {
               )}
           </motion.div>
         </motion.div>
+        <LegalFooter className="relative z-10 pt-8" />
       </div>
     );
   }
@@ -438,7 +441,7 @@ const Login = () => {
           transition={{ delay: 0.7 }}
           className="relative z-10 text-white/20 text-xs tracking-wide"
         >
-          © 2026 Marshmallow · Built for modern teams
+          Marshmallow · Built for modern teams
         </motion.p>
 
         <motion.div
@@ -453,14 +456,14 @@ const Login = () => {
         />
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-8 relative bg-background">
+      <div className="flex-1 flex flex-col items-center p-8 relative bg-background">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,hsl(var(--primary)/0.02),transparent_60%)] pointer-events-none" />
 
         <motion.div
           initial={{ opacity: 0, x: 24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, ease: premiumEase }}
-          className="w-full max-w-sm space-y-8 relative z-10"
+          className="my-auto w-full max-w-sm space-y-8 relative z-10"
         >
           <div className="lg:hidden mb-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg overflow-hidden shadow-brand">
@@ -571,6 +574,7 @@ const Login = () => {
             Accounts are created by your administrator
           </motion.p>
         </motion.div>
+        <LegalFooter className="relative z-10 pt-8" />
       </div>
     </div>
   );
