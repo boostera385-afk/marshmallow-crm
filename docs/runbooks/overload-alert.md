@@ -33,12 +33,19 @@ The thresholds live in `marshmallow_private.health_policy` and can be changed th
 | Reading | Warning | Critical |
 |---|---|---|
 | Memory available | ≤ 20% | ≤ 10% |
-| Swap used (as % of RAM) | ≥ 25% **and** up 2+ points in 10 min | ≥ 60% |
+| Swap used (as % of RAM) | ≥ 25% **and** up 2+ points in 10 min, **only with** memory ≤ 20% free or IO wait ≥ 15% | ≥ 60%, **only with** memory ≤ 20% free or IO wait ≥ 15% |
 | IO wait | ≥ 15% | ≥ 40% |
 | CPU busy | ≥ 70% | ≥ 90% |
 | Database connections | ≥ 70% of the limit | ≥ 90% |
 | Disk used | ≥ 80% | ≥ 90% |
 | Load governor | elevated | critical |
+
+Swap on its own does **not** alert (migration `20261231000700`). Linux parks idle pages in
+swap and keeps them, so swap sits around 27-35% of RAM even when the host is idle; on
+2026-11-24 a 2-point swap wobble with 51% memory free and CPU at 6% raised a warning. Swap
+now only counts when memory is also low (`swap_pressure_mem_pct`, default 20) or the disks
+are waiting (IO wait at warning level). Memory running out with heavy swap (the outage
+pattern) still goes critical.
 
 "Memory commitment" on the Supabase dashboard is **not** used. It reads about 96% even
 when everything is fine, so it would alert all the time.
