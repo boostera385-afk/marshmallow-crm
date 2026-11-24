@@ -63,6 +63,7 @@ import marshmallowLogo from "@/assets/marshmallow-logo.png.asset.json";
 import ChangePasswordDialog from "@/components/auth/ChangePasswordDialog";
 import { useUpdateCount } from "@/hooks/useCxUpdates";
 import { useNotificationUnreadCount } from "@/hooks/useNotificationInbox";
+import { formatBadgeCount } from "@/lib/badge-count";
 
 const getNavItems = (role: string) => [
   { title: "All Leads", url: "/leads", icon: Users, navKey: "leads", group: "Work" },
@@ -102,6 +103,7 @@ export default function AppSidebar() {
   const cxCount = useUpdateCount("cx");
   const techCount = useUpdateCount("tech");
   const notificationCount = useNotificationUnreadCount();
+  const unreadNotifications = notificationCount.data ?? 0;
   // Leads already announced as Pending to Send, so one status change alerts exactly once.
   const announcedQuotePendingIds = useRef<Set<string>>(new Set());
 
@@ -527,7 +529,13 @@ export default function AppSidebar() {
                               />
                               {item.navKey === "cx_updates" && collapsed && (cxCount.data ?? 0) > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary" />}
                               {item.navKey === "tech_updates" && collapsed && (techCount.data ?? 0) > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" />}
-                              {item.navKey === "notifications" && (notificationCount.data ?? 0) > 0 && <span aria-label={`${notificationCount.data} unread notifications`} className="absolute -right-2 -top-2 rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">{notificationCount.data}</span>}
+                              {/* Collapsed only: with the label showing, the count sits at the row's right
+                                  edge instead, so it never covers the "Notifications" text. */}
+                              {item.navKey === "notifications" && collapsed && unreadNotifications > 0 && (
+                                <span aria-label={`${unreadNotifications} unread notifications`} className="absolute -right-1.5 -top-1.5 z-20 min-w-[14px] rounded-full bg-primary px-1 text-center text-[9px] font-bold leading-[14px] text-primary-foreground ring-2 ring-sidebar">
+                                  {formatBadgeCount(unreadNotifications)}
+                                </span>
+                              )}
                               {item.navKey === "cancellation_requests" && pendingCancellationCount > 0 && collapsed && (
                                 <span className="absolute -top-1.5 -right-1.5 flex h-2 w-2 z-20">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -628,6 +636,14 @@ export default function AppSidebar() {
                                   {item.navKey === "ai_assistance" && missedFollowupCount > 0 && (
                                     <span className="ml-auto shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold leading-none text-primary">
                                       {missedFollowupCount}
+                                    </span>
+                                  )}
+                                  {item.navKey === "notifications" && unreadNotifications > 0 && (
+                                    <span
+                                      aria-label={`${unreadNotifications} unread notifications`}
+                                      className="ml-auto shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold leading-none tabular-nums text-primary"
+                                    >
+                                      {formatBadgeCount(unreadNotifications)}
                                     </span>
                                   )}
                                 </span>

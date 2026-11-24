@@ -8,6 +8,7 @@ import { canAccessNavItem } from "@/lib/access";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppSidebar from "./AppSidebar";
+import { notificationUnreadKey } from "@/hooks/useNotificationInbox";
 
 const state = vi.hoisted(() => ({
   role: "opr" as AppRole,
@@ -61,10 +62,12 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
 } }));
 
 const clients: QueryClient[] = [];
-function renderSidebar() {
+function renderSidebar({ open = true, unread }: { open?: boolean; unread?: number } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   clients.push(client);
-  const ui = <QueryClientProvider client={client}><MemoryRouter><TooltipProvider><SidebarProvider><AppSidebar /></SidebarProvider></TooltipProvider></MemoryRouter></QueryClientProvider>;
+  // The unread count is seeded into the cache by NotificationBell in the app.
+  if (unread !== undefined) client.setQueryData(notificationUnreadKey("synthetic-user", state.role), unread);
+  const ui = <QueryClientProvider client={client}><MemoryRouter><TooltipProvider><SidebarProvider defaultOpen={open}><AppSidebar /></SidebarProvider></TooltipProvider></MemoryRouter></QueryClientProvider>;
   return { ...render(ui), client };
 }
 beforeEach(() => {
@@ -135,6 +138,34 @@ describe("sidebar request optimization", () => {
     renderSidebar();
     expect(screen.getByText("Analytics")).toBeInTheDocument();
   });
+  it("shows unread notifications at the row's right edge, not over the label, when expanded", () => {
+    state.role = "processor";
+    renderSidebar({ unread: 19 });
+    const link = screen.getByRole("link", { name: /Notifications/ });
+    const badges = screen.getAllByLabelText("19 unread notifications");
+    // Regression: the count was absolutely positioned on the bell and covered "Notifications".
+    expect(badges).toHaveLength(1);
+    expect(link).toContainElement(badges[0]);
+    expect(badges[0]).toHaveClass("ml-auto");
+    expect(badges[0]).not.toHaveClass("absolute");
+    expect(badges[0]).toHaveTextContent("19");
+  });
+
+  it("keeps a capped count on the bell when the sidebar is collapsed", () => {
+    state.role = "processor";
+    renderSidebar({ open: false, unread: 250 });
+    const badges = screen.getAllByLabelText("250 unread notifications");
+    expect(badges).toHaveLength(1);
+    expect(badges[0]).toHaveClass("absolute");
+    expect(badges[0]).toHaveTextContent("99+");
+  });
+
+  it("shows no notification badge with nothing unread", () => {
+    state.role = "processor";
+    renderSidebar({ unread: 0 });
+    expect(screen.queryByLabelText(/unread notifications/)).toBeNull();
+  });
+
   it("keeps failed count reads from advertising a successful count", async () => {
     state.role = "processor";
     state.fail = true;
