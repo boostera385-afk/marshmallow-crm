@@ -52,6 +52,20 @@ export interface TechNoteDisplay {
   color: TechNoteColor;
 }
 
+// Others' colours skip sky blue so nobody's bubble looks like "my" blue bubble.
+const PERSON_NOTE_COLORS = TECH_NOTE_COLORS.slice(1);
+
+/**
+ * CS notes, Messenger style: my notes keep the blue bubble, and every other person always
+ * gets the same colour (hashed from their user id, or name for legacy rows), on every lead.
+ */
+export function personNoteColor(personKey: string | null | undefined): TechNoteColor {
+  const key = personKey?.trim() || "unknown";
+  let hash = 0;
+  for (const character of key) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return PERSON_NOTE_COLORS[hash % PERSON_NOTE_COLORS.length];
+}
+
 /** How a processor note should be coloured, or null when it is not a tech entry. */
 export function techNoteDisplay(content: string | null | undefined): TechNoteDisplay | null {
   if (!content) return null;
