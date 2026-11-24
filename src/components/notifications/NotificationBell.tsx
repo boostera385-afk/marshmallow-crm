@@ -21,6 +21,7 @@ import { openInboxNotification } from '@/lib/workflow-inbox';
 import { useQueryClient } from '@tanstack/react-query';
 import { notificationUnreadKey } from '@/hooks/useNotificationInbox';
 import { activeNotificationSince } from '@/lib/notification-window';
+import { NOTIFICATION_SEVERITY_STYLES, notificationSeverity } from '@/lib/notification-severity';
 import { useRealtimeAwareInterval, useRealtimeReconnect } from '@/lib/realtime-health';
 
 const NOTIFICATION_POLL_INTERVAL_MS = 15 * 1000;
@@ -375,31 +376,42 @@ export default function NotificationBell() {
           ) : (
             <div className="divide-y divide-border/20">
               {holdAlerts.map((alert) => (
-                <button key={alert.id} className="w-full bg-primary/[0.04] px-4 py-3 text-left text-foreground transition-colors hover:bg-primary/[0.08]"
+                <button key={alert.id} data-severity="warning" className={`w-full border-l-[3px] px-4 py-3 text-left text-foreground transition-colors hover:bg-muted/40 ${NOTIFICATION_SEVERITY_STYLES.warning.edgeClass} ${NOTIFICATION_SEVERITY_STYLES.warning.unreadClass}`}
                   onClick={() => { setOpen(false); setSelectedHoldId(alert.id); }}>
                   <p className={`text-[13px] ${!alert.read ? 'font-semibold' : 'font-medium'}`}>{!alert.read && '● '}Hold This Job</p>
                   <p className="break-words text-xs">{alert.snapshot.job_id} · {HOLD_REASON_LABELS[alert.reason]}</p>
                   <p className="mt-1 text-[10px]">{formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}{alert.read ? ' · Acknowledged' : ''}</p>
                 </button>
               ))}
-              {notifications.map((n) => (
+              {notifications.map((n) => {
+                const severity = notificationSeverity(n);
+                const tone = NOTIFICATION_SEVERITY_STYLES[severity];
+                const Icon = tone.icon;
+                return (
                 <button
                   key={n.id}
+                  data-severity={severity}
                   onClick={() => handleClick(n)}
-                  className={`w-full text-left px-4 py-3 hover:bg-muted/40 transition-colors ${!n.read ? 'bg-primary/[0.03]' : ''}`}
+                  className={`w-full border-l-[3px] text-left px-4 py-3 hover:bg-muted/40 transition-colors ${tone.edgeClass} ${!n.read ? tone.unreadClass : ''}`}
                 >
                   <div className="flex items-start gap-2.5">
-                    {!n.read && <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />}
+                    <Icon aria-hidden className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${tone.iconClass}`} />
                     <div className="min-w-0 flex-1">
-                      <p className={`text-[13px] ${!n.read ? 'font-semibold' : 'font-medium'} text-foreground`}>{n.title}</p>
+                      <p className={`text-[13px] ${!n.read ? 'font-semibold' : 'font-medium'} text-foreground`}>
+                        {!n.read && <span className="sr-only">Unread. </span>}
+                        {severity !== 'info' && <span className="sr-only">{tone.label}: </span>}
+                        {n.title}
+                      </p>
                       <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
                       <p className="text-[10px] text-muted-foreground/40 mt-1">
                         {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
                       </p>
                     </div>
+                    {!n.read && <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

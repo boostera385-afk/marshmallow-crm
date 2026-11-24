@@ -8,6 +8,7 @@ import { canAccessNotifications } from "@/lib/access";
 import { useNotificationInbox } from "@/hooks/useNotificationInbox";
 import { markInboxRead, openInboxNotification, type InboxFilters, type InboxNotification } from "@/lib/workflow-inbox";
 import { realtimeBus } from "@/lib/realtime";
+import { NOTIFICATION_SEVERITY_STYLES, notificationSeverity } from "@/lib/notification-severity";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,11 +73,18 @@ export default function NotificationsPage() {
       : <>
         <div className="flex justify-end"><Button variant="outline" size="sm" disabled={saving || !query.data.rows.some((row) => !row.read)} onClick={() => { void read(); }}><CheckCheck className="mr-2 h-4 w-4" />Mark this page read</Button></div>
         {!query.data.rows.length ? <p role="status" className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">No notifications match these filters.</p>
-          : <div className="divide-y overflow-hidden rounded-xl border bg-card">{query.data.rows.map((notification) => <button key={notification.id} disabled={saving} onClick={() => { void read(notification); }} className={`flex w-full gap-3 p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${notification.read ? "" : "bg-primary/5"}`}>
-            <Bell className="mt-1 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className={`text-sm ${notification.read ? "font-medium" : "font-semibold"}`}>{!notification.read && <span aria-label="Unread">● </span>}{notification.title}</h2>
-              {notification.action_required && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">Action required</span>}</div>
+          : <div className="divide-y overflow-hidden rounded-xl border bg-card">{query.data.rows.map((notification) => {
+            const severity = notificationSeverity(notification);
+            const tone = NOTIFICATION_SEVERITY_STYLES[severity];
+            const Icon = tone.icon;
+            return <button key={notification.id} data-severity={severity} disabled={saving} onClick={() => { void read(notification); }} className={`flex w-full gap-3 border-l-[3px] p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${tone.edgeClass} ${notification.read ? "" : tone.unreadClass}`}>
+            <Icon aria-hidden className={`mt-0.5 h-4 w-4 shrink-0 ${tone.iconClass}`} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className={`text-sm ${notification.read ? "font-medium" : "font-semibold"}`}>{!notification.read && <span aria-label="Unread">● </span>}{notification.title}</h2>
+              {/* Text label so severity is not shown by colour alone; "Action required" already says "Needs action". */}
+              {severity !== "info" && !(severity === "warning" && notification.action_required) && <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${tone.chipClass}`}>{tone.label}</span>}
+              {notification.action_required && <span className={`rounded-full border px-2 py-0.5 text-xs ${NOTIFICATION_SEVERITY_STYLES.warning.chipClass}`}>Action required</span>}</div>
               <p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">{notification.message}</p><p className="mt-2 text-xs text-muted-foreground">{notification.job_id && `${notification.job_id} · `}{formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}</p></div>
-          </button>)}</div>}
+          </button>;
+          })}</div>}
         <nav aria-label="Notification pages" className="flex items-center justify-center gap-3"><Button variant="outline" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 20))}>Previous</Button><span className="text-sm">Page {Math.floor(offset / 20) + 1}</span><Button variant="outline" disabled={offset + 20 >= query.data.total} onClick={() => setOffset(offset + 20)}>Next</Button></nav>
       </>}
     {role === "admin" && <ScheduleMonitorPanel />}
