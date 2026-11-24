@@ -37,6 +37,8 @@ CREATE FUNCTION net.http_post(url text, headers jsonb, body jsonb, timeout_milli
 
 \ir ../migrations/20261210040000_system_health_alerts.sql
 \ir ../migrations/20261210050000_system_health_cpu_carry_forward.sql
+\ir ../migrations/20261231000700_health_swap_needs_memory_pressure.sql
+\ir ../migrations/20261231000700_health_swap_needs_memory_pressure.sql
 
 CREATE TABLE public.results (n serial, check_name text, ok boolean, detail text);
 CREATE TABLE public.t_last (r jsonb);
@@ -168,18 +170,49 @@ SELECT public.t_call(public.t_s(60) || '{"cpu_total_seconds": 1100, "cpu_idle_se
 SELECT public.t_check('feed stuck over 3 minutes: no stale CPU reading',
   (SELECT r->'readings'->'cpu_busy_pct' = 'null'::jsonb AND r->>'instant_level' = 'normal' FROM public.t_r));
 
--- 8. Swap only warns while rising --------------------------------------------------------
+-- 8. Swap only counts while rising AND under genuine memory pressure ---------------------
+-- Production 2026-11-24 07:42 UTC: swap 27.8% -> 30.1% with 51% memory free and an idle
+-- host raised a warning. Swap alone must not; memory <= 20% free or IO wait must back it.
+SELECT public.t_reset();
+INSERT INTO marshmallow_private.health_samples (sampled_at, metrics_ok, swap_used_pct, instant_rank) VALUES (now() - interval '10 minutes', true, 27.8, 0);
+SELECT public.t_call(public.t_s(51, 30.1));
+SELECT public.t_check('swap 27.8% -> 30.1% with 51% memory free (idle host): no signal',
+  (SELECT r->>'instant_level' = 'normal' AND r->'reasons' = '[]'::jsonb FROM public.t_r), (SELECT r->>'reasons' FROM public.t_r));
+SELECT public.t_reset(); SELECT public.t_hist(ARRAY[0,0,0], 30);
+INSERT INTO marshmallow_private.health_samples (sampled_at, metrics_ok, swap_used_pct, instant_rank) VALUES (now() - interval '10 minutes', true, 20, 0);
+SELECT public.t_call(public.t_s(45, 30));
+SELECT public.t_call(public.t_s(45, 31));
+SELECT public.t_call(public.t_s(45, 32));
+SELECT public.t_check('swap rising for minutes with memory 45% free: stays normal, nobody notified',
+  (SELECT r->>'level' = 'normal' AND r->>'instant_level' = 'normal' FROM public.t_r) AND NOT EXISTS (SELECT 1 FROM public.notifications));
 SELECT public.t_reset();
 INSERT INTO marshmallow_private.health_samples (sampled_at, metrics_ok, swap_used_pct, instant_rank) VALUES (now() - interval '10 minutes', true, 20, 0);
-SELECT public.t_call(public.t_s(60, 30));
-SELECT public.t_check('swap 30% and rising from 20%: warning signal',
-  (SELECT r->>'instant_level' = 'warning' AND r->'reasons'->>0 = 'swap 30% of RAM and rising (was 20% 10 min ago)' FROM public.t_r));
+SELECT public.t_call(public.t_s(19, 30));
+SELECT public.t_check('swap 30% and rising with memory 19% free: warning names the pressure',
+  (SELECT r->>'instant_level' = 'warning' AND r->'reasons' @> '["swap 30% of RAM and rising (was 20% 10 min ago) with memory 19% free"]'::jsonb FROM public.t_r),
+  (SELECT r->>'reasons' FROM public.t_r));
+SELECT public.t_reset();
+INSERT INTO marshmallow_private.health_samples (sampled_at, metrics_ok, swap_used_pct, instant_rank) VALUES (now() - interval '10 minutes', true, 20, 0);
+UPDATE marshmallow_private.health_state SET cpu_total = 1000, cpu_idle = 900, cpu_iowait = 0, counters_at = now() - interval '1 minute';
+SELECT public.t_call(public.t_s(60, 30) || '{"cpu_total_seconds": 1100, "cpu_idle_seconds": 960, "cpu_iowait_seconds": 20}');
+SELECT public.t_check('swap rising with memory 60% free but disks waiting (IO wait 20%): swap counts',
+  (SELECT r->'reasons' @> '["swap 30% of RAM and rising (was 20% 10 min ago) with IO wait 20.0%"]'::jsonb FROM public.t_r),
+  (SELECT r->>'reasons' FROM public.t_r));
 SELECT public.t_reset();
 INSERT INTO marshmallow_private.health_samples (sampled_at, metrics_ok, swap_used_pct, instant_rank) VALUES (now() - interval '10 minutes', true, 30, 0);
-SELECT public.t_call(public.t_s(60, 30));
-SELECT public.t_check('swap 30% but steady: no signal', (SELECT r->>'instant_level' = 'normal' FROM public.t_r));
+SELECT public.t_call(public.t_s(15, 30));
+SELECT public.t_check('swap 30% but steady: no swap signal (memory alone still warns)',
+  (SELECT r->>'instant_level' = 'warning' AND NOT (r->>'reasons' LIKE '%swap%') FROM public.t_r), (SELECT r->>'reasons' FROM public.t_r));
 SELECT public.t_call(public.t_s(60, 65));
-SELECT public.t_check('swap 65% of RAM: critical signal', (SELECT r->>'instant_level' = 'critical' FROM public.t_r));
+SELECT public.t_check('swap 65% of RAM with 60% memory free and no IO wait: no signal', (SELECT r->>'instant_level' = 'normal' FROM public.t_r));
+SELECT public.t_call(public.t_s(18, 65));
+SELECT public.t_check('outage pattern: swap 65% of RAM with memory 18% free: critical signal',
+  (SELECT r->>'instant_level' = 'critical' AND r->'reasons' @> '["swap 65% of RAM with memory 18% free (critical above 60%)"]'::jsonb FROM public.t_r),
+  (SELECT r->>'reasons' FROM public.t_r));
+UPDATE marshmallow_private.health_policy SET swap_pressure_mem_pct = 30;
+SELECT public.t_call(public.t_s(25, 65));
+SELECT public.t_check('memory threshold for swap is tunable in health_policy', (SELECT r->>'instant_level' = 'critical' FROM public.t_r));
+UPDATE marshmallow_private.health_policy SET swap_pressure_mem_pct = 20;
 
 -- 9. Load governor, connections, disk ----------------------------------------------------
 SELECT public.t_reset();

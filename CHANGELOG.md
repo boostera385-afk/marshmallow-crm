@@ -16,6 +16,9 @@ Format per entry:
 
 ## Unreleased
 <!-- Staged on main / preview but not yet Published to users. Move to a dated entry on Publish. -->
+- Overload alert: swap alone no longer raises "Database load warning" (it sits ~30% of RAM even
+  when idle). Swap now counts only when memory is also low (≤ 20% free) or the disks are waiting.
+  Database-only change: migration `20261231000700`; no CRM publish or Donut update needed.
 - CX/Tech updates, schedule-monitor settings, Copilot settings and Quo webhook ingestion: a stale or
   conflicting save now fails once with its refresh message instead of risking the same endless
   server retry. Needs Edge Functions cx-update-requests, workflow-inbox and marshmallow-copilot
