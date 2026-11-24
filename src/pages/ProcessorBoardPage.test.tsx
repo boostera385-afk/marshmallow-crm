@@ -61,6 +61,19 @@ describe("Processor Board", () => {
     // A status the CRM has no label for is shown as saved, not hidden.
     expect(statusCell("LD-1003")).toHaveTextContent("legacy custom");
   });
+  it("keeps long terms and lead statuses inside their own columns", () => {
+    state.hook.mockReturnValue(queue([{ ...job, terms: "diagnostic_service_call", status: "waiting_customer_response" }]));
+    mount();
+    const cells = within(rowFor("LD-1001")).getAllByRole("cell");
+    // Regression: "Diagnostic/Service Call" ran into Schedule; it must be allowed to wrap.
+    expect(cells[3]).toHaveTextContent("Diagnostic/Service Call");
+    expect(cells[3].className).toContain("[overflow-wrap:anywhere]");
+    // Regression: "Waiting Customer Response" ran into AI Status; the badge now fits the cell.
+    const badge = cells[5].firstElementChild as HTMLElement;
+    expect(badge).toHaveClass("max-w-full");
+    expect(badge).toHaveAttribute("title", "Waiting Customer Response");
+    expect(within(badge).getByText("Waiting Customer Response")).toHaveClass("truncate");
+  });
   it("never runs AI just because the board was opened, even for unchecked or changed jobs", async () => {
     state.hook.mockReturnValue(queue([future, { ...job, ai_stale: true }]));
     mount();
