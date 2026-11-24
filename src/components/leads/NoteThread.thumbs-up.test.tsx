@@ -57,7 +57,8 @@ afterEach(() => cleanup());
 async function renderThread() {
   render(<NoteThread leadId="lead-1" noteType="processor" label="Processor notes" />);
   await act(async () => { await Promise.resolve(); });
-  await screen.findByText("Tech 1: colleague note");
+  // The "Tech 1" heading renders as a coloured chip; the body follows it.
+  await screen.findByText("colleague note");
 }
 
 describe("Processor note thumbs-up", () => {
