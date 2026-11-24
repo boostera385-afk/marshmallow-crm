@@ -2,7 +2,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppRole } from "@/types";
 import NoteThread from "./NoteThread";
-import { TECH_NOTE_COLORS } from "@/lib/tech-note-colors";
+import { TECH_NOTE_COLORS, personNoteColor } from "@/lib/tech-note-colors";
 
 const state = vi.hoisted(() => ({ noteType: "processor" as string, role: "processor" as AppRole }));
 
@@ -24,6 +24,8 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
         note("n1", "Tech 1: Michael - (785) 816-5182 - texted"),
         note("n2", "Tech 2: Ronny - (816) 536-4348 - Monday 12-2pm", "colleague"),
         note("n3", "Ronny confirmed, customer informed."),
+        note("n4", "She also asked for a text before arrival.", "colleague"),
+        note("n5", "Confirmed $50 diagnostic on call.", "hamza"),
       ], error: null }),
     };
     return query;
@@ -63,10 +65,32 @@ describe("Processor note tech colours", () => {
     expect(plain.className).toContain("bg-[linear-gradient");
   });
 
-  it("does not colour CS notes that happen to start with Tech", async () => {
+  it("colours CS notes Messenger style: mine blue, each other person one colour", async () => {
     await renderThread("cs");
-    const csNote = await screen.findByText("Tech 1: Michael - (785) 816-5182 - texted");
-    expect(csNote).not.toHaveAttribute("data-tech-number");
+    const mine = await screen.findByText("Tech 1: Michael - (785) 816-5182 - texted");
+    const colleagueA = screen.getByText("Tech 2: Ronny - (816) 536-4348 - Monday 12-2pm");
+    const colleagueB = screen.getByText("She also asked for a text before arrival.");
+    const hamza = screen.getByText("Confirmed $50 diagnostic on call.");
+
+    // CS notes are not tech entries: full text shown, no chip.
+    expect(mine).not.toHaveAttribute("data-tech-number");
     expect(screen.queryByText("Tech 1", { exact: true })).toBeNull();
+    // My notes keep the blue "mine" bubble.
+    expect(mine).not.toHaveAttribute("data-note-color");
+    expect(mine.className).toContain("bg-[linear-gradient");
+    // The same colleague gets the same colour on every note, matching personNoteColor.
+    expect(colleagueA.getAttribute("data-note-color")).toBe(colleagueB.getAttribute("data-note-color"));
+    expect(colleagueA.className).toContain(personNoteColor("colleague").bubble);
+    expect(hamza.className).toContain(personNoteColor("hamza").bubble);
+    expect(colleagueA.className).not.toContain("bg-[linear-gradient");
+  });
+
+  it("leaves other threads (general) with the normal bubbles", async () => {
+    state.noteType = "general";
+    state.role = "admin";
+    render(<NoteThread leadId="lead-1" noteType="general" label="Notes" />);
+    await act(async () => { await Promise.resolve(); });
+    const note = await screen.findByText("Ronny confirmed, customer informed.");
+    expect(note).not.toHaveAttribute("data-note-color");
   });
 });

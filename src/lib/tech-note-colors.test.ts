@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { buildTechEntry } from "./lead-techs";
-import { TECH_NOTE_COLORS, techNoteDisplay } from "./tech-note-colors";
+import { TECH_NOTE_COLORS, personNoteColor, techNoteDisplay } from "./tech-note-colors";
+
+describe("personNoteColor", () => {
+  it("gives the same person the same colour every time", () => {
+    expect(personNoteColor("user-sara")).toBe(personNoteColor("user-sara"));
+    expect(personNoteColor(" user-sara ")).toBe(personNoteColor("user-sara"));
+  });
+
+  it("never uses the sky blue reserved to look like my own notes", () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `user-${i}`);
+    for (const id of ids) expect(personNoteColor(id)).not.toBe(TECH_NOTE_COLORS[0]);
+    // ...and spreads people across several colours.
+    expect(new Set(ids.map(personNoteColor)).size).toBeGreaterThan(2);
+  });
+
+  it("falls back to one colour for missing authors", () => {
+    expect(personNoteColor(null)).toBe(personNoteColor(""));
+  });
+});
 
 describe("techNoteDisplay", () => {
   it("colours a tech entry by its number and splits off the heading", () => {

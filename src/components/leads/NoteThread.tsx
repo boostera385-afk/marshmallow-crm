@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, Pencil, Check, X, SmilePlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { buildTechEntry, countTechs, formatTechCount, nextTechNumber } from "@/lib/lead-techs";
-import { techNoteDisplay } from "@/lib/tech-note-colors";
+import { personNoteColor, techNoteDisplay, TECH_NOTE_COLORS } from "@/lib/tech-note-colors";
 import { validateUSPhone } from "@/lib/phone";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { realtimeBus, relayTableToBus } from "@/lib/realtime";
@@ -417,6 +417,8 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
             const isEditing = editingId === note.id;
             // Processor tech entries get their tech's colour, whoever wrote them.
             const tech = noteType === "processor" ? techNoteDisplay(note.content) : null;
+            // CS notes, Messenger style: mine stay blue; each other person keeps one colour.
+            const color = tech?.color ?? (noteType === "cs" && !isMe ? personNoteColor(note.user_id || note.user_name) : null);
             return (
               <motion.div
                 key={note.id}
@@ -430,7 +432,7 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                     {getInitials(note)}
                   </AvatarFallback>
                 </Avatar>
-                <div className={`max-w-[75%] space-y-0.5 ${isMe ? "items-end text-right" : ""}`}>
+                <div className={`min-w-0 max-w-[75%] space-y-0.5 ${isMe ? "items-end text-right" : ""}`}>
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-medium text-foreground">
                       {getName(note)}
@@ -468,9 +470,10 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                   ) : (
                     <div
                       data-tech-number={tech?.techNumber}
-                      className={`group/note relative rounded-[16px] px-3 py-2 text-[13px] leading-relaxed ${
-                        tech
-                          ? `border text-left ${tech.color.bubble} ${isMe ? "rounded-tr-sm" : "rounded-tl-sm"}`
+                      data-note-color={color ? TECH_NOTE_COLORS.indexOf(color) : undefined}
+                      className={`group/note relative rounded-[16px] px-3 py-2 text-[13px] leading-relaxed [overflow-wrap:anywhere] ${
+                        color
+                          ? `border text-left ${color.bubble} ${isMe ? "rounded-tr-sm" : "rounded-tl-sm"}`
                           : isMe
                           ? "border border-primary/15 bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(223_85%_60%))] text-primary-foreground rounded-tr-sm shadow-[0_12px_22px_-18px_hsl(var(--primary)/0.55)]"
                           : "crm-lead-card-inner rounded-tl-sm text-foreground shadow-[0_14px_22px_-20px_rgba(59,130,246,0.12)] dark:shadow-none"
@@ -487,7 +490,7 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                         note.content
                       )}
                       {note.edited_at && (
-                        <span className={`mt-1 block text-[10px] italic ${isMe && !tech ? "text-primary-foreground/75" : "opacity-75"}`}>
+                        <span className={`mt-1 block text-[10px] italic ${isMe && !color ? "text-primary-foreground/75" : "opacity-75"}`}>
                           Edited by {(note.edited_by ? profiles[note.edited_by] || resolvedProfiles[note.edited_by] : null) || note.edited_by_name || "Unknown"}
                           {" · "}
                           {formatDateTime(note.edited_at, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
