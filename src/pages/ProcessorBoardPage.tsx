@@ -44,8 +44,9 @@ function StatusPill({ status }: { status: ProcessorStatus }) {
 
 /** The lead's saved CRM status, as on the leads pages; unknown values are shown as saved. */
 function LeadStatusCell({ status }: { status: string }) {
-  if (status in LEAD_STATUS_CONFIG) return <StatusBadge status={status as LeadStatus} size="sm" />;
-  return <span className="capitalize text-muted-foreground">{status.replace(/_/g, " ") || "—"}</span>;
+  // Truncates inside its column (full label on hover) instead of spilling into AI Status.
+  if (status in LEAD_STATUS_CONFIG) return <StatusBadge status={status as LeadStatus} size="sm" truncate />;
+  return <span className="block truncate capitalize text-muted-foreground" title={status.replace(/_/g, " ")}>{status.replace(/_/g, " ") || "—"}</span>;
 }
 
 export default function ProcessorBoardPage() {
@@ -122,7 +123,7 @@ function ProcessorBoard() {
     return job.ai_stale ? `${checked} · new activity, server re-checks soon` : checked;
   };
   const actions = (job: ProcessorJob, expanded: boolean) => <div className="flex items-center justify-end gap-1">
-    <Button size="sm" variant="ghost" className="h-7 px-1.5 text-[11px]" aria-label={`Tech chat for ${job.job_id}`} disabled={!canChat || !job.tech_number} onClick={() => setChatJobId(job.id)}><MessageSquareText className="h-3.5 w-3.5" /><span className="ml-1 hidden xl:inline">Chat</span></Button>
+    <Button size="sm" variant="ghost" className="h-7 px-1.5 text-[11px]" aria-label={`Tech chat for ${job.job_id}`} disabled={!canChat || !job.tech_number} onClick={() => setChatJobId(job.id)}><MessageSquareText className="h-3.5 w-3.5" /><span className="ml-1 hidden 2xl:inline">Chat</span></Button>
     <Button size="sm" variant={expanded ? "secondary" : "ghost"} className="h-7 px-1.5 text-[11px]" aria-expanded={expanded} aria-controls={`review-${job.id}`} aria-label={`Review ${job.job_id}`} onClick={() => setExpandedId(expanded ? null : job.id)}>Review<ChevronDown className={cn("ml-0.5 h-3 w-3 transition-transform", expanded && "rotate-180")} /></Button>
     <Button size="sm" variant="ghost" className="h-7 px-1.5 text-[11px]" asChild><Link to={`/leads/${job.id}`} aria-label={`Open lead ${job.job_id}`}>Open<ArrowUpRight className="ml-0.5 h-3 w-3" /></Link></Button>
   </div>;
@@ -173,14 +174,14 @@ function ProcessorBoard() {
           <table className="w-full table-fixed border-collapse text-left text-xs">
             <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
               <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                <th className="w-[13%] px-2 py-1.5 font-semibold">Lead</th>
-                <th className="w-[12%] px-2 py-1.5 font-semibold">Technician</th>
+                <th className="w-[12%] px-2 py-1.5 font-semibold">Lead</th>
+                <th className="w-[11%] px-2 py-1.5 font-semibold">Technician</th>
                 <th className="w-[10%] px-2 py-1.5 font-semibold">Service</th>
-                <th className="w-[7%] px-2 py-1.5 font-semibold">Terms</th>
+                <th className="w-[9%] px-2 py-1.5 font-semibold">Terms</th>
                 <th className="w-[10%] px-2 py-1.5 font-semibold">Schedule</th>
                 <th className="w-[12%] px-2 py-1.5 font-semibold">Lead Status</th>
-                <th className="w-[15%] px-2 py-1.5 font-semibold">AI Status</th>
-                <th className="w-[14%] px-2 py-1.5 text-right font-semibold">Actions</th>
+                <th className="w-[14%] px-2 py-1.5 font-semibold">AI Status</th>
+                <th className="w-[15%] px-2 py-1.5 text-right font-semibold">Actions</th>
                 <th className="w-[7%] px-2 py-1.5 text-right font-semibold">Date</th>
               </tr>
             </thead>
@@ -191,7 +192,8 @@ function ProcessorBoard() {
                   <td className="px-2 py-2"><p className="truncate font-medium text-foreground" title={job.customer_name ?? ""}>{job.customer_name || "Name missing"}</p><p className="truncate text-[10px] text-muted-foreground">#{job.job_id}</p></td>
                   <td className="px-2 py-2"><p className="truncate text-foreground" title={job.tech_name ?? ""}>{job.tech_name || "Name missing"}</p><p className="truncate text-[10px] tabular-nums text-muted-foreground">{job.tech_number || "Number missing"}</p></td>
                   <td className="px-2 py-2"><p className="truncate text-muted-foreground" title={job.service_type ?? ""}>{job.service_type || "—"}</p></td>
-                  <td className="px-2 py-2 capitalize text-foreground">{terms(job.terms)}</td>
+                  {/* Long terms wrap (e.g. after "Diagnostic/") rather than running into Schedule. */}
+                  <td className="px-2 py-2 capitalize leading-tight text-foreground [overflow-wrap:anywhere]">{terms(job.terms)}</td>
                   <td className="px-2 py-2"><Schedule job={job} overdue={processorSchedulePassed(job, filters.timezone, now)} /></td>
                   <td className="px-2 py-2"><LeadStatusCell status={job.status} /></td>
                   <td className="px-2 py-2"><StatusPill status={job.board_status} />{shareLine(job)}<p className="mt-0.5 truncate text-[10px] text-muted-foreground">{rowNote(job)}</p></td>
