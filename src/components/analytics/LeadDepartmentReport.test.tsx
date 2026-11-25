@@ -23,42 +23,66 @@ function renderReport(props: Partial<{ startMs: number; endMs: number; rangeErro
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}><LeadDepartmentReport startMs={props.startMs ?? START} endMs={props.endMs ?? END} rangeError={props.rangeError} /></QueryClientProvider>);
 }
+const ROWS: DepartmentBreakdownRow[] = [
+  { department: "ND", status: "paid", lead_count: 4 },
+  { department: "ND", status: "cancelled", lead_count: 2 },
+  { department: "ND", status: "waiting_customer_response", lead_count: 14 },
+  { department: "FB", status: "paid", lead_count: 3 },
+  { department: "FB", status: "quote_sent_waiting", lead_count: 7 },
+  { department: "SEO", status: "scheduled", lead_count: 3 },
+  { department: "Other", status: "cancelled", lead_count: 1 },
+  { department: "not_in_jellybean", status: "paid", lead_count: 6 },
+  { department: "not_in_jellybean", status: "cancelled", lead_count: 4 },
+];
 
 describe("LeadDepartmentReport", () => {
   beforeEach(() => { mocks.role = "admin"; mocks.rpc.mockReset(); });
 
-  it("shows each department's total and the status breakdown for the selected range", async () => {
-    respond({ data: [
-      { department: "ND", status: "paid", lead_count: 4 },
-      { department: "ND", status: "cancelled", lead_count: 1 },
-      { department: "FB", status: "paid", lead_count: 2 },
-      { department: "SEO", status: "scheduled", lead_count: 3 },
-      { department: "not_in_jellybean", status: "paid", lead_count: 5 },
-    ] });
+  it("leads with how many leads came from JellyBean, then one card per department", async () => {
+    respond({ data: ROWS });
     renderReport();
-    expect(await screen.findByLabelText("Nextdoor (ND): 5 leads")).toBeInTheDocument();
-    expect(screen.getByLabelText("Facebook (FB): 2 leads")).toBeInTheDocument();
+    expect(await screen.findByText(/of 44 leads \(77%\) came from JellyBean/)).toBeInTheDocument();
+    expect(screen.getByText("34")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nextdoor (ND): 20 leads")).toBeInTheDocument();
+    expect(screen.getByLabelText("Facebook (FB): 10 leads")).toBeInTheDocument();
     expect(screen.getByLabelText("SEO: 3 leads")).toBeInTheDocument();
-    expect(screen.getByLabelText("Not in JellyBean: 5 leads")).toBeInTheDocument();
-    expect(screen.queryByText("Still checking")).not.toBeInTheDocument();
-    expect(screen.getByText(/10 of 15 leads \(66\.7%\) were found in JellyBean/)).toBeInTheDocument();
-
-    const paidRow = screen.getByRole("row", { name: /^Paid/ });
-    // Status, ND, FB, SEO, Other, Not in JB, Checking, Total
-    expect(within(paidRow).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Paid", "4", "2", "0", "0", "5", "0", "11"]);
-    const totalRow = screen.getByRole("row", { name: /^All statuses/ });
-    expect(within(totalRow).getAllByRole("cell").map((c) => c.textContent)).toEqual(["All statuses", "5", "2", "3", "0", "5", "0", "15"]);
-
+    expect(screen.getByLabelText("Not from JellyBean: 10 leads")).toBeInTheDocument();
+    // One stray "Other" lead stays in the totals but gets no card of its own.
+    expect(screen.queryByLabelText("Other JellyBean: 1 leads")).not.toBeInTheDocument();
     expect(mocks.rpc).toHaveBeenCalledWith("get_lead_department_breakdown", {
       p_start: "2026-10-01T00:00:00.000Z", p_end: "2026-10-31T23:59:59.000Z",
     });
   });
 
-  it("tells the admin when new leads are still being checked against JellyBean", async () => {
-    respond({ data: [{ department: "pending", status: "waiting_customer_response", lead_count: 2 }] });
+  it("compares departments by stage and marks the best paid rate", async () => {
+    respond({ data: ROWS });
     renderReport();
-    expect(await screen.findByText(/2 leads are still being checked/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Still checking: 2 leads")).toBeInTheDocument();
+    const ndRow = await screen.findByRole("row", { name: /^Nextdoor \(ND\)/ });
+    // Department, Leads, Waiting, Quoting, Booked, Job done, Paid, Cancelled, Paid rate
+    expect(within(ndRow).getAllByRole("cell").map((c) => c.textContent)).toEqual(["20", "1470%", "00%", "00%", "00%", "420%", "210%", "20%"]);
+    expect(within(screen.getByRole("row", { name: /^Other JellyBean/ })).getAllByRole("cell")[0]).toHaveTextContent("1");
+    // FB 3/10 = 30%, ND 4/20 = 20%, Not from JellyBean 6/10 = 60% (SEO has under 10 leads).
+    expect(screen.getAllByText("Best paid rate")).toHaveLength(1);
+    expect(within(screen.getByLabelText("Not from JellyBean: 10 leads").closest("div.rounded-2xl") as HTMLElement).getByText("Best paid rate")).toBeInTheDocument();
+  });
+
+  it("shows every status for the department picked", async () => {
+    respond({ data: ROWS });
+    renderReport();
+    const list = await screen.findByLabelText("Nextdoor (ND) leads by status");
+    expect(within(list).getByText("Waiting Customer Response")).toBeInTheDocument();
+    expect(within(list).queryByText("Quote Sent - Waiting")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /Facebook \(FB\)/ }));
+    const fb = screen.getByLabelText("Facebook (FB) leads by status");
+    expect(within(fb).getByText("Quote Sent - Waiting")).toBeInTheDocument();
+    expect(within(fb).getByText("7")).toBeInTheDocument();
+  });
+
+  it("tells the admin when new leads are still being checked against JellyBean", async () => {
+    respond({ data: [...ROWS, { department: "pending", status: "waiting_customer_response", lead_count: 2 }] });
+    renderReport();
+    expect(await screen.findByText(/2 new leads are still being checked/)).toBeInTheDocument();
+    expect(screen.getByText(/of 46 leads/)).toBeInTheDocument();
   });
 
   it("renders nothing and makes no request for a non-admin", () => {
@@ -70,13 +94,13 @@ describe("LeadDepartmentReport", () => {
   });
 
   it("shows a server refusal or failure with a working retry, never empty numbers", async () => {
-    respond({ error: { message: "Only Admins can view the department report" } }, { data: [{ department: "FB", status: "paid", lead_count: 1 }] });
+    respond({ error: { message: "Only Admins can view the department report" } }, { data: ROWS });
     renderReport();
     expect(await screen.findByText("Could not load the department report")).toBeInTheDocument();
     expect(screen.getByText("Only Admins can view the department report")).toBeInTheDocument();
-    expect(screen.queryByText(/were found in JellyBean/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/came from JellyBean/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByLabelText("Facebook (FB): 1 leads")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Facebook (FB): 10 leads")).toBeInTheDocument();
   });
 
   it("does not query for an invalid range", () => {
