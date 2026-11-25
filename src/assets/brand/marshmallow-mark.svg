@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Marshmallow CRM mark. Single source for the in-app logo and every generated icon
+       (npm run brand:icons). Colours follow the live theme's primary blue. -->
+  <defs>
+    <linearGradient id="mm-tile" x1="40" y1="24" x2="472" y2="488" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6F9BFF"/>
+      <stop offset=".55" stop-color="#3D63E6"/>
+      <stop offset="1" stop-color="#5B3FD9"/>
+    </linearGradient>
+    <radialGradient id="mm-glow" cx="150" cy="96" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mm-body" x1="176" y1="150" x2="340" y2="392" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset=".62" stop-color="#FFF4F8"/>
+      <stop offset="1" stop-color="#FFD9E8"/>
+    </linearGradient>
+    <linearGradient id="mm-top" x1="256" y1="168" x2="256" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFE3EE"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#mm-tile)"/>
+  <rect width="512" height="512" rx="116" fill="url(#mm-glow)"/>
+
+  <g id="mm-art">
+  <!-- Shadow -->
+  <ellipse cx="256" cy="410" rx="112" ry="16" fill="#1A1F5E" opacity=".28"/>
+
+  <!-- Marshmallow -->
+  <rect x="134" y="150" width="244" height="246" rx="78" fill="url(#mm-body)"/>
+  <ellipse cx="256" cy="196" rx="96" ry="30" fill="url(#mm-top)"/>
+  <path d="M378 228v90c0 43-35 78-78 78h-26c52-6 86-38 92-84l12-84Z" fill="#B9D3FF" opacity=".45"/>
+
+  <!-- Face -->
+  <ellipse cx="188" cy="306" rx="20" ry="12" fill="#FF8FB4" opacity=".8"/>
+  <ellipse cx="324" cy="306" rx="20" ry="12" fill="#FF8FB4" opacity=".8"/>
+  <circle cx="212" cy="276" r="18" fill="#1B2150"/>
+  <circle cx="300" cy="276" r="18" fill="#1B2150"/>
+  <circle cx="206" cy="269" r="6" fill="#FFFFFF"/>
+  <circle cx="294" cy="269" r="6" fill="#FFFFFF"/>
+  <path d="M234 306q22 22 44 0" fill="none" stroke="#1B2150" stroke-width="11" stroke-linecap="round"/>
+  </g>
+</svg>

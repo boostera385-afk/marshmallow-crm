@@ -10,7 +10,6 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({
   pendingMfaFactorId: null, startPendingAccessCode: vi.fn(), startPendingMfa: vi.fn(), clearPendingAuth: vi.fn(),
   hasAlternativeMfa: false, hasAlternativeAccessCode: false,
 }) }));
-vi.mock("@/assets/marshmallow-logo.png.asset.json", () => ({ default: { url: "/logo.png" } }));
 
 afterEach(() => { cleanup(); state.pendingStep = null; });
 

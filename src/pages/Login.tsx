@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Mail, Lock, ArrowRight, ShieldCheck, Wrench, KeyRound, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { heroTitle, premiumEase } from "@/lib/motion";
-import marshmallowLogo from "@/assets/marshmallow-logo.png.asset.json";
+import { MarshmallowMark } from "@/components/brand/MarshmallowMark";
 import { LegalFooter } from "@/components/layout/LegalFooter";
 
 const Login = () => {
@@ -387,7 +387,7 @@ const Login = () => {
           className="relative z-10 flex items-center gap-3"
         >
           <div className="w-10 h-10 rounded-xl overflow-hidden bg-white/15 border border-white/10">
-            <img src={marshmallowLogo.url} alt="Marshmallow" className="w-full h-full object-cover" />
+            <MarshmallowMark title="" />
           </div>
           <h1 className="text-xl font-bold tracking-tight text-white">Marshmallow</h1>
         </motion.div>
@@ -468,7 +468,7 @@ const Login = () => {
         >
           <div className="lg:hidden mb-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg overflow-hidden shadow-brand">
-              <img src={marshmallowLogo.url} alt="Marshmallow" className="w-full h-full object-cover" />
+              <MarshmallowMark title="" />
             </div>
             <h1 className="text-lg font-bold tracking-tight text-foreground">Marshmallow</h1>
           </div>
