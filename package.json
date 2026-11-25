@@ -6,6 +6,7 @@
   "scripts": {
     "extension:release": "node scripts/extension-release.mjs",
     "extension:check": "node scripts/extension-release.mjs --check",
+    "brand:icons": "node scripts/generate-brand-icons.mjs",
     "prebuild": "npm run extension:check",
     "dev": "vite",
     "build": "vite build",

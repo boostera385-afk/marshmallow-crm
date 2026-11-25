@@ -59,7 +59,7 @@ import { useSharedQuery } from "@/hooks/useCrossTab";
 import { supabase } from "@/integrations/supabase/client";
 import { realtimeRelay, subscribeToTableChanges } from "@/lib/realtime";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
-import marshmallowLogo from "@/assets/marshmallow-logo.png.asset.json";
+import { MarshmallowMark } from "@/components/brand/MarshmallowMark";
 import ChangePasswordDialog from "@/components/auth/ChangePasswordDialog";
 import { useUpdateCount } from "@/hooks/useCxUpdates";
 import { useNotificationUnreadCount } from "@/hooks/useNotificationInbox";
@@ -427,7 +427,7 @@ export default function AppSidebar() {
               transition={{ type: "spring", stiffness: 280, damping: 18 }}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl overflow-hidden shadow-[0_14px_32px_-12px_hsl(var(--primary)/0.65)] ring-1 ring-white/18"
             >
-              <img src={marshmallowLogo.url} alt="Marshmallow" className="h-full w-full object-cover" />
+              <MarshmallowMark />
             </motion.div>
           </div>
         ) : (
@@ -446,7 +446,7 @@ export default function AppSidebar() {
                 transition={{ type: "spring", stiffness: 280, damping: 18 }}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl overflow-hidden shadow-[0_14px_32px_-12px_hsl(var(--primary)/0.65)] ring-1 ring-white/18"
               >
-              <img src={marshmallowLogo.url} alt="Marshmallow" className="h-full w-full object-cover" />
+              <MarshmallowMark title="" />
             </motion.div>
 
               <motion.div
