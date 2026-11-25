@@ -4,6 +4,7 @@
 - **Status:** Proposal. Awaiting approval. Nothing is built yet.
 - **Visual preview:** [`assets/pastry-neon-theme-preview.html`](assets/pastry-neon-theme-preview.html). Open it in a browser to see the mockups.
 - **Source:** Pastry Marketing logo and the "Guess what's coming" promo poster.
+  Also the "Account Boosters Technology is now Pastry" announcement poster.
 
 ## Goal
 
@@ -17,17 +18,33 @@ Lime and pink are the two brand voices. Lime means "go / do this". Pink means
 "look here / urgent". Status colours keep their usual meaning: red for critical, amber for
 needs action, green for resolved.
 
-| Token  | Hex       | Use                                                                    |
-| ------ | --------- | ---------------------------------------------------------------------- |
-| Ink    | `#0A0A20` | Page background                                                        |
-| Night  | `#13143A` | Cards, panels, sidebar                                                 |
-| Lime   | `#D6F51B` | Main buttons, active nav, highlights. Text on it is Ink (about 15:1).  |
-| Pink   | `#FF2D8F` | Urgent stickers, focus rings, counts. White text on it passes AA.     |
-| Cherry | `#FF4B5C` | Critical alerts and errors only                                        |
-| Haze   | `#A6A9D6` | Secondary text, timestamps                                             |
+Booster cyan and Booster violet come from Account Boosters Technology, Pastry's previous
+name (the rocket logo and the logo's slice stripe), so the CRM keeps a link to the old brand.
+
+| Token          | Dark      | Light     | Use                                                          |
+| -------------- | --------- | --------- | ------------------------------------------------------------ |
+| Ink / Paper    | `#0A0A20` | `#F6F7FC` | Page background                                              |
+| Night / White  | `#13143A` | `#FFFFFF` | Cards, panels, sidebar                                       |
+| Action         | `#D6F51B` | `#14143F` | Main buttons. Text on it: Ink 15.7:1 / lime 14.1:1.          |
+| Pink           | `#FF2D8F` | `#C0106A` | Focus rings, urgent text and counts                          |
+| Pink fill      | `#E0147A` | `#C0106A` | Solid urgent labels with white text (4.6:1 / 6.0:1)          |
+| Booster cyan   | `#22C8E8` | `#0E7490` | Info, links, Quo, schedules                                  |
+| Booster violet | `#B57BFF` | `#6D28D9` | AI status and automation only                                |
+| Sun            | `#FFC83D` | `#9A5B00` | Warning, needs action (light value is the text colour)       |
+| Cherry         | `#FF4B5C` | `#C81E3A` | Critical alerts and errors only                              |
+| Mint           | `#6EE7B7` | `#047857` | Resolved, success                                            |
+| Haze           | `#A6A9D6` | `#5B5E8A` | Secondary text, timestamps                                   |
+
+**Contrast:** every text pairing above was measured at WCAG AA (4.5:1) or better.
+White on `#FF2D8F` is only 3.5:1, so solid pink labels use the deeper pink fill.
 
 **Light mode:** lime is too pale for text on white. Light mode uses navy buttons with lime
-text, and a deeper pink (`#D10F6D`) for links and focus.
+text and deeper pink, cyan and violet for text. The login art and page hero stay dark in
+both modes. The preview has an Auto / Light / Dark switch to compare them.
+
+**Slice stripe:** the logo's four bands (pink `#FF2D8F`, violet `#A646F0`, sun `#FFC83D`,
+cyan `#22C8E8`) are used only as a thin 4 to 5px band: under the top bar, on the login art
+and in the sidebar logo. Never as a fill behind text.
 
 **Already in code:** `--pastry-navy`, `--pastry-pink`, `--pastry-lime` and
 `--pastry-cherry` exist in `src/index.css` and `tailwind.config.ts`. They are used on the
@@ -48,6 +65,7 @@ Each detail has a fixed place, so the CRM stays calm to work in.
 2. **Lime slash underline:** under page titles.
 3. **Halftone dots:** in empty corners of the login and page headers. Never behind text.
 4. **Light rays:** on the login panel only.
+5. **Slice stripe:** the four-band stripe from the logo, in three fixed places only.
 
 ## Pilot screens
 

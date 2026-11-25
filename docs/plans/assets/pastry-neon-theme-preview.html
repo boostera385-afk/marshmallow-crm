@@ -1,229 +1,445 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Pastry Neon theme proposal for Marshmallow CRM: palette with Account Boosters heritage colours, type, signature details and pilot screens in dark and light mode.">
 <title>Pastry Neon Theme</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
+<script>
+  /* Apply the saved theme before first paint so the page never flashes the wrong mode. */
+  (function () {
+    try {
+      var t = localStorage.getItem("pastry-theme");
+      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) { /* storage blocked: follow the system setting */ }
+  })();
+</script>
 <style>
-/* Layout: poster-style hero, then a vertical run of sections: palette, type, signature details, pilot screen samples, light mode, rollout, decisions. Deliberately single dark look (the brand poster is dark); the light-mode sample sets its own explicit colours. */
+/* ------------------------------------------------------------------
+   Tokens. Every colour on the page comes from here.
+   Roles: lime = action, pink = urgent/attention, cyan = info/links
+   (Account Boosters rocket), violet = AI/automation, sun = warning,
+   cherry = critical, mint = success.
+   *-fill  = background of a solid chip/button
+   *-ink   = text that sits on that fill
+   *-text  = the colour used as text on the page surface
+   ------------------------------------------------------------------ */
 :root {
-  --ink: #0a0a20;        /* page ground, from the poster */
-  --night: #13143a;      /* surfaces / cards */
-  --night-2: #1b1d4a;    /* raised / inputs */
+  /* Dark (default, matches the poster) */
+  --bg: #0a0a20;
+  --surface: #13143a;
+  --surface-2: #1b1d4a;
   --line: #2b2e66;
-  --lime: #d6f51b;       /* electric lime: primary action, highlights */
-  --pink: #ff2d8f;       /* hot pink: urgency, stickers, focus */
-  --cherry: #ff4b5c;     /* critical only */
-  --white: #ffffff;
+  --text: #ffffff;
+  --text-2: #d7d9f5;
   --muted: #a6a9d6;
+
+  --action: #d6f51b;        --on-action: #0a0a20;   /* lime button, 15.7:1 */
+  --brand-text: #d6f51b;                              /* lime as text on dark */
+  --pink: #ff2d8f;                                    /* glow, borders, focus */
+  --pink-text: #ff8cc2;                               /* 8.2:1 on surface */
+  --pink-fill: #e0147a;     --on-pink: #ffffff;       /* 4.6:1, AA */
+  --cyan: #22c8e8;          --cyan-text: #22c8e8;     /* 8.8:1 on surface */
+  --violet: #b57bff;        --violet-text: #b57bff;   /* 6.1:1 on surface */
+  --sun: #ffc83d;           --sun-text: #ffc83d;
+  --cherry: #ff4b5c;        --cherry-text: #ff9aa4;   --on-cherry: #0a0a20;
+  --mint: #6ee7b7;          --mint-text: #6ee7b7;
+
+  --focus: #ff2d8f;
+  --shadow: 0 18px 40px -24px rgba(0, 0, 0, .8);
+  --dot: rgba(255, 45, 143, .55);
+  --ray: rgba(214, 245, 27, .5);
+  --tint: 14%;              /* strength of tinted pill backgrounds */
+
   --display: "Anton", "Impact", "Arial Narrow Bold", sans-serif;
-  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  --radius: 14px;
   color-scheme: dark;
 }
-* { box-sizing: border-box; }
-body { background: var(--ink); color: var(--white); font-family: var(--body); font-size: 14px; line-height: 1.5; }
-.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-section { padding-block: 40px; border-top: 1px solid var(--line); }
-h1, h2, .disp { font-family: var(--display); font-weight: 400; text-transform: uppercase; letter-spacing: .01em; line-height: .95; margin: 0; text-wrap: balance; }
-h2 { font-size: clamp(1.9rem, 4vw, 2.6rem); margin-bottom: 8px; }
-.lede { color: var(--muted); max-width: 66ch; margin: 0 0 22px; }
-.eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--lime); }
-.dots { background-image: radial-gradient(var(--pink) 1.1px, transparent 1.3px); background-size: 7px 7px; opacity: .55; }
 
-/* Hero */
-.hero { position: relative; overflow: hidden; margin-top: calc(-1 * env(safe-area-inset-top, 0px)); padding-top: calc(env(safe-area-inset-top, 0px) + 48px); padding-bottom: 48px;
-  background: radial-gradient(circle at 88% 20%, rgba(255,45,143,.22), transparent 40%), linear-gradient(160deg, #0a0a20 0%, #12133a 70%, #1a1446 100%); }
-.hero .rays { position: absolute; right: -60px; bottom: -40px; width: 380px; height: 260px; background: conic-gradient(from 200deg at 100% 100%, transparent 0 10deg, rgba(214,245,27,.55) 10deg 13deg, transparent 13deg 30deg, rgba(214,245,27,.35) 30deg 32deg, transparent 32deg 360deg); filter: blur(.3px); }
-.hero .d1 { position: absolute; left: 4%; top: 28%; width: 70px; height: 50px; }
-.hero .d2 { position: absolute; right: 10%; top: 16%; width: 60px; height: 44px; background-image: radial-gradient(var(--muted) 1px, transparent 1.2px); }
-.hero h1 { font-size: clamp(3rem, 9vw, 6.2rem); position: relative; }
-.hero h1 .l { color: var(--lime); display: block; }
-.hero h1 .p { color: var(--pink); display: block; }
-.sticker { display: inline-block; background: var(--pink); color: var(--white); font-family: var(--display); text-transform: uppercase; padding: 4px 12px 2px; transform: rotate(-3deg); font-size: 1.05rem; letter-spacing: .02em; }
-.hero p { position: relative; max-width: 60ch; color: #d7d9f5; margin: 18px 0 0; font-size: 15px; }
-.hero .meta { position: relative; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+/* Light tokens: lime is too pale for text on white, so it becomes a marker
+   and navy carries actions. Every text colour here is 5:1 or better on white. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f7fc; --surface: #ffffff; --surface-2: #eef0fa; --line: #dcdff0;
+    --text: #14143f; --text-2: #33366a; --muted: #5b5e8a;
+    --action: #14143f; --on-action: #d6f51b; --brand-text: #14143f;
+    --pink-text: #c0106a; --pink-fill: #c0106a;
+    --cyan: #0e7490; --cyan-text: #0e7490;
+    --violet: #6d28d9; --violet-text: #6d28d9;
+    --sun: #f2a900; --sun-text: #9a5b00;
+    --cherry: #c81e3a; --cherry-text: #c81e3a; --on-cherry: #ffffff;
+    --mint: #059669; --mint-text: #047857;
+    --focus: #c0106a;
+    --shadow: 0 16px 34px -22px rgba(20, 20, 63, .35);
+    --dot: rgba(192, 16, 106, .35);
+    --tint: 10%;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f6f7fc; --surface: #ffffff; --surface-2: #eef0fa; --line: #dcdff0;
+  --text: #14143f; --text-2: #33366a; --muted: #5b5e8a;
+  --action: #14143f; --on-action: #d6f51b; --brand-text: #14143f;
+  --pink-text: #c0106a; --pink-fill: #c0106a;
+  --cyan: #0e7490; --cyan-text: #0e7490;
+  --violet: #6d28d9; --violet-text: #6d28d9;
+  --sun: #f2a900; --sun-text: #9a5b00;
+  --cherry: #c81e3a; --cherry-text: #c81e3a; --on-cherry: #ffffff;
+  --mint: #059669; --mint-text: #047857;
+  --focus: #c0106a;
+  --shadow: 0 16px 34px -22px rgba(20, 20, 63, .35);
+  --dot: rgba(192, 16, 106, .35);
+  --tint: 10%;
+  color-scheme: light;
+}
+
+/* Brand panels (hero, login art) stay dark in both modes, like the poster. */
+.brand-dark {
+  --bg: #0a0a20; --surface: #13143a; --surface-2: #1b1d4a; --line: #2b2e66;
+  --text: #ffffff; --text-2: #d7d9f5; --muted: #a6a9d6;
+  --brand-text: #d6f51b; --pink-text: #ff8cc2; --cyan-text: #22c8e8;
+  --dot: rgba(255, 45, 143, .55);
+  color: var(--text);
+}
+
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--body); font-size: 15px; line-height: 1.55; overflow-x: hidden; }
+a { color: var(--cyan-text); text-underline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+section { padding-block: clamp(32px, 6vw, 56px); border-top: 1px solid var(--line); }
+h1, h2, .disp { font-family: var(--display); font-weight: 400; text-transform: uppercase; letter-spacing: .01em; line-height: .95; margin: 0; text-wrap: balance; }
+h2 { font-size: clamp(1.9rem, 4.5vw, 2.7rem); margin-bottom: 10px; }
+h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+p { text-wrap: pretty; }
+.lede { color: var(--text-2); max-width: 66ch; margin: 0 0 24px; }
+.eyebrow { font-size: 11.5px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--pink-text); margin-bottom: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: 12px; top: -60px; background: var(--action); color: var(--on-action); padding: 8px 12px; border-radius: 8px; font-weight: 700; z-index: 20; }
+.skip:focus { top: 12px; }
+
+/* The four-band "pastry slice" stripe from the logo: pink, violet, sun, cyan. */
+.stripe { height: 5px; background: linear-gradient(90deg, #ff2d8f 0 25%, #a646f0 25% 50%, #ffc83d 50% 75%, #22c8e8 75% 100%); }
+
+/* ---------- Top bar with theme switch ---------- */
+.bar { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top, 0px); }
+.bar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
+.brandmark { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; letter-spacing: .02em; }
+.slice { width: 18px; height: 16px; border-radius: 3px; background: linear-gradient(180deg, #ff2d8f 0 25%, #a646f0 25% 50%, #ffc83d 50% 75%, #22c8e8 75%); transform: skewX(-12deg); flex: none; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--surface); }
+.seg button { font: inherit; font-size: 12.5px; font-weight: 700; color: var(--muted); background: transparent; border: 0; border-radius: 999px; padding: 6px 12px; min-height: 32px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--action); color: var(--on-action); }
+.seg button:hover:not([aria-pressed="true"]) { color: var(--text); }
+
+/* ---------- Hero ---------- */
+.hero { position: relative; overflow: hidden; padding-block: clamp(40px, 8vw, 72px); background: radial-gradient(circle at 88% 18%, rgba(255,45,143,.24), transparent 42%), radial-gradient(circle at 8% 90%, rgba(34,200,232,.18), transparent 40%), linear-gradient(160deg, #0a0a20 0%, #12133a 70%, #1a1446 100%); }
+.dots { background-image: radial-gradient(var(--dot) 1.1px, transparent 1.3px); background-size: 7px 7px; }
+.rays { background: conic-gradient(from 200deg at 100% 100%, transparent 0 10deg, var(--ray) 10deg 13deg, transparent 13deg 30deg, rgba(214,245,27,.32) 30deg 32deg, transparent 32deg 360deg); }
+.hero .rays { position: absolute; right: -60px; bottom: -40px; width: min(380px, 70vw); height: 260px; }
+.hero .d1 { position: absolute; left: 3%; top: 22%; width: 70px; height: 50px; }
+.hero .d2 { position: absolute; right: 9%; top: 14%; width: 60px; height: 44px; background-image: radial-gradient(#a6a9d6 1px, transparent 1.2px); background-size: 7px 7px; opacity: .6; }
+.hero h1 { font-size: clamp(3rem, 10vw, 6.4rem); position: relative; margin-top: 14px; }
+.hero h1 .l { color: #d6f51b; display: block; }
+.hero h1 .p { color: #ff2d8f; display: block; }
+.lineage { position: relative; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #d7d9f5; }
+.lineage .ab { color: #22c8e8; }
+.lineage .arrow { color: #a6a9d6; }
+.lineage .pa { color: #fff; }
+.sticker { display: inline-block; background: var(--pink-fill); color: var(--on-pink); font-family: var(--display); text-transform: uppercase; padding: 4px 12px 2px; transform: rotate(-3deg); font-size: 1.05rem; letter-spacing: .02em; }
+.hero .sticker { background: #e0147a; color: #fff; }
+.hero p { position: relative; max-width: 62ch; color: #d7d9f5; margin: 18px 0 0; font-size: 16px; }
+.meta { position: relative; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
 .tag { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 12px; color: var(--muted); }
 
-/* Palette */
-.swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; }
-.sw { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--night); }
-.sw .chip { height: 72px; }
+/* ---------- Heritage ---------- */
+.heritage { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; align-items: stretch; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px; min-width: 0; box-shadow: var(--shadow); }
+.bands { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.band { border-radius: 10px; padding: 34px 8px 8px; font-size: 11.5px; font-weight: 700; color: #0a0a20; min-width: 0; }
+.band span { display: block; font-family: var(--mono); font-weight: 500; font-size: 10.5px; }
+.rolelist { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.rolelist li { display: grid; grid-template-columns: 12px 1fr; gap: 10px; align-items: start; color: var(--text-2); font-size: 14px; }
+.rolelist i { width: 12px; height: 12px; border-radius: 4px; margin-top: 5px; }
+.rolelist b { color: var(--text); }
+
+/* ---------- Palette ---------- */
+.swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 168px), 1fr)); gap: 12px; }
+.sw { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.sw .chip { height: 72px; display: flex; align-items: flex-end; justify-content: flex-end; padding: 6px 8px; font-size: 11px; font-weight: 800; border-bottom: 1px solid var(--line); }
 .sw .info { padding: 10px 12px; display: grid; gap: 2px; }
-.sw b { font-size: 13px; }
-.sw code { font-size: 11px; color: var(--muted); }
-.sw small { font-size: 11.5px; color: #cfd1ee; }
+.sw b { font-size: 13.5px; }
+.sw code { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.sw small { font-size: 12px; color: var(--text-2); }
+.sw .new { font-size: 9.5px; font-weight: 800; letter-spacing: .1em; color: var(--cyan-text); border: 1px solid currentColor; border-radius: 99px; padding: 0 6px; margin-left: 6px; vertical-align: 2px; }
 
-/* Type */
-.typegrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
-.card { background: var(--night); border: 1px solid var(--line); border-radius: 16px; padding: 18px; min-width: 0; }
-.card h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
-.bigtype { font-family: var(--display); font-size: 2.6rem; text-transform: uppercase; line-height: 1; }
+/* Contrast table */
+.tscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.ctable { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
+.ctable caption { text-align: left; padding: 12px 14px 0; color: var(--muted); font-size: 12px; }
+.ctable th, .ctable td { padding: 9px 14px; text-align: left; border-top: 1px solid var(--line); }
+.ctable thead th { border-top: 0; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.ctable td:last-child, .ctable th:last-child { text-align: right; white-space: nowrap; }
+.sample { display: inline-block; padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 12px; }
+.pass { color: var(--mint-text); font-weight: 800; }
+.fixed { color: var(--sun-text); font-weight: 800; }
 
-/* Details */
-.details { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
-.detail .demo { height: 90px; border-radius: 12px; background: var(--ink); border: 1px solid var(--line); position: relative; overflow: hidden; margin-bottom: 10px; display: grid; place-items: center; }
-.detail p { margin: 0; color: #cfd1ee; font-size: 13px; }
+/* ---------- Type ---------- */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.bigtype { font-family: var(--display); font-size: clamp(2rem, 6vw, 2.6rem); text-transform: uppercase; line-height: 1; }
+
+/* ---------- Details ---------- */
+.details { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 14px; }
+.detail .demo { height: 96px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); position: relative; overflow: hidden; margin-bottom: 10px; display: grid; place-items: center; }
+.detail p { margin: 0; color: var(--text-2); font-size: 13.5px; }
+.detail p b { color: var(--text); }
 .underline { font-family: var(--display); font-size: 1.6rem; text-transform: uppercase; position: relative; }
-.underline::after { content: ""; position: absolute; left: 0; right: 0; bottom: -6px; height: 4px; background: var(--lime); transform: skewX(-20deg); }
+.underline::after { content: ""; position: absolute; left: 0; right: 0; bottom: -6px; height: 4px; background: #d6f51b; transform: skewX(-20deg); }
 
-/* Screens */
+/* ---------- Pilot screens ---------- */
 .screens { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 18px; }
-.screen { background: var(--night); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; min-width: 0; }
-.screen > header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.screen { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; min-width: 0; box-shadow: var(--shadow); }
+.screen > header { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 800; }
 .screen .body { padding: 14px; display: grid; gap: 10px; }
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 40px; border-radius: 10px; font-weight: 700; font-size: 13px; border: 0; }
-.btn.lime { background: var(--lime); color: var(--ink); box-shadow: 0 10px 24px -12px rgba(214,245,27,.7); }
-.btn.ghost { background: transparent; color: var(--white); border: 1px solid var(--line); }
-.input { height: 40px; border-radius: 10px; background: var(--night-2); border: 1px solid var(--line); display: flex; align-items: center; padding: 0 12px; color: var(--muted); font-size: 13px; }
-.input.focus { border-color: var(--pink); box-shadow: 0 0 0 3px rgba(255,45,143,.25); color: var(--white); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 10px; font: inherit; font-weight: 700; font-size: 13px; border: 0; cursor: pointer; text-decoration: none; }
+.btn.primary { background: var(--action); color: var(--on-action); box-shadow: 0 10px 24px -14px var(--action); }
+.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+.field { display: grid; gap: 4px; }
+.field label { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.input { min-height: 40px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); display: flex; align-items: center; padding: 0 12px; color: var(--muted); font-size: 13px; }
+.input.focus { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent); color: var(--text); }
 
-/* Login mock */
-.login { display: grid; grid-template-columns: 1fr 1fr; min-height: 260px; }
-.login .left { position: relative; overflow: hidden; padding: 16px; background: radial-gradient(circle at 90% 10%, rgba(255,45,143,.28), transparent 45%), linear-gradient(160deg, #0a0a20, #15124a); display: flex; flex-direction: column; justify-content: flex-end; }
-.login .left .rays { position: absolute; right: -40px; bottom: -30px; width: 200px; height: 140px; background: conic-gradient(from 200deg at 100% 100%, transparent 0 12deg, rgba(214,245,27,.5) 12deg 15deg, transparent 15deg 34deg, rgba(214,245,27,.3) 34deg 36deg, transparent 36deg); }
+.login { display: grid; grid-template-columns: 1fr 1fr; min-height: 270px; }
+.login .left { position: relative; overflow: hidden; padding: 16px; background: radial-gradient(circle at 90% 10%, rgba(255,45,143,.28), transparent 45%), radial-gradient(circle at 0% 100%, rgba(34,200,232,.2), transparent 45%), linear-gradient(160deg, #0a0a20, #15124a); display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; }
+.login .left .rays { position: absolute; right: -40px; bottom: -30px; width: 200px; height: 140px; }
 .login .left .dots { position: absolute; left: 10px; top: 10px; width: 50px; height: 36px; }
 .login .left .disp { font-size: 1.7rem; position: relative; }
-.login .right { padding: 16px; display: grid; gap: 8px; align-content: center; background: var(--ink); }
-.login .right .disp { font-size: 1.3rem; }
-@media (max-width: 420px) { .login { grid-template-columns: 1fr; } }
+.login .left .stripe { position: relative; width: 64px; height: 4px; border-radius: 2px; }
+.login .right { padding: 16px; display: grid; gap: 8px; align-content: center; background: var(--bg); }
+.login .right .disp { font-size: 1.35rem; }
+.login small { color: var(--muted); font-size: 10.5px; text-align: center; }
+@media (max-width: 440px) { .login { grid-template-columns: 1fr; } .login .left { min-height: 150px; } }
 
-/* Lead card */
-.lead { border-radius: 16px; border: 1px solid var(--line); background: var(--night-2); overflow: hidden; }
+.lead { border-radius: 16px; border: 1px solid var(--line); background: var(--surface-2); overflow: hidden; }
 .lead .top { height: 3px; background: linear-gradient(90deg, var(--pink), var(--cherry) 60%, transparent); }
 .lead .in { padding: 12px; display: grid; gap: 8px; }
-.lead .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .name { font-weight: 800; font-size: 16px; }
-.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 8px; padding: 3px 8px; font-size: 11px; font-weight: 700; border: 1px solid; white-space: nowrap; }
-.p-urgent { color: var(--white); background: var(--pink); border-color: var(--pink); transform: rotate(-2deg); }
-.p-lime { color: var(--lime); border-color: rgba(214,245,27,.45); background: rgba(214,245,27,.08); }
-.p-pink { color: #ff8cc2; border-color: rgba(255,45,143,.45); background: rgba(255,45,143,.1); }
-.p-sky { color: #9fd8ff; border-color: rgba(122,196,255,.4); background: rgba(122,196,255,.08); }
-.p-amber { color: #ffd166; border-color: rgba(255,209,102,.45); background: rgba(255,209,102,.08); }
-.p-green { color: #6ee7b7; border-color: rgba(110,231,183,.4); background: rgba(110,231,183,.08); }
-.p-red { color: #ff9aa4; border-color: rgba(255,75,92,.5); background: rgba(255,75,92,.12); }
-.quo { background: var(--lime); color: var(--ink); font-weight: 900; font-size: 9px; border-radius: 6px; padding: 2px 6px; letter-spacing: .08em; }
-.sub { color: var(--muted); font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 8px; padding: 3px 8px; font-size: 11.5px; font-weight: 700; border: 1px solid; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.p-urgent { color: var(--on-pink); background: var(--pink-fill); border-color: var(--pink-fill); transform: rotate(-2deg); }
+.p-urgent::before { display: none; }
+.tinted { background: color-mix(in srgb, var(--c) var(--tint), transparent); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.p-lime   { --c: var(--brand-text); color: var(--brand-text); }
+.p-pink   { --c: var(--pink-text);  color: var(--pink-text); }
+.p-cyan   { --c: var(--cyan);       color: var(--cyan-text); }
+.p-violet { --c: var(--violet);     color: var(--violet-text); }
+.p-sun    { --c: var(--sun);        color: var(--sun-text); }
+.p-mint   { --c: var(--mint);       color: var(--mint-text); }
+.p-red    { --c: var(--cherry);     color: var(--cherry-text); }
+.quo { background: var(--cyan); color: #0a0a20; font-weight: 900; font-size: 9.5px; border-radius: 6px; padding: 2px 6px; letter-spacing: .08em; }
+[data-theme="light"] .quo { color: #fff; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .quo { color: #fff; } }
+.sub { color: var(--muted); font-size: 11.5px; font-family: var(--mono); }
 
-/* Table */
-.tbl { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
-.tbl th { text-align: left; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; font-weight: 700; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; min-width: 300px; }
+.tbl th { text-align: left; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; font-weight: 800; }
 .tbl td { padding: 8px; border-top: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tbl .hot { color: var(--pink); font-weight: 700; }
-.count { font-family: var(--display); color: var(--pink); font-size: 1.2rem; }
-.tscroll { overflow-x: auto; }
+.tbl .hot { color: var(--pink-text); font-weight: 700; }
+.count { font-family: var(--display); color: var(--pink-text); font-size: 1.25rem; letter-spacing: 0; }
+.xscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-/* Notes */
 .note { display: flex; gap: 8px; }
 .note.me { flex-direction: row-reverse; }
-.av { width: 22px; height: 22px; border-radius: 50%; background: var(--night-2); border: 1px solid var(--line); font-size: 8px; font-weight: 800; display: grid; place-items: center; color: var(--muted); flex: none; }
-.bub { border-radius: 14px; padding: 7px 10px; font-size: 12.5px; max-width: 80%; border: 1px solid; }
+.av { width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); font-size: 8.5px; font-weight: 800; display: grid; place-items: center; color: var(--muted); flex: none; }
+.bub { border-radius: 14px; padding: 7px 10px; font-size: 13px; max-width: 80%; border: 1px solid; color: var(--text); }
 .note:not(.me) .bub { border-top-left-radius: 4px; }
 .note.me .bub { border-top-right-radius: 4px; }
-.b-me { background: var(--lime); color: var(--ink); border-color: var(--lime); font-weight: 600; }
-.b1 { background: rgba(122,196,255,.1); border-color: rgba(122,196,255,.4); color: #dcefff; }
-.b2 { background: rgba(255,45,143,.1); border-color: rgba(255,45,143,.45); color: #ffd6ea; }
-.b3 { background: rgba(255,209,102,.1); border-color: rgba(255,209,102,.4); color: #fff0c9; }
+.bub.tinted { background: color-mix(in srgb, var(--c) var(--tint), var(--surface)); }
+.b-me { background: var(--action); color: var(--on-action); border-color: var(--action); font-weight: 600; }
 .tchip { display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: .08em; border: 1px solid currentColor; border-radius: 99px; padding: 0 6px; margin-bottom: 3px; }
 
-/* Notifications */
-.nrow { display: flex; gap: 10px; padding: 10px; border-left: 3px solid; border-radius: 4px 10px 10px 4px; background: var(--night-2); }
+.nrow { display: flex; gap: 10px; padding: 10px; border-left: 3px solid var(--c); border-radius: 4px 10px 10px 4px; background: var(--surface-2); }
 .nrow b { font-size: 13px; }
 .nrow p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
-.ic { width: 18px; height: 18px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 11px; font-weight: 900; color: var(--ink); margin-top: 1px; }
+.ic { width: 20px; height: 20px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 11px; font-weight: 900; color: #0a0a20; background: var(--c); margin-top: 1px; }
 
-/* Sidebar */
 .side { display: grid; gap: 4px; }
-.navi { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; color: #d7d9f5; font-size: 13px; }
-.navi.on { background: rgba(214,245,27,.1); color: var(--white); box-shadow: inset 3px 0 0 var(--lime); }
-.navi .cnt { margin-left: auto; border-radius: 99px; padding: 1px 7px; font-size: 10.5px; font-weight: 800; }
-.navi .ico { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid currentColor; opacity: .7; }
+.navi { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; color: var(--text-2); font-size: 13.5px; min-height: 40px; }
+.navi.on { background: color-mix(in srgb, var(--brand-text) 12%, transparent); color: var(--text); font-weight: 700; box-shadow: inset 3px 0 0 var(--brand-text); }
+.navi .cnt { margin-left: auto; border-radius: 99px; padding: 1px 8px; font-size: 11px; font-weight: 800; }
+.navi .ico { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid currentColor; opacity: .7; flex: none; }
 
-/* Light sample */
-.light { background: #ffffff; color: #14143f; border-radius: 18px; padding: 18px; display: grid; gap: 12px; border: 1px solid #dfe0f2; }
-.light .disp { color: #14143f; font-size: 1.6rem; }
-.light .lbtn { background: #14143f; color: var(--lime); }
-.light .lpink { color: #d10f6d; font-weight: 700; }
-.light .lin { background: #f4f5fb; border: 1px solid #dfe0f2; color: #5b5e8a; }
-.light .lin.focus { border-color: #d10f6d; box-shadow: 0 0 0 3px rgba(209,15,109,.18); color: #14143f; }
-.light .lmark { background: var(--lime); color: #14143f; padding: 0 6px; }
-
-/* Rollout */
-.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; counter-reset: s; }
-.step { background: var(--night); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
-.step .n { font-family: var(--display); font-size: 2rem; color: var(--lime); line-height: 1; }
+/* ---------- Rollout / decisions ---------- */
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
+.step .n { font-family: var(--display); font-size: 2rem; color: var(--pink-text); line-height: 1; }
 .step h4 { margin: 6px 0; font-size: 15px; }
-.step p, .step li { color: #cfd1ee; font-size: 13px; margin: 0; }
-.step ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
-
+.step p, .step li { color: var(--text-2); font-size: 13.5px; margin: 0; }
+.step ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 .qs { display: grid; gap: 12px; }
-.q { background: var(--night); border: 1px solid var(--line); border-left: 4px solid var(--pink); border-radius: 6px 14px 14px 6px; padding: 14px 16px; }
+.q { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--pink); border-radius: 6px 14px 14px 6px; padding: 14px 16px; }
 .q b { display: block; margin-bottom: 4px; }
-.q span { color: #cfd1ee; font-size: 13px; }
-.q em { font-style: normal; color: var(--lime); font-weight: 700; }
-footer.f { padding-block: 28px 48px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
-@media (prefers-reduced-motion: no-preference) { .btn.lime { transition: transform .15s; } .btn.lime:hover { transform: translateY(-1px); } }
-</style>
+.q span { color: var(--text-2); font-size: 14px; }
+.q em { font-style: normal; color: var(--cyan-text); font-weight: 800; }
+footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); }
 
-<div class="hero">
-  <div class="rays" aria-hidden="true"></div>
-  <div class="dots d1" aria-hidden="true"></div>
-  <div class="dots d2" aria-hidden="true"></div>
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .seg button { transition: transform .15s, background-color .2s, color .2s; }
+  .btn.primary:hover { transform: translateY(-1px); }
+  body { transition: background-color .25s, color .25s; }
+}
+@media (forced-colors: active) {
+  .pill, .btn, .sticker, .seg button[aria-pressed="true"] { border: 1px solid CanvasText; }
+}
+@media print {
+  .bar { display: none; }
+  .card, .screen { box-shadow: none; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="bar" role="banner">
   <div class="wrap">
-    <div class="eyebrow">Marshmallow CRM · theme proposal for approval</div>
-    <h1 style="margin-top:12px">Pastry<span class="l">Neon</span><span class="p">Theme</span></h1>
-    <span class="sticker" style="margin-top:14px">Pilot first</span>
-    <p>A Marshmallow theme taken from the Pastry Marketing poster style: near-black navy, electric lime, hot pink, heavy condensed headlines, halftone dots and light rays. It replaces the generic blue and purple look. The plan is to pilot it on the screens we already updated, then roll it out to the whole CRM once Sir approves.</p>
-    <div class="meta"><span class="tag">Status: plan only, nothing built yet</span><span class="tag">Pilot: 6 screens</span><span class="tag">Dark-first, with a light mode</span></div>
+    <div class="brandmark"><span class="slice" aria-hidden="true"></span>Pastry Neon · theme preview</div>
+    <div class="seg" role="group" aria-label="Colour mode">
+      <button type="button" data-mode="system" aria-pressed="true">Auto</button>
+      <button type="button" data-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-mode="dark" aria-pressed="false">Dark</button>
+    </div>
   </div>
 </div>
 
+<main id="main">
+<div class="hero brand-dark">
+  <div class="rays" aria-hidden="true"></div>
+  <div class="dots d1" aria-hidden="true"></div>
+  <div class="d2" aria-hidden="true"></div>
+  <div class="wrap">
+    <div class="lineage"><span class="ab">Account Boosters Technology</span><span class="arrow" aria-hidden="true">→</span><span class="sr-only">is now</span><span class="pa">Pastry</span></div>
+    <h1>Pastry<span class="l">Neon</span><span class="p">Theme</span></h1>
+    <span class="sticker" style="margin-top:14px">Pilot first</span>
+    <p>A Marshmallow theme taken from the Pastry Marketing brand: near-black navy, electric lime and hot pink, plus the cyan and violet we carry over from Account Boosters, Pastry's previous name. Heavy condensed headlines, halftone dots and light rays. It replaces the generic blue and purple look, and works in dark and light mode.</p>
+    <div class="meta"><span class="tag">Status: plan only, nothing built yet</span><span class="tag">Pilot: 6 screens</span><span class="tag">Dark-first, full light mode</span><span class="tag">All text WCAG AA</span></div>
+  </div>
+</div>
+<div class="stripe" aria-hidden="true"></div>
+
 <section><div class="wrap">
-  <div class="eyebrow">01 · Colour</div>
-  <h2>Palette from the poster</h2>
-  <p class="lede">Lime and pink are the two brand voices. Lime means "go / do this", pink means "look here / urgent". Status colours (red, amber, green) keep their usual meaning so nobody has to relearn what a warning looks like.</p>
+  <div class="eyebrow">01 · Heritage</div>
+  <h2>From Account Boosters to Pastry</h2>
+  <p class="lede">The announcement poster keeps Account Boosters' cyan rocket and adds Pastry's striped slice. We keep both, so the CRM still feels familiar to people who knew the old brand.</p>
+  <div class="heritage">
+    <div class="card">
+      <h3>The slice stripe (from the logo)</h3>
+      <div class="bands">
+        <div class="band" style="background:#ff2d8f">Pink<span>#FF2D8F</span></div>
+        <div class="band" style="background:#a646f0;color:#fff">Violet<span>#A646F0</span></div>
+        <div class="band" style="background:#ffc83d">Sun<span>#FFC83D</span></div>
+        <div class="band" style="background:#22c8e8">Cyan<span>#22C8E8</span></div>
+      </div>
+      <p style="margin:12px 0 0;color:var(--text-2);font-size:13.5px">Used as a thin 4–5px band only: under the top bar, on the login art and in the sidebar logo. Never as a fill behind text.</p>
+    </div>
+    <div class="card">
+      <h3>What each colour means in the CRM</h3>
+      <ul class="rolelist">
+        <li><i style="background:#d6f51b"></i><span><b>Lime · action.</b> Main buttons, active nav, "do this".</span></li>
+        <li><i style="background:#ff2d8f"></i><span><b>Pink · attention.</b> Urgent, focus rings, counts.</span></li>
+        <li><i style="background:#22c8e8"></i><span><b>Booster cyan · info.</b> Links, Quo, schedules, neutral progress.</span></li>
+        <li><i style="background:#a646f0"></i><span><b>Booster violet · AI.</b> AI status and automation only.</span></li>
+        <li><i style="background:#ffc83d"></i><span><b>Sun · warning.</b> Needs action, pending approval.</span></li>
+        <li><i style="background:#ff4b5c"></i><span><b>Cherry · critical.</b> Errors and critical alerts only.</span></li>
+      </ul>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">02 · Colour</div>
+  <h2>Palette and tokens</h2>
+  <p class="lede">Every colour is a theme token with a dark and a light value, so components never pick colours by hand. Switch the mode at the top to see the light values. Status colours keep their usual meaning, and every status also has a text label.</p>
   <div class="swatches">
-    <div class="sw"><div class="chip" style="background:#0a0a20;border-bottom:1px solid var(--line)"></div><div class="info"><b>Ink</b><code>#0A0A20</code><small>Page background</small></div></div>
-    <div class="sw"><div class="chip" style="background:#13143a"></div><div class="info"><b>Night</b><code>#13143A</code><small>Cards, panels, sidebar</small></div></div>
-    <div class="sw"><div class="chip" style="background:#d6f51b"></div><div class="info"><b>Electric lime</b><code>#D6F51B</code><small>Main buttons, active nav, highlights. Text on it is Ink (15:1).</small></div></div>
-    <div class="sw"><div class="chip" style="background:#ff2d8f"></div><div class="info"><b>Hot pink</b><code>#FF2D8F</code><small>Urgent stickers, focus rings, counts. White text on it passes AA.</small></div></div>
-    <div class="sw"><div class="chip" style="background:#ff4b5c"></div><div class="info"><b>Cherry</b><code>#FF4B5C</code><small>Critical alerts and errors only</small></div></div>
-    <div class="sw"><div class="chip" style="background:#a6a9d6"></div><div class="info"><b>Haze</b><code>#A6A9D6</code><small>Secondary text, timestamps</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--bg)"></div><div class="info"><b>Ink / Paper</b><code>#0A0A20 · #F6F7FC</code><small>Page background</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--surface)"></div><div class="info"><b>Night / White</b><code>#13143A · #FFFFFF</code><small>Cards, panels, sidebar</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--action);color:var(--on-action)">Aa</div><div class="info"><b>Action</b><code>lime #D6F51B · navy #14143F</code><small>Primary buttons. Text on it: Ink (15.7:1) / lime (14.1:1).</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--pink-fill);color:var(--on-pink)">Aa</div><div class="info"><b>Hot pink</b><code>#FF2D8F · fill #E0147A</code><small>Glow and focus use #FF2D8F. Solid labels use the deeper fill so white text passes AA.</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--cyan);color:#0a0a20">Aa</div><div class="info"><b>Booster cyan<span class="new">NEW</span></b><code>#22C8E8 · #0E7490</code><small>Info, links, Quo. From the Account Boosters rocket.</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--violet);color:#0a0a20">Aa</div><div class="info"><b>Booster violet<span class="new">NEW</span></b><code>#B57BFF · #6D28D9</code><small>AI and automation only.</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--sun)"></div><div class="info"><b>Sun</b><code>#FFC83D · text #9A5B00</code><small>Warning, needs action</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--cherry)"></div><div class="info"><b>Cherry</b><code>#FF4B5C · #C81E3A</code><small>Critical alerts and errors only</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--mint)"></div><div class="info"><b>Mint</b><code>#6EE7B7 · text #047857</code><small>Resolved, success</small></div></div>
+    <div class="sw"><div class="chip" style="background:var(--muted)"></div><div class="info"><b>Haze</b><code>#A6A9D6 · #5B5E8A</code><small>Secondary text, timestamps</small></div></div>
+  </div>
+
+  <h3 style="margin-top:28px">Contrast check (WCAG 2.1, measured)</h3>
+  <div class="tscroll">
+    <table class="ctable">
+      <caption>Normal text needs 4.5:1 for AA. Every pairing used for text in this theme passes.</caption>
+      <thead><tr><th scope="col">Pairing</th><th scope="col">Sample</th><th scope="col">Mode</th><th scope="col">Ratio</th></tr></thead>
+      <tbody>
+        <tr><td>Ink on lime button</td><td><span class="sample" style="background:#d6f51b;color:#0a0a20">Sign in</span></td><td>Dark</td><td><span class="pass">15.7:1 AAA</span></td></tr>
+        <tr><td>Lime on navy button</td><td><span class="sample" style="background:#14143f;color:#d6f51b">Sign in</span></td><td>Light</td><td><span class="pass">14.1:1 AAA</span></td></tr>
+        <tr><td>White on pink label (old #FF2D8F)</td><td><span class="sample" style="background:#ff2d8f;color:#fff">Urgent</span></td><td>Both</td><td><span class="fixed">3.5:1 fails → replaced</span></td></tr>
+        <tr><td>White on pink fill #E0147A</td><td><span class="sample" style="background:#e0147a;color:#fff">Urgent</span></td><td>Dark</td><td><span class="pass">4.6:1 AA</span></td></tr>
+        <tr><td>White on pink fill #C0106A</td><td><span class="sample" style="background:#c0106a;color:#fff">Urgent</span></td><td>Light</td><td><span class="pass">6.0:1 AA</span></td></tr>
+        <tr><td>Booster cyan text on Night</td><td><span class="sample" style="background:#13143a;color:#22c8e8">Schedule</span></td><td>Dark</td><td><span class="pass">8.8:1 AAA</span></td></tr>
+        <tr><td>Deep cyan text on white</td><td><span class="sample" style="background:#fff;color:#0e7490;border:1px solid #dcdff0">Schedule</span></td><td>Light</td><td><span class="pass">5.4:1 AA</span></td></tr>
+        <tr><td>Violet text on Night</td><td><span class="sample" style="background:#13143a;color:#b57bff">AI status</span></td><td>Dark</td><td><span class="pass">6.1:1 AA</span></td></tr>
+        <tr><td>Violet text on white</td><td><span class="sample" style="background:#fff;color:#6d28d9;border:1px solid #dcdff0">AI status</span></td><td>Light</td><td><span class="pass">7.1:1 AAA</span></td></tr>
+        <tr><td>Haze on Night / muted on white</td><td><span class="sample" style="background:#13143a;color:#a6a9d6">8:36 PM</span> <span class="sample" style="background:#fff;color:#5b5e8a;border:1px solid #dcdff0">8:36 PM</span></td><td>Both</td><td><span class="pass">7.8 / 6.2:1</span></td></tr>
+      </tbody>
+    </table>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <div class="eyebrow">02 · Type</div>
+  <div class="eyebrow">03 · Type</div>
   <h2>Poster headlines, readable body</h2>
-  <p class="lede">The poster's heavy condensed capitals go on page titles, big counts and the login headline only. Everything people read all day (tables, notes, forms) stays in Inter, the font the CRM uses now.</p>
-  <div class="typegrid">
-    <div class="card"><h3>Display · Anton</h3><div class="bigtype">Urgent leads <span style="color:var(--pink)">90</span></div><div class="bigtype" style="font-size:1.6rem;color:var(--lime);margin-top:6px">Processor Board</div></div>
-    <div class="card"><h3>Body · Inter (unchanged)</h3><p style="margin:0;color:#e6e7fa">Tech 2: Ronny - (816) 536-4348 - Monday 23rd Nov between 12-2pm for $50 diagnostic &amp; 70% labor.</p><p style="margin:8px 0 0;color:var(--muted);font-size:12px">Nov 21, 08:36 PM · Processor9NOV</p></div>
+  <p class="lede">The poster's heavy condensed capitals go on page titles, big counts and the login headline only. Everything people read all day (tables, notes, forms) stays in Inter at 14–15px, the font the CRM uses now.</p>
+  <div class="grid2">
+    <div class="card"><h3>Display · Anton</h3><div class="bigtype">Urgent leads <span style="color:var(--pink-text)">90</span></div><div class="bigtype" style="font-size:1.6rem;color:var(--cyan-text);margin-top:6px">Processor Board</div></div>
+    <div class="card"><h3>Body · Inter (unchanged)</h3><p style="margin:0;color:var(--text)">Tech 2: Ronny - (816) 555-0148 - Monday 23rd Nov between 12-2pm for $50 diagnostic &amp; 70% labor.</p><p style="margin:8px 0 0;color:var(--muted);font-size:12.5px">Nov 21, 08:36 PM · Processor9NOV</p></div>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <div class="eyebrow">03 · Signature details</div>
-  <h2>Four poster moves, used sparingly</h2>
+  <div class="eyebrow">04 · Signature details</div>
+  <h2>Five brand moves, used sparingly</h2>
   <p class="lede">These keep it from looking like a stock template. Each one has a fixed place so the CRM stays calm to work in.</p>
   <div class="details">
     <div class="detail"><div class="demo"><span class="sticker">Urgent</span></div><p><b>Pink sticker.</b> Slightly tilted pink label, only for Urgent Job and the urgent count.</p></div>
-    <div class="detail"><div class="demo"><span class="underline">Notifications</span></div><p><b>Lime slash underline</b> under page titles, like the poster's lime strokes.</p></div>
+    <div class="detail"><div class="demo brand-dark" style="background:#0a0a20"><span class="underline">Notifications</span></div><p><b>Lime slash underline</b> under page titles. In light mode it sits under navy text.</p></div>
+    <div class="detail"><div class="demo"><div style="position:absolute;inset:auto 0 0 0" class="stripe"></div><span class="slice" style="width:36px;height:30px" aria-hidden="true"></span></div><p><b>Slice stripe.</b> Pink, violet, sun and cyan from the logo, as a thin band in three places only.</p></div>
     <div class="detail"><div class="demo"><div class="dots" style="position:absolute;inset:14px 60% 14px 14px"></div><div style="position:absolute;inset:14px 14px 14px 60%;background-image:radial-gradient(var(--muted) 1px,transparent 1.2px);background-size:7px 7px;opacity:.5"></div></div><p><b>Halftone dots</b> in empty corners of the login and page headers. Never behind text.</p></div>
-    <div class="detail"><div class="demo"><div style="position:absolute;right:-20px;bottom:-20px;width:180px;height:110px;background:conic-gradient(from 200deg at 100% 100%,transparent 0 12deg,rgba(214,245,27,.55) 12deg 15deg,transparent 15deg 34deg,rgba(214,245,27,.35) 34deg 36deg,transparent 36deg)"></div></div><p><b>Light rays</b> on the login panel only, from the poster's cake-slice glow.</p></div>
+    <div class="detail"><div class="demo brand-dark" style="background:#0a0a20"><div class="rays" style="position:absolute;right:-20px;bottom:-20px;width:180px;height:110px"></div></div><p><b>Light rays</b> on the login panel only, from the poster's glow.</p></div>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <div class="eyebrow">04 · Pilot screens</div>
+  <div class="eyebrow">05 · Pilot screens</div>
   <h2>How the pilot screens would look</h2>
-  <p class="lede">These are the screens we changed this week. Samples use example names and numbers.</p>
+  <p class="lede">These are the screens we changed this week. Use the switch at the top to compare dark and light. Samples use example names and numbers.</p>
   <div class="screens">
 
     <div class="screen"><header>Login</header>
       <div class="login">
-        <div class="left"><div class="dots" aria-hidden="true"></div><div class="rays" aria-hidden="true"></div><div class="disp">Manage your leads with <span style="color:var(--lime)">precision.</span></div></div>
-        <div class="right"><div class="disp">Welcome back</div><div class="input">you@company.com</div><div class="input focus">••••••••</div><span class="btn lime">Sign in →</span><small style="color:var(--muted);font-size:10px;text-align:center">© 2026 Pastry Marketing. All rights reserved.</small></div>
+        <div class="left brand-dark"><div class="dots" aria-hidden="true"></div><div class="rays" aria-hidden="true"></div><div class="stripe" aria-hidden="true"></div><div class="disp">Manage your leads with <span style="color:#d6f51b">precision.</span></div></div>
+        <div class="right">
+          <div class="disp">Welcome back</div>
+          <div class="field"><label>Email</label><div class="input">you@company.com</div></div>
+          <div class="field"><label>Password</label><div class="input focus">••••••••</div></div>
+          <span class="btn primary">Sign in →</span>
+          <a href="#main" style="font-size:12px;text-align:center">Use authenticator app instead</a>
+          <small>© 2026 Pastry Marketing. All rights reserved.</small>
+        </div>
       </div>
     </div>
 
@@ -231,45 +447,45 @@ footer.f { padding-block: 28px 48px; color: var(--muted); font-size: 12px; borde
       <div class="body"><div class="lead"><div class="top"></div><div class="in">
         <div class="row"><span class="name">Ricardo</span><span class="quo">QUO</span><span style="margin-left:auto" class="pill p-urgent">Urgent Job</span></div>
         <div class="sub">LD-3M7KUG · 11/21/2026</div>
-        <div class="row"><span class="pill p-lime">Schedule: Nov 21 to Nov 24</span><span class="pill p-sky">CX Quick Chat · 1:28 AM</span><span class="pill p-amber">Tech Quick Chat · 4:40 AM</span></div>
-        <div class="row"><span class="pill p-green">Good coverage</span></div>
-        <div class="row" style="gap:8px;margin-top:4px"><span class="btn lime" style="flex:1;height:34px">Get CX Update</span><span class="btn ghost" style="flex:1;height:34px">Edit Lead</span></div>
+        <div class="row"><span class="pill tinted p-cyan">Schedule: Nov 21 to Nov 24</span><span class="pill tinted p-violet">AI: Awaiting reply</span><span class="pill tinted p-sun">Tech Quick Chat · 4:40 AM</span></div>
+        <div class="row"><span class="pill tinted p-mint">Good coverage</span></div>
+        <div class="row" style="gap:8px;margin-top:4px"><span class="btn primary" style="flex:1;min-height:36px">Get CX Update</span><span class="btn ghost" style="flex:1;min-height:36px">Edit Lead</span></div>
       </div></div></div>
     </div>
 
-    <div class="screen"><header><span>Urgent leads <span class="count">90</span></span><span>Refresh AI status</span></header>
-      <div class="body tscroll"><table class="tbl">
-        <thead><tr><th style="width:24%">Customer</th><th style="width:44%">AI status</th><th style="width:32%">Schedule</th></tr></thead>
+    <div class="screen"><header><span>Urgent leads <span class="count">90</span></span><span style="color:var(--cyan-text)">Refresh AI status</span></header>
+      <div class="body xscroll"><table class="tbl">
+        <thead><tr><th scope="col" style="width:24%">Customer</th><th scope="col" style="width:44%">AI status</th><th scope="col" style="width:32%">Schedule</th></tr></thead>
         <tbody>
-          <tr><td>Julia</td><td><span class="pill p-sky">Awaiting Schedule</span></td><td class="hot">Nov 24</td></tr>
-          <tr><td>Scott</td><td><span class="pill p-pink" title="Schedule Confirmation Pending">Schedule Confirmation…</span></td><td>Nov 29</td></tr>
-          <tr><td>Randy</td><td><span class="pill p-amber">Awaiting Response</span></td><td class="hot">Nov 23 to 24</td></tr>
+          <tr><td>Julia</td><td><span class="pill tinted p-violet">Awaiting Schedule</span></td><td class="hot">Nov 24</td></tr>
+          <tr><td>Scott</td><td><span class="pill tinted p-pink" title="Schedule Confirmation Pending">Schedule Confirmation…</span></td><td>Nov 29</td></tr>
+          <tr><td>Randy</td><td><span class="pill tinted p-sun">Awaiting Response</span></td><td class="hot">Nov 23 to 24</td></tr>
         </tbody></table></div>
     </div>
 
     <div class="screen"><header>Processor notes · per tech</header>
       <div class="body">
-        <div class="note me"><div class="av">ME</div><div class="bub b1"><span class="tchip">TECH 1</span><br>Michael - (785) 816-5182 - texted</div></div>
-        <div class="note"><div class="av">P</div><div class="bub b2"><span class="tchip">TECH 2</span><br>Ronny - (816) 536-4348 - Mon 12-2pm</div></div>
+        <div class="note me"><div class="av">ME</div><div class="bub tinted p-cyan" style="color:var(--text)"><span class="tchip" style="color:var(--cyan-text)">TECH 1</span><br>Michael - (785) 555-0182 - texted</div></div>
+        <div class="note"><div class="av">P</div><div class="bub tinted p-pink" style="color:var(--text)"><span class="tchip" style="color:var(--pink-text)">TECH 2</span><br>Ronny - (816) 555-0148 - Mon 12-2pm</div></div>
         <div class="note me"><div class="av">ME</div><div class="bub b-me">Ronny confirmed, customer informed.</div></div>
       </div>
     </div>
 
     <div class="screen"><header>Notifications</header>
       <div class="body">
-        <div class="nrow" style="border-color:var(--cherry)"><span class="ic" style="background:var(--cherry)">!</span><div><b>[Alert] Urgent Job</b> <span class="pill p-red" style="margin-left:4px">Critical</span><p>Lead "Sailesh Kumar" changed to Urgent Job</p></div></div>
-        <div class="nrow" style="border-color:#ffd166"><span class="ic" style="background:#ffd166">!</span><div><b>Lead cancellation request</b> <span class="pill p-amber" style="margin-left:4px">Action required</span><p>Jeremy needs cancellation approval</p></div></div>
-        <div class="nrow" style="border-color:#6ee7b7"><span class="ic" style="background:#6ee7b7">✓</span><div><b>Database load back to normal</b><p>All readings below warning levels</p></div></div>
+        <div class="nrow" style="--c:var(--cherry)"><span class="ic" aria-hidden="true">!</span><div><b>[Alert] Urgent Job</b> <span class="pill tinted p-red" style="margin-left:4px">Critical</span><p>Lead "Sailesh Kumar" changed to Urgent Job</p></div></div>
+        <div class="nrow" style="--c:var(--sun)"><span class="ic" aria-hidden="true">!</span><div><b>Lead cancellation request</b> <span class="pill tinted p-sun" style="margin-left:4px">Action required</span><p>Jeremy needs cancellation approval</p></div></div>
+        <div class="nrow" style="--c:var(--mint)"><span class="ic" aria-hidden="true">✓</span><div><b>Database load back to normal</b> <span class="pill tinted p-mint" style="margin-left:4px">Resolved</span><p>All readings below warning levels</p></div></div>
       </div>
     </div>
 
     <div class="screen"><header>Sidebar</header>
       <div class="body side">
         <div class="navi on"><span class="ico"></span>All Leads</div>
-        <div class="navi"><span class="ico"></span>AI Assistance<span class="cnt" style="background:rgba(214,245,27,.14);color:var(--lime)">64</span></div>
-        <div class="navi"><span class="ico"></span>Notifications<span class="cnt" style="background:var(--pink);color:#fff">19</span></div>
+        <div class="navi"><span class="ico"></span>AI Assistance<span class="cnt tinted p-violet" style="border:0">64</span></div>
+        <div class="navi"><span class="ico"></span>Notifications<span class="cnt" style="background:var(--pink-fill);color:var(--on-pink)">19</span></div>
         <div class="navi"><span class="ico"></span>Processor Board</div>
-        <div class="navi"><span class="ico"></span>Cancellation requests<span class="cnt" style="background:rgba(255,75,92,.18);color:#ff9aa4">3</span></div>
+        <div class="navi"><span class="ico"></span>Cancellation requests<span class="cnt tinted p-red" style="border:0">3</span></div>
       </div>
     </div>
 
@@ -277,36 +493,68 @@ footer.f { padding-block: 28px 48px; color: var(--muted); font-size: 12px; borde
 </div></section>
 
 <section><div class="wrap">
-  <div class="eyebrow">05 · Light mode</div>
+  <div class="eyebrow">06 · Light mode rules</div>
   <h2>Same brand on white</h2>
-  <p class="lede">Lime is too pale for text on white, so light mode flips the roles: navy buttons with lime text, and a deeper pink for links and focus.</p>
-  <div class="light">
-    <div class="disp">Urgent leads <span class="lmark">90</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center"><span class="btn lbtn" style="padding:0 16px">Sign in →</span><span class="lpink">Use authenticator app instead</span></div>
-    <div class="input lin focus" style="max-width:340px">kashif@…</div>
+  <p class="lede">Light mode is a full theme, not an afterthought. The rules that keep it readable:</p>
+  <div class="grid2">
+    <div class="card"><h3>What flips</h3><ul class="rolelist">
+      <li><i style="background:#14143f"></i><span><b>Buttons go navy</b> with lime text. Lime is never text on white (1.2:1).</span></li>
+      <li><i style="background:#c0106a"></i><span><b>Pink deepens</b> to #C0106A for links, focus and labels.</span></li>
+      <li><i style="background:#0e7490"></i><span><b>Cyan and violet deepen</b> to #0E7490 and #6D28D9 when used as text.</span></li>
+    </ul></div>
+    <div class="card"><h3>What stays</h3><ul class="rolelist">
+      <li><i style="background:#0a0a20"></i><span><b>Login art and page hero stay dark</b>, like the poster, in both modes.</span></li>
+      <li><i style="background:#ffc83d"></i><span><b>Bright colours stay as fills</b>: dots, bars, stripe and status edges.</span></li>
+      <li><i style="background:#6ee7b7"></i><span><b>Meanings never change</b> between modes, and every status has a label.</span></li>
+    </ul></div>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <div class="eyebrow">06 · Rollout</div>
+  <div class="eyebrow">07 · Rollout</div>
   <h2>Pilot, review, then everywhere</h2>
   <p class="lede">The pilot is switched on per person, so it can be tried on live work without changing anything for the rest of the team.</p>
   <div class="steps">
-    <div class="step"><div class="n">1</div><h4>Approve this plan</h4><p>Sir signs off on colours, font and the details above, or asks for changes.</p></div>
-    <div class="step"><div class="n">2</div><h4>Build the pilot</h4><ul><li>A "Pastry theme (pilot)" switch in the user menu</li><li>Applies to: Login, Leads (urgent table and cards), Lead notes, Processor Board, Notifications, Sidebar</li><li>Colours come from shared theme tokens, so nothing is repainted by hand</li></ul></div>
-    <div class="step"><div class="n">3</div><h4>Try it for a week</h4><p>Pilot users work in it day to day. We collect what reads badly or feels too loud and adjust.</p></div>
-    <div class="step"><div class="n">4</div><h4>Roll out to all</h4><ul><li>Make it the default for every page and role</li><li>Remove the switch</li><li>Match Donut (the extension) in a separate release</li></ul></div>
+    <div class="card step"><div class="n">1</div><h4>Approve this plan</h4><p>Sir signs off on colours, font and the details above, or asks for changes.</p></div>
+    <div class="card step"><div class="n">2</div><h4>Build the pilot</h4><ul><li>A "Pastry theme (pilot)" switch in the user menu</li><li>Applies to: Login, Leads (urgent table and cards), Lead notes, Processor Board, Notifications, Sidebar</li><li>Colours come from shared theme tokens with dark and light values, so nothing is repainted by hand</li></ul></div>
+    <div class="card step"><div class="n">3</div><h4>Try it for a week</h4><p>Pilot users work in it day to day, in both modes and on phones. We collect what reads badly or feels too loud and adjust.</p></div>
+    <div class="card step"><div class="n">4</div><h4>Roll out to all</h4><ul><li>Make it the default for every page and role</li><li>Remove the switch</li><li>Match Donut (the extension) in a separate release</li></ul></div>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <div class="eyebrow">07 · Decisions needed</div>
-  <h2>Three questions for Sir</h2>
+  <div class="eyebrow">08 · Decisions needed</div>
+  <h2>Four questions for Sir</h2>
   <div class="qs">
     <div class="q"><b>1. Headline font</b><span>Use Anton for titles and big numbers? It is a free Google font and adds one small font download. <em>Recommended: yes.</em> The alternative is Inter Extra Bold everywhere, which is safer but less like the poster.</span></div>
-    <div class="q"><b>2. Who gets the pilot</b><span>Admins only, or anyone who switches it on? <em>Recommended: Admins and CS Admins first</em>, then everyone during week 2.</span></div>
-    <div class="q"><b>3. Default look</b><span>Should the CRM open in dark mode by default once rolled out? The brand is dark-first. <em>Recommended: dark by default</em>, light mode still one click away.</span></div>
+    <div class="q"><b>2. Account Boosters colours</b><span>Bring the rocket cyan and violet into the CRM for info and AI? <em>Recommended: yes</em>, it ties the new brand to the old one and gives info and AI their own colour instead of reusing pink.</span></div>
+    <div class="q"><b>3. Who gets the pilot</b><span>Admins only, or anyone who switches it on? <em>Recommended: Admins and CS Admins first</em>, then everyone during week 2.</span></div>
+    <div class="q"><b>4. Default look</b><span>Should the CRM open in dark mode by default once rolled out? The brand is dark-first. <em>Recommended: follow the device setting</em>, dark when unsure, light mode one click away.</span></div>
   </div>
 </div></section>
+</main>
 
-<footer class="f"><div class="wrap">Proposal for Marshmallow CRM by Pastry Marketing. Samples use example names, numbers and times. No CRM screens, data, permissions or workflows change until this plan is approved.</div></footer>
+<footer class="f"><div class="wrap">Proposal for Marshmallow CRM by Pastry Marketing (formerly Account Boosters Technology). Samples use example names, numbers and times. No CRM screens, data, permissions or workflows change until this plan is approved.</div></footer>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var buttons = document.querySelectorAll(".seg button");
+    function current() { return root.getAttribute("data-theme") || "system"; }
+    function sync() {
+      var mode = current();
+      buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.mode === mode)); });
+    }
+    buttons.forEach(function (b) {
+      b.addEventListener("click", function () {
+        var mode = b.dataset.mode;
+        if (mode === "system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", mode);
+        try { if (mode === "system") localStorage.removeItem("pastry-theme"); else localStorage.setItem("pastry-theme", mode); } catch (e) {}
+        sync();
+      });
+    });
+    sync();
+  })();
+</script>
+</body>
+</html>
