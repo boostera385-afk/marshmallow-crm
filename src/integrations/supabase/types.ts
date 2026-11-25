@@ -769,6 +769,47 @@ export type Database = {
           },
         ]
       }
+      lead_jellybean_matches: {
+        Row: {
+          checked_at: string
+          department: string | null
+          jellybean_created_at: string | null
+          jellybean_lead_id: string | null
+          lead_id: string
+          match_status: string
+          matched_phone: string | null
+          source_role: string | null
+        }
+        Insert: {
+          checked_at?: string
+          department?: string | null
+          jellybean_created_at?: string | null
+          jellybean_lead_id?: string | null
+          lead_id: string
+          match_status: string
+          matched_phone?: string | null
+          source_role?: string | null
+        }
+        Update: {
+          checked_at?: string
+          department?: string | null
+          jellybean_created_at?: string | null
+          jellybean_lead_id?: string | null
+          lead_id?: string
+          match_status?: string
+          matched_phone?: string | null
+          source_role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_jellybean_matches_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_note_reactions: {
         Row: {
           created_at: string
@@ -3264,6 +3305,14 @@ export type Database = {
       }
       get_lead_copy_access: { Args: never; Returns: boolean }
       get_lead_copy_settings: { Args: never; Returns: Json }
+      get_lead_department_breakdown: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          department: string
+          lead_count: number
+          status: string
+        }[]
+      }
       get_operator_hold_alerts: { Args: never; Returns: Json }
       get_operator_safe_leads: {
         Args: never
@@ -3406,6 +3455,19 @@ export type Database = {
       is_admin_user: { Args: { check_user_id: string }; Returns: boolean }
       is_assigned_opr_code: { Args: { _opr_code: string }; Returns: boolean }
       is_org_member: { Args: { _org_id: string }; Returns: boolean }
+      jellybean_match_candidates: {
+        Args: { p_limit?: number }
+        Returns: {
+          created_at: string
+          customer_landline: string
+          customer_phone: string
+          id: string
+        }[]
+      }
+      jellybean_match_worker_authorized: {
+        Args: { p_secret: string }
+        Returns: boolean
+      }
       lead_address_city: { Args: { _address: string }; Returns: string }
       lead_technician_coverage: {
         Args: { _lead_id: string }
@@ -3722,6 +3784,7 @@ export type Database = {
         }
         Returns: string
       }
+      save_jellybean_matches: { Args: { p_rows: Json }; Returns: number }
       save_processor_job_assessment: {
         Args: {
           p_actor: string

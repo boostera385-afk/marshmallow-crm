@@ -15,6 +15,7 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: state.rpc, f
 vi.mock("@/lib/supabase-paginate", () => ({ fetchAllRows: async () => state.leads }));
 vi.mock("@/lib/zipCentroids", () => ({ preloadZipDataset: async () => undefined }));
 vi.mock("@/components/analytics/LeadCoverageSources", () => ({ LeadCoverageSources: () => null }));
+vi.mock("@/components/analytics/LeadDepartmentReport", () => ({ LeadDepartmentReport: ({ startMs, endMs }: { startMs: number; endMs: number }) => <div data-testid="department-report" data-start={startMs} data-end={endMs} /> }));
 vi.mock("recharts", () => ({ Bar: () => null, BarChart: () => null, CartesianGrid: () => null, Cell: () => null, ResponsiveContainer: () => null, Tooltip: () => null, XAxis: () => null, YAxis: () => null }));
 
 const teamRows = [
@@ -95,4 +96,24 @@ describe("CS Team Performance access in Analytics", () => {
     fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Dee")).toBeInTheDocument();
   });
+});
+
+describe("Leads by Department tab", () => {
+  it("is offered to Admin and opens the department report for the selected range", () => {
+    state.role = "admin";
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "All Time" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Leads by Department" }));
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Leads by Department");
+    expect(screen.getByTestId("department-report")).toHaveAttribute("data-start", "0");
+  });
+
+  it.each([["cs_admin", ["analytics"]], ["customer_service", ["analytics"]], ["processor", ["analytics"]]])(
+    "is hidden from %s even with the Analytics grant", (role, grants) => {
+      state.role = role; state.grants = grants;
+      mount();
+      expect(screen.getByRole("tablist", { name: "Analytics views" })).toBeInTheDocument();
+      expect(screen.queryByRole("tab", { name: "Leads by Department" })).not.toBeInTheDocument();
+      expect(screen.queryByTestId("department-report")).not.toBeInTheDocument();
+    });
 });

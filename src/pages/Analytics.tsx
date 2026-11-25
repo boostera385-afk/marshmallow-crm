@@ -10,9 +10,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/supabase-paginate";
 import { useAuth } from "@/contexts/AuthContext";
-import { canViewLeadCoverageAnalytics } from "@/lib/access";
+import { canViewLeadCoverageAnalytics, canViewLeadDepartmentAnalytics } from "@/lib/access";
 import { fetchCsTeamPerformance, toCsMemberRow } from "@/lib/cs-team-performance";
 import { LeadCoverageSources } from "@/components/analytics/LeadCoverageSources";
+import { LeadDepartmentReport } from "@/components/analytics/LeadDepartmentReport";
 import { Card, CardContent } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { format, subDays, eachDayOfInterval, parseISO, startOfDay, endOfDay, isValid } from "date-fns";
@@ -44,12 +45,13 @@ interface AnalyticsLeadRow {
 const Analytics = () => {
   const { role, user, canAccess } = useAuth();
   const canCoverageReport = canViewLeadCoverageAnalytics(role);
+  const canDepartmentReport = canViewLeadDepartmentAnalytics(role);
   // "analytics" opens the whole page; "cs_team_performance" alone opens only the
   // CS Team Performance section, with team-wide counts from the database.
   const fullAnalytics = canAccess("analytics");
   const teamWideCs = canAccess("cs_team_performance");
   const csOnly = !fullAnalytics && teamWideCs;
-  const [activeTab, setActiveTab] = useState<"overview" | "cs_report" | "coverage_sources">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "cs_report" | "coverage_sources" | "departments">("overview");
   const tab = csOnly ? "cs_report" : activeTab;
   const [dateFilter, setDateFilter] = useState<"7d" | "30d" | "90d" | "all" | "custom">("30d");
   const [customStart, setCustomStart] = useState("");
@@ -565,9 +567,9 @@ const Analytics = () => {
               Advanced Analytics
             </div>
 
-            <h1 className="text-2xl font-bold tracking-[-0.03em] text-foreground sm:text-3xl">{csOnly ? "CS Team Performance" : tab === "coverage_sources" && canCoverageReport ? "Lead Coverage & Sources" : "Operations Performance"}</h1>
+            <h1 className="text-2xl font-bold tracking-[-0.03em] text-foreground sm:text-3xl">{csOnly ? "CS Team Performance" : tab === "coverage_sources" && canCoverageReport ? "Lead Coverage & Sources" : tab === "departments" && canDepartmentReport ? "Leads by Department" : "Operations Performance"}</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              {csOnly ? "Leads added by each Customer Service and CS Admin team member, and how far they progressed." : tab === "coverage_sources" && canCoverageReport ? "Track incoming jobs by technician coverage, geographic area, and intake source." : "Monitor conversions, stage progressions, response rates, and team assignments."}
+              {csOnly ? "Leads added by each Customer Service and CS Admin team member, and how far they progressed." : tab === "coverage_sources" && canCoverageReport ? "Track incoming jobs by technician coverage, geographic area, and intake source." : tab === "departments" && canDepartmentReport ? "See which JellyBean department (ND, FB, SEO) each lead came from, and their statuses." : "Monitor conversions, stage progressions, response rates, and team assignments."}
             </p>
           </motion.div>
 
@@ -649,6 +651,7 @@ const Analytics = () => {
           CS Team Performance
         </button>
         {canCoverageReport && <button type="button" role="tab" aria-selected={activeTab === "coverage_sources"} onClick={() => setActiveTab("coverage_sources")} className={cn("rounded-t-lg px-4 py-2.5 text-[13px] font-semibold transition-colors", activeTab === "coverage_sources" ? "relative z-10 -mb-px border border-b-0 border-border bg-card text-blue-600 dark:text-blue-400" : "text-muted-foreground hover:text-foreground")}>Lead Coverage &amp; Sources</button>}
+        {canDepartmentReport && <button type="button" role="tab" aria-selected={activeTab === "departments"} onClick={() => setActiveTab("departments")} className={cn("rounded-t-lg px-4 py-2.5 text-[13px] font-semibold transition-colors", activeTab === "departments" ? "relative z-10 -mb-px border border-b-0 border-border bg-card text-blue-600 dark:text-blue-400" : "text-muted-foreground hover:text-foreground")}>Leads by Department</button>}
       </div>}
 
       {tab === "overview" ? (
@@ -1019,6 +1022,8 @@ const Analytics = () => {
         </div>
       ) : tab === "coverage_sources" ? (
         <LeadCoverageSources startMs={filteredRange.startMs} endMs={filteredRange.endMs} rangeError={rangeError} />
+      ) : tab === "departments" ? (
+        <LeadDepartmentReport startMs={filteredRange.startMs} endMs={filteredRange.endMs} rangeError={rangeError} />
       ) : (
         <div className="space-y-6">
           <Card className="rounded-[28px] border border-border bg-card shadow-[0_18px_52px_-34px_rgba(0,0,0,0.09)] dark:shadow-[0_18px_52px_-34px_rgba(0,0,0,0.42)] overflow-hidden">

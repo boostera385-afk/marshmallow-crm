@@ -99,6 +99,21 @@ Copilot function v2 were installed via MCP on 2026-10-14; generated types were
 refreshed. CRM publication and real signed-in/provider QA remain separate pending
 steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
+## Leads by Department — JellyBean ND / FB / SEO (2026-11-25; migration 20261231000800 applied, both Edge Functions deployed, CRM publish pending)
+
+CRM-only report; Donut has no Analytics (no extension change). Matching is
+server-side, so leads created from the CRM, Donut or anywhere else are covered
+the same way. Every minute, while a lead has no row in `lead_jellybean_matches`,
+cron calls `jellybean-match-leads`, which asks JellyBean's
+`marshmallow-lead-lookup` (shared secret `JELLYBEAN_LOOKUP_SECRET` here /
+`MARSHMALLOW_LOOKUP_SECRET` there) for the latest JellyBean lead with the same
+phone or landline created before the Marshmallow lead. Department: SEO = seo;
+FB = facebook, fb_admin; ND = maturing, sub_admin, acc_handler; else Other.
+A JellyBean failure leaves leads pending (never "not in JellyBean"); a phone or
+landline edit re-queues the lead. Analytics → **Leads by Department** (Admin
+only; `get_lead_department_breakdown()` refuses other roles) shows department
+totals and a status × department table for the selected range, All Time included.
+
 ## CS Team Performance access (2026-10-27; migration 20261128000000 awaiting manual application)
 
 CRM-only; Donut has no Analytics (no extension change). Feature Access has a new

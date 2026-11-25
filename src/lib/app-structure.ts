@@ -73,6 +73,7 @@ export const EDGE_FUNCTIONS: EdgeFunctionInfo[] = [
   { name: "admin-users", group: "Admin, data & health", purpose: "Admin user API (create, password, delete, 2FA) and the sign-in access-code check.", callers: ["crm", "donut"] },
   { name: "google-sheets-sync", group: "Admin, data & health", purpose: "Keeps the Google Sheets copy of leads in step: outbox worker, retries, full rebuild.", callers: ["crm", "schedule"] },
   { name: "sync-us-places", group: "Admin, data & health", purpose: "Refreshes US Census places and population (Sync Population Data).", callers: ["crm"] },
+  { name: "jellybean-match-leads", group: "Admin, data & health", purpose: "Every minute while leads are waiting: asks JellyBean whether each lead's phone was already a JellyBean lead, and which department (ND / FB / SEO). Feeds Leads by Department analytics.", callers: ["schedule"] },
   { name: "system-health-watch", group: "Admin, data & health", purpose: "Every minute: reads database memory, CPU and disk and slows background work when the server is under load.", callers: ["schedule"] },
 ];
 
@@ -102,7 +103,7 @@ export const SCREENS: ScreenInfo[] = [
   { navItem: "technicians", path: "/technicians", purpose: "Technician directory, OPR / Tech reports and Processing Workflow.", edgeFunctions: ["technician-chat-assessment"] },
   { navItem: "areas", path: "/areas", purpose: "Area Insights: totals, closure and cancel rates by area.", edgeFunctions: [] },
   { navItem: "optimization", path: "/optimization", purpose: "Areas ranked on closed jobs; mark areas to track.", edgeFunctions: [] },
-  { navItem: "analytics", path: "/analytics", purpose: "Operations, lead coverage and CS team performance analytics.", edgeFunctions: [] },
+  { navItem: "analytics", path: "/analytics", purpose: "Operations, lead coverage, Leads by Department (JellyBean ND / FB / SEO) and CS team performance analytics.", edgeFunctions: [] },
   { navItem: "cs_team_performance", path: null, purpose: "CS Team Performance section of Analytics, grantable on its own.", edgeFunctions: [] },
   { navItem: "activity_logs", path: "/activity-logs", purpose: "Audit trail of every recorded action.", edgeFunctions: [] },
   { navItem: "settings", path: "/settings", purpose: "Users, Feature Access, Status Visibility, Templates, Security, CRM Updates, Google Sheets, Documentation, Structure.", edgeFunctions: ["admin-users", "google-sheets-sync", "sync-us-places"] },

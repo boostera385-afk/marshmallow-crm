@@ -114,6 +114,7 @@ export const FUNCTION_FACTS: Record<string, FunctionFacts> = {
   "admin-users": { data: ["leads", "approvals", "notifications"] },
   "google-sheets-sync": { google: ["sheets"], data: ["leads"] },
   "sync-us-places": { census: true, data: ["places"] },
+  "jellybean-match-leads": { data: [], dataViaDatabaseFunction: ["leads"] },
   "system-health-watch": { data: [] },
 };
 
