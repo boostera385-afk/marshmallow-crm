@@ -55,6 +55,23 @@ DO $$ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN PERFORM pg_temp.check_result('service RPC also checks caller',true); END;
   PERFORM set_config('request.jwt.claims','{"role":"service_role"}',true);
 END $$;
+-- An insert conflict that neither the delivery id nor the message/type key can
+-- resolve must fail once with PT409 (HTTP 409). 40001 would make PostgREST retry
+-- the webhook transaction forever. A temporary unique key forces that conflict.
+INSERT INTO public.quo_webhook_events(quo_event_id,event_type,quo_message_id,quo_conversation_id,raw_payload,processing_status)
+ VALUES('ghost-holder','message.received','ghost-holder-message','ghost-chat','{}','processed');
+CREATE UNIQUE INDEX synthetic_ghost_conflict ON public.quo_webhook_events(quo_conversation_id);
+DO $$ BEGIN
+  PERFORM public.ingest_quo_message(pg_temp.delivery('ghost-event','ghost-message','ghost-chat'));
+  PERFORM pg_temp.check_result('unresolvable webhook conflict raises non-retryable PT409',false);
+EXCEPTION WHEN OTHERS THEN
+  PERFORM pg_temp.check_result('unresolvable webhook conflict raises non-retryable PT409',SQLSTATE='PT409' AND SQLERRM='Webhook conflict could not be resolved');
+END $$;
+DROP INDEX public.synthetic_ghost_conflict;
+SELECT pg_temp.check_result('unresolvable conflict writes no message or conversation',
+  NOT EXISTS(SELECT FROM public.quo_messages WHERE quo_message_id='ghost-message') AND NOT EXISTS(SELECT FROM public.quo_conversations WHERE quo_conversation_id='ghost-chat')
+  AND (SELECT count(*)=1 FROM public.quo_webhook_events WHERE quo_conversation_id='ghost-chat'));
+
 
 INSERT INTO public.quo_webhook_events(quo_event_id,raw_payload,processing_status,received_at)
 SELECT 'retention-'||n,'{"synthetic":true}',CASE n WHEN 1 THEN 'processed' WHEN 2 THEN 'ignored' WHEN 3 THEN 'processing' ELSE 'failed' END,now()-interval '40 days' FROM generate_series(1,4)n;

@@ -26,4 +26,12 @@ describe("CX Edge Function boundary", () => {
     const handler = createCxUpdateHandler(async () => ({ userId: id, db: { rpc } }));
     expect((await handler(request({ kind: "cx", action: "count" }))).status).toBe(status);
   });
+  it("returns a non-retryable PT409 stale-revision conflict once as 409 with the database message", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { code: "PT409", message: "This request changed. Refresh before saving." } });
+    const handler = createCxUpdateHandler(async () => ({ userId: id, db: { rpc } }));
+    const response = await handler(request({ kind: "cx", action: "complete", requestId: id, text: "Old reply", revision: 1 }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "This request changed. Refresh before saving." });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
 });

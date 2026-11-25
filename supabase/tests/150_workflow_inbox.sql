@@ -57,11 +57,16 @@ SELECT set_config('request.jwt.claim.sub','15000000-0000-4000-8000-000000000003'
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.check_error('Stale reply cannot answer reopened revision',$q$SELECT public.workflow_requests('{"kind":"cx","action":"complete","requestId":"15000000-0000-4000-8000-000000000020","text":"Old reply","revision":1}')$q$,'PT409');
 SELECT public.workflow_requests('{"kind":"cx","action":"complete","requestId":"15000000-0000-4000-8000-000000000020","text":"2 PM","revision":3}');
+-- Business conflicts use PT409 (HTTP 409); PostgREST retries 40001 forever.
+SELECT pg_temp.check_error('Second answer on current revision is a non-retryable conflict',$q$SELECT public.workflow_requests('{"kind":"cx","action":"complete","requestId":"15000000-0000-4000-8000-000000000020","text":"Different answer","revision":4}')$q$,'PT409');
+SELECT pg_temp.check_result('Rejected second answer leaves saved response unchanged',(SELECT response_text='2 PM' AND revision=4 FROM public.lead_cx_update_requests WHERE id='15000000-0000-4000-8000-000000000020'));
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','15000000-0000-4000-8000-000000000002',true);
 SET LOCAL ROLE authenticated;
 SELECT public.workflow_requests('{"kind":"cx","action":"resolve","requestId":"15000000-0000-4000-8000-000000000020","revision":4}');
 SELECT public.workflow_requests('{"kind":"cx","action":"resolve","requestId":"15000000-0000-4000-8000-000000000020","revision":4}');
+SELECT pg_temp.check_error('Resolved request rejects a follow-up as a non-retryable conflict',$q$SELECT public.workflow_requests('{"kind":"cx","action":"question_more","requestId":"15000000-0000-4000-8000-000000000020","text":"One more thing","revision":5}')$q$,'PT409');
+SELECT pg_temp.check_result('Rejected follow-up does not reopen the resolved request',(SELECT status='cs_updated' AND acknowledged_at IS NOT NULL AND revision=5 FROM public.lead_cx_update_requests WHERE id='15000000-0000-4000-8000-000000000020'));
 SELECT pg_temp.check_result('Resolution clears active count',(public.workflow_requests('{"kind":"cx","action":"counts"}')->>'cx')::int=0);
 SELECT pg_temp.check_result('Resolved history retains actor',public.workflow_requests('{"kind":"cx","action":"list_resolved"}')->'rows'->0->>'resolved_by_name'='Synthetic 2');
 RESET ROLE;

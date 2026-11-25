@@ -24,6 +24,13 @@ export default {
           DEFAULT: "hsl(var(--brand))",
           foreground: "hsl(var(--brand-foreground))",
         },
+        // Pastry Marketing logo colours, for the sign-in screens.
+        pastry: {
+          navy: "hsl(var(--pastry-navy))",
+          pink: "hsl(var(--pastry-pink))",
+          lime: "hsl(var(--pastry-lime))",
+          cherry: "hsl(var(--pastry-cherry))",
+        },
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",

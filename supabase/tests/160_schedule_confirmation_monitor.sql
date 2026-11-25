@@ -52,6 +52,7 @@ SET LOCAL ROLE authenticated;
 SELECT pg_temp.check_error('Removed binding action is rejected',$q$SELECT public.schedule_monitor_admin('{"action":"link","leadId":"16000000-0000-4000-8000-000000000010","reason":"Old binding workflow"}')$q$,'22023');
 SELECT pg_temp.check_error('Configuration needs a reason',$q$SELECT public.schedule_monitor_admin('{"action":"configure","mode":"shadow","reason":"short"}')$q$,'22023');
 SELECT pg_temp.check_error('Stale Admin view cannot turn the monitor on',$q$SELECT public.schedule_monitor_admin('{"action":"configure","mode":"automatic","expectedChangedAt":"2000-01-01T00:00:00Z","reason":"Stale attempted enablement"}')$q$,'PT409');
+SELECT pg_temp.check_result('Rejected stale enablement leaves the monitor off',public.schedule_monitor_admin('{"action":"status"}')->>'mode'='off');
 SELECT pg_temp.check_error('Retry needs a customer reply first',$q$SELECT public.schedule_monitor_admin('{"action":"retry","leadId":"16000000-0000-4000-8000-000000000010","reason":"Retry without any reply"}')$q$,'22023');
 SELECT public.schedule_monitor_admin('{"action":"configure","mode":"shadow","reason":"Synthetic shadow rollout"}'::jsonb||jsonb_build_object('expectedChangedAt',public.schedule_monitor_admin('{"action":"status"}')->>'changed_at'));
 SELECT pg_temp.check_result('Admin status lists the waiting job',(SELECT (s->>'total')::int=1 AND s->'rows'->0->>'customer_name'='Synthetic customer' FROM (SELECT public.schedule_monitor_admin('{"action":"status"}') s) x));

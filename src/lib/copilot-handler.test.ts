@@ -242,6 +242,8 @@ describe("authenticated Copilot handler", () => {
     db.rpc.mockImplementation(async (name) => ({ data: null, error: name === "copilot_configure_checked" ? { code, message: "stale" } : null }));
     const response = await handle(request({ action: "configure", config: { enabled: true, ai_enabled: true, monthly_budget_cents: 1000, daily_ai_limit: 20, timezone: "UTC" }, expected: {} }));
     expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ code: "config_conflict" });
+    expect(db.rpc.mock.calls.filter((call) => call[0] === "copilot_configure_checked")).toHaveLength(1);
+    expect(db.rpc.mock.calls.some((call) => call[0] === "copilot_configure")).toBe(false);
   });
   it("returns an exact saved brief or an indistinguishable unavailable outcome", async () => {
     const missing = await handle(ask("this lead", { selectedLeadId: id })); expect(missing.status).toBe(404);

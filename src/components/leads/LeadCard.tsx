@@ -27,7 +27,6 @@ import {
   Wrench,
   CalendarDays,
   Ban,
-  CalendarClock,
   CheckCircle2,
   Clock,
   ShieldCheck,
@@ -98,6 +97,7 @@ import { useQuoAttention } from "@/hooks/useQuoAttention";
 import { History } from "lucide-react";
 import LeadStatusHistoryDialog from "./LeadStatusHistoryDialog";
 import LeadCoverageBadge from "./LeadCoverageBadge";
+import { ScheduleRequirementChip } from "./ScheduleRequirementChip";
 import UrgentAICheckDialog from "./UrgentAICheckDialog";
 import { showsUrgentCheck } from "@/lib/urgent-verification";
 
@@ -1406,7 +1406,8 @@ function LeadCard({
         )}
 
         <div className="relative px-4 pb-3 pt-4">
-          <div className="flex items-start justify-between gap-3 border-b border-border/55 pb-3">
+          <div className="border-b border-border/55 pb-3">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="truncate text-lg font-semibold text-foreground">
@@ -1480,55 +1481,6 @@ function LeadCard({
                       </button>
                     )
                   )}
-                  {(() => {
-                    const sched = formatScheduleRequirementCompact(lead.customer_schedule_requirements);
-                    const chipClass =
-                      "inline-flex items-center gap-1 rounded-full border border-sky-500/40 bg-sky-500/12 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300";
-
-                    if (!sched) {
-                      if (isOpr) return null;
-                      return (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openScheduleDialog();
-                          }}
-                          title="Add schedule requirement"
-                          className={`${chipClass} border-dashed opacity-80 transition-opacity hover:opacity-100`}
-                        >
-                          <CalendarClock className="h-3 w-3" />
-                          <span>Add schedule</span>
-                        </button>
-                      );
-                    }
-
-                    if (isOpr) {
-                      return (
-                        <span title={`Schedule Requirement: ${sched.full}`} className={chipClass}>
-                          <CalendarClock className="h-3 w-3" />
-                          <span className="opacity-80">Schedule Requirement:</span>
-                          <span>{sched.summary}</span>
-                        </span>
-                      );
-                    }
-
-                    return (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openScheduleDialog();
-                        }}
-                        title={`Schedule Requirement: ${sched.full} - click to edit`}
-                        className={`${chipClass} transition-colors hover:bg-sky-500/20`}
-                      >
-                        <CalendarClock className="h-3 w-3" />
-                        <span className="opacity-80">Schedule Requirement:</span>
-                        <span>{sched.summary}</span>
-                      </button>
-                    );
-                  })()}
                 </div>
             </div>
 
@@ -1540,36 +1492,12 @@ function LeadCard({
                 size="sm"
                 paidInfo={isOpr ? null : paidAmountInfo}
               />
-              {hasQuickChatAccess && lead.customer_phone && (
-                <QuoPhoneTrigger
-                  contactName={lead.customer_name}
-                  phone={lead.customer_phone}
-                  showLastMessageTime
-                  chatType="customer"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20 transition-all no-underline shadow-sm"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  <span>CX Quick Chat</span>
-                </QuoPhoneTrigger>
-              )}
               <LeadCoverageBadge
                 level={lead.coverage_level}
                 count={lead.coverage_tech_count}
                 areaLabel={lead.coverage_area_label}
                 className="max-w-full"
               />
-              {hasTechQuickChatAccess && lead.tech_number && (
-                <QuoPhoneTrigger
-                  contactName={lead.tech_name || "Technician"}
-                  phone={lead.tech_number}
-                  showLastMessageTime
-                  chatType="tech"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/12 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/22 transition-all no-underline shadow-sm"
-                >
-                  <Wrench className="h-3.5 w-3.5" />
-                  <span>Tech Quick Chat</span>
-                </QuoPhoneTrigger>
-              )}
               {quoNeedsAttention && (
                 <span
                   className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-600 dark:text-rose-300 animate-pulse"
@@ -1580,6 +1508,49 @@ function LeadCard({
                 </span>
               )}
             </div>
+          </div>
+
+          {/* Schedule and quick chats get their own full-width row, so the narrow header
+              columns cannot squeeze them into overlapping or multi-line blobs. Wraps
+              onto a second line when the card is narrow. */}
+          {(() => {
+            const sched = formatScheduleRequirementCompact(lead.customer_schedule_requirements);
+            const showSchedule = Boolean(sched) || !isOpr;
+            const showCx = hasQuickChatAccess && Boolean(lead.customer_phone);
+            const showTech = hasTechQuickChatAccess && Boolean(lead.tech_number);
+            if (!showSchedule && !showCx && !showTech) return null;
+            return (
+              <div data-testid="lead-card-quick-row" className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                <ScheduleRequirementChip
+                  summary={sched?.summary ?? null}
+                  full={sched?.full}
+                  onEdit={isOpr ? undefined : openScheduleDialog}
+                />
+                {showCx && lead.customer_phone && (
+                  <QuoPhoneTrigger
+                    contactName={lead.customer_name}
+                    phone={lead.customer_phone}
+                    showLastMessageTime
+                    chatType="customer"
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary hover:bg-primary/20 transition-all no-underline shadow-sm"
+                  >
+                    CX Quick Chat
+                  </QuoPhoneTrigger>
+                )}
+                {showTech && lead.tech_number && (
+                  <QuoPhoneTrigger
+                    contactName={lead.tech_name || "Technician"}
+                    phone={lead.tech_number}
+                    showLastMessageTime
+                    chatType="tech"
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-500/30 bg-amber-500/12 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/22 transition-all no-underline shadow-sm"
+                  >
+                    Tech Quick Chat
+                  </QuoPhoneTrigger>
+                )}
+              </div>
+            );
+          })()}
           </div>
 
           {isUrgent && nearbyUrgentLeads && nearbyUrgentLeads.length > 0 && (

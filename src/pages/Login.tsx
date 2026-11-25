@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { Mail, Lock, ArrowRight, ShieldCheck, Wrench, KeyRound, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { heroTitle, premiumEase } from "@/lib/motion";
-import marshmallowLogo from "@/assets/marshmallow-logo.png.asset.json";
+import { MarshmallowMark } from "@/components/brand/MarshmallowMark";
+import { LegalFooter } from "@/components/layout/LegalFooter";
 
 const Login = () => {
   const {
@@ -188,23 +189,23 @@ const Login = () => {
 
   if (accessCodeRequired) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(var(--primary)/0.03),transparent_70%)]" />
+      <div className="flex min-h-screen flex-col items-center bg-background p-8 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(var(--pastry-pink)/0.05),transparent_70%)]" />
 
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.5, ease: premiumEase }}
-          className="w-full max-w-sm space-y-8 relative z-10"
+          className="my-auto w-full max-w-sm space-y-8 relative z-10"
         >
           <div className="text-center space-y-4">
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: "spring", stiffness: 220, damping: 18, delay: 0.15 }}
-              className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-[hsl(260,75%,58%)] flex items-center justify-center mx-auto shadow-brand"
+              className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pastry-navy to-pastry-pink flex items-center justify-center mx-auto shadow-[0_12px_28px_-12px_hsl(var(--pastry-pink)/0.55)]"
             >
-              <KeyRound className="h-7 w-7 text-primary-foreground" />
+              <KeyRound className="h-7 w-7 text-white" />
             </motion.div>
 
             <motion.h2
@@ -236,7 +237,7 @@ const Login = () => {
               value={accessCodeInput}
               onChange={(e) => setAccessCodeInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="000000"
-              className="font-mono text-center text-2xl tracking-[0.5em] h-14"
+              className="font-mono text-center text-2xl tracking-[0.5em] h-14 focus-visible:ring-pastry-pink"
               maxLength={6}
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleAccessCodeVerify()}
@@ -244,7 +245,7 @@ const Login = () => {
 
             <Button
               onClick={handleAccessCodeVerify}
-              className="w-full gap-2 h-11"
+              className="w-full gap-2 h-11 bg-pastry-lime font-semibold text-pastry-navy shadow-[0_12px_26px_-14px_hsl(var(--pastry-lime)/0.7)] hover:bg-pastry-lime/90 focus-visible:ring-pastry-pink"
               disabled={accessCodeVerifying || accessCodeInput.length !== 6}
             >
               {accessCodeVerifying ? (
@@ -267,7 +268,7 @@ const Login = () => {
               {hasAlternativeMfa && pendingMfaFactorId && pendingUserId && (
                 <Button
                   variant="ghost"
-                  className="w-full text-sm text-primary hover:text-primary/80"
+                  className="w-full text-sm text-pink-600 hover:text-pink-600/80 dark:text-pastry-pink dark:hover:text-pastry-pink/80"
                   onClick={() => startPendingMfa(pendingUserId, pendingMfaFactorId, true)}
                 >
                   Use Authenticator App instead
@@ -275,29 +276,30 @@ const Login = () => {
               )}
           </motion.div>
         </motion.div>
+        <LegalFooter className="relative z-10 pt-8" />
       </div>
     );
   }
 
   if (mfaRequired) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(var(--primary)/0.03),transparent_70%)]" />
+      <div className="flex min-h-screen flex-col items-center bg-background p-8 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(var(--pastry-pink)/0.05),transparent_70%)]" />
 
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.5, ease: premiumEase }}
-          className="w-full max-w-sm space-y-8 relative z-10"
+          className="my-auto w-full max-w-sm space-y-8 relative z-10"
         >
           <div className="text-center space-y-4">
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: "spring", stiffness: 220, damping: 18, delay: 0.15 }}
-              className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-[hsl(260,75%,58%)] flex items-center justify-center mx-auto shadow-brand"
+              className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pastry-navy to-pastry-pink flex items-center justify-center mx-auto shadow-[0_12px_28px_-12px_hsl(var(--pastry-pink)/0.55)]"
             >
-              <ShieldCheck className="h-7 w-7 text-primary-foreground" />
+              <ShieldCheck className="h-7 w-7 text-white" />
             </motion.div>
 
             <motion.h2
@@ -329,7 +331,7 @@ const Login = () => {
               value={totpCode}
               onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="000000"
-              className="font-mono text-center text-2xl tracking-[0.5em] h-14"
+              className="font-mono text-center text-2xl tracking-[0.5em] h-14 focus-visible:ring-pastry-pink"
               maxLength={6}
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleMFAVerify()}
@@ -337,7 +339,7 @@ const Login = () => {
 
             <Button
               onClick={handleMFAVerify}
-              className="w-full gap-2 h-11"
+              className="w-full gap-2 h-11 bg-pastry-lime font-semibold text-pastry-navy shadow-[0_12px_26px_-14px_hsl(var(--pastry-lime)/0.7)] hover:bg-pastry-lime/90 focus-visible:ring-pastry-pink"
               disabled={verifying || totpCode.length !== 6}
             >
               {verifying ? (
@@ -360,7 +362,7 @@ const Login = () => {
               {hasAlternativeAccessCode && pendingUserId && (
                 <Button
                   variant="ghost"
-                  className="w-full text-sm text-primary hover:text-primary/80"
+                  className="w-full text-sm text-pink-600 hover:text-pink-600/80 dark:text-pastry-pink dark:hover:text-pastry-pink/80"
                   onClick={() => startPendingAccessCode(pendingUserId, true, pendingMfaFactorId!)}
                 >
                   Use Admin Access Code instead
@@ -368,13 +370,14 @@ const Login = () => {
               )}
           </motion.div>
         </motion.div>
+        <LegalFooter className="relative z-10 pt-8" />
       </div>
     );
   }
 
   return (
     <div className="flex min-h-screen relative overflow-hidden">
-      <div className="hidden lg:flex lg:w-[46%] animated-gradient relative overflow-hidden flex-col justify-between p-12">
+      <div className="hidden lg:flex lg:w-[46%] pastry-panel relative overflow-hidden flex-col justify-between p-12">
         <div className="absolute inset-0 bg-gradient-to-br from-black/15 via-transparent to-black/10" />
 
         <motion.div
@@ -384,7 +387,7 @@ const Login = () => {
           className="relative z-10 flex items-center gap-3"
         >
           <div className="w-10 h-10 rounded-xl overflow-hidden bg-white/15 border border-white/10">
-            <img src={marshmallowLogo.url} alt="Marshmallow" className="w-full h-full object-cover" />
+            <MarshmallowMark title="" />
           </div>
           <h1 className="text-xl font-bold tracking-tight text-white">Marshmallow</h1>
         </motion.div>
@@ -400,7 +403,7 @@ const Login = () => {
             <br />
             leads with
             <br />
-            precision.
+            <span className="text-pastry-lime">precision.</span>
           </motion.h2>
 
           <motion.p
@@ -424,8 +427,9 @@ const Login = () => {
                 initial={{ opacity: 0, scale: 0.85 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.5 + i * 0.08 }}
-                className="px-3.5 py-1.5 rounded-full bg-white/8 text-white/80 text-[11px] font-medium border border-white/8 tracking-wide"
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3.5 py-1.5 text-[11px] font-medium tracking-wide text-white/85"
               >
+                <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${["bg-pastry-pink", "bg-pastry-lime", "bg-pastry-cherry"][i]}`} />
                 {feature}
               </motion.span>
             ))}
@@ -438,7 +442,7 @@ const Login = () => {
           transition={{ delay: 0.7 }}
           className="relative z-10 text-white/20 text-xs tracking-wide"
         >
-          © 2026 Marshmallow · Built for modern teams
+          Marshmallow · Built for modern teams
         </motion.p>
 
         <motion.div
@@ -453,18 +457,18 @@ const Login = () => {
         />
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-8 relative bg-background">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,hsl(var(--primary)/0.02),transparent_60%)] pointer-events-none" />
+      <div className="flex-1 flex flex-col items-center p-8 relative bg-background">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,hsl(var(--pastry-pink)/0.06),transparent_60%)] pointer-events-none" />
 
         <motion.div
           initial={{ opacity: 0, x: 24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, ease: premiumEase }}
-          className="w-full max-w-sm space-y-8 relative z-10"
+          className="my-auto w-full max-w-sm space-y-8 relative z-10"
         >
           <div className="lg:hidden mb-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg overflow-hidden shadow-brand">
-              <img src={marshmallowLogo.url} alt="Marshmallow" className="w-full h-full object-cover" />
+              <MarshmallowMark title="" />
             </div>
             <h1 className="text-lg font-bold tracking-tight text-foreground">Marshmallow</h1>
           </div>
@@ -504,7 +508,7 @@ const Login = () => {
                 Email
               </Label>
               <div className="relative group">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 transition-colors group-focus-within:text-primary" />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 transition-colors group-focus-within:text-pink-600 dark:group-focus-within:text-pastry-pink" />
                 <Input
                   id="email"
                   type="email"
@@ -512,7 +516,7 @@ const Login = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@company.com"
                   required
-                  className="pl-10 h-11"
+                  className="pl-10 h-11 focus-visible:ring-pastry-pink"
                 />
               </div>
             </div>
@@ -525,7 +529,7 @@ const Login = () => {
                 Password
               </Label>
               <div className="relative group">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 transition-colors group-focus-within:text-primary" />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 transition-colors group-focus-within:text-pink-600 dark:group-focus-within:text-pastry-pink" />
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
@@ -533,7 +537,7 @@ const Login = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="pl-10 pr-10 h-11"
+                  className="pl-10 pr-10 h-11 focus-visible:ring-pastry-pink"
                 />
                 <button
                   type="button"
@@ -547,10 +551,10 @@ const Login = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full gap-2 h-11" disabled={loading}>
+            <Button type="submit" className="w-full gap-2 h-11 bg-pastry-lime font-semibold text-pastry-navy shadow-[0_12px_26px_-14px_hsl(var(--pastry-lime)/0.7)] hover:bg-pastry-lime/90 focus-visible:ring-pastry-pink" disabled={loading}>
               {loading ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
+                  <div className="w-4 h-4 rounded-full border-2 border-pastry-navy/30 border-t-pastry-navy animate-spin" />
                   Signing in...
                 </div>
               ) : (
@@ -571,6 +575,7 @@ const Login = () => {
             Accounts are created by your administrator
           </motion.p>
         </motion.div>
+        <LegalFooter className="relative z-10 pt-8" />
       </div>
     </div>
   );

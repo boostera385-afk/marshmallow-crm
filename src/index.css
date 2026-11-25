@@ -6,6 +6,13 @@
 
 @layer base {
   :root {
+    /* Pastry Marketing brand colours (from the logo). Same in both themes; used on the
+       sign-in screens only, so the rest of the CRM keeps its own theme. */
+    --pastry-navy: 240 55% 24%;
+    --pastry-pink: 330 81% 60%;
+    --pastry-lime: 67 69% 51%;
+    --pastry-cherry: 341 75% 51%;
+
     --background: 202 100% 99%;
     --foreground: 230 24% 12%;
 
@@ -531,6 +538,14 @@
     background: linear-gradient(-45deg, hsl(230, 80%, 56%), hsl(260, 75%, 58%), hsl(290, 65%, 52%), hsl(230, 80%, 56%));
     background-size: 400% 400%;
     animation: gradientShift 12s ease infinite;
+  }
+
+  /* Sign-in brand panel: deep Pastry navy with soft pink and lime light from the logo. */
+  .pastry-panel {
+    background:
+      radial-gradient(circle at 85% 12%, hsl(var(--pastry-pink) / 0.32), transparent 42%),
+      radial-gradient(circle at 8% 96%, hsl(var(--pastry-lime) / 0.09), transparent 32%),
+      linear-gradient(155deg, hsl(240 58% 17%) 0%, hsl(var(--pastry-navy)) 55%, hsl(250 52% 28%) 100%);
   }
 
   @keyframes gradientShift {
