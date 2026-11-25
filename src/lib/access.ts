@@ -85,6 +85,16 @@ export function canViewLeadCoverageAnalytics(role: AppRole | null | undefined): 
 }
 
 /**
+ * "Leads by Department" (which JellyBean department — ND / FB / SEO — each lead
+ * came from) is Admin-only. The database enforces the same rule:
+ * get_lead_department_breakdown() raises 42501 and lead_jellybean_matches is
+ * readable by Admin only.
+ */
+export function canViewLeadDepartmentAnalytics(role: AppRole | null | undefined): boolean {
+  return role === "admin";
+}
+
+/**
  * Whether this user may create a lead from inside the CRM (the "New Lead"
  * button and the ⌘N command). Admin and CS Admin always may; a CS user needs
  * the per-user `can_add_manual_leads` grant from Settings.

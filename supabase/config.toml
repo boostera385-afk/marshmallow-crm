@@ -17,3 +17,8 @@ verify_jwt = false
 # This worker accepts only a distinct server-side cron secret, not user JWTs.
 [functions.schedule-confirmation-monitor]
 verify_jwt = false
+
+# Called only by pg_cron (dispatch_jellybean_match). The handler checks the
+# x-cron-secret against Vault via jellybean_match_worker_authorized().
+[functions.jellybean-match-leads]
+verify_jwt = false
