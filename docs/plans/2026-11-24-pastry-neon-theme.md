@@ -46,6 +46,24 @@ both modes. The preview has an Auto / Light / Dark switch to compare them.
 cyan `#22C8E8`) are used only as a thin 4 to 5px band: under the top bar, on the login art
 and in the sidebar logo. Never as a fill behind text.
 
+**Quo chip:** Quo (formerly OpenPhone) uses black with "citric yellow" `#EDFC47` and a
+plain "QUO" wordmark. The Quo chip uses exactly that, black with a citric-yellow wordmark
+(18.6:1), in both modes. It is never a yellow fill, so it can't be mistaken for a lime
+action button. Quo's colours are used only on the Quo chip.
+
+## Components and status
+
+- **Icons:** the Lucide set the CRM already uses, always next to a text label.
+- **Buttons:** primary (one per screen), secondary, ghost, pink for urgent actions, cherry
+  for destructive actions (always confirmed), icon-only with an accessible name, and a
+  loading state that keeps its label and blocks double clicks.
+- **Fields:** default, focus (pink ring), error (cherry border plus message) and read only.
+- **Severity:** the four levels from `src/lib/notification-severity.ts` keep their icons and
+  labels, now in theme colours: Critical = cherry, Needs action = sun, Resolved = mint,
+  Info = Booster cyan (instead of sky blue).
+- **Priority and approvals:** Urgent Job is the only tilted sticker. Pending approval is
+  sun, Approved is mint, Rejected is cherry. AI checks are violet and advisory only.
+
 **Already in code:** `--pastry-navy`, `--pastry-pink`, `--pastry-lime` and
 `--pastry-cherry` exist in `src/index.css` and `tailwind.config.ts`. They are used on the
 login screens only, on branch `feat/login-pastry-brand-theme`. The pilot would add the neon

@@ -244,9 +244,10 @@ p { text-wrap: pretty; }
 .p-sun    { --c: var(--sun);        color: var(--sun-text); }
 .p-mint   { --c: var(--mint);       color: var(--mint-text); }
 .p-red    { --c: var(--cherry);     color: var(--cherry-text); }
-.quo { background: var(--cyan); color: #0a0a20; font-weight: 900; font-size: 9.5px; border-radius: 6px; padding: 2px 6px; letter-spacing: .08em; }
-[data-theme="light"] .quo { color: #fff; }
-@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .quo { color: #fff; } }
+/* Quo's own brand: black with "citric yellow" #EDFC47 wordmark. Same in both modes,
+   and deliberately black (not a yellow fill) so it never reads as a lime action button. */
+.quo { display: inline-flex; align-items: center; gap: 4px; background: #000; color: #edfc47; font-weight: 900; font-size: 10px; border-radius: 6px; padding: 2px 7px; letter-spacing: .1em; border: 1px solid rgba(237,252,71,.45); line-height: 1.4; }
+.quo .i { width: 11px; height: 11px; stroke-width: 2.6; }
 .sub { color: var(--muted); font-size: 11.5px; font-family: var(--mono); }
 
 .tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; min-width: 300px; }
@@ -277,6 +278,49 @@ p { text-wrap: pretty; }
 .navi .cnt { margin-left: auto; border-radius: 99px; padding: 1px 8px; font-size: 11px; font-weight: 800; }
 .navi .ico { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid currentColor; opacity: .7; flex: none; }
 
+/* ---------- Icons (Lucide, the set the CRM already uses) ---------- */
+.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.navi .i { opacity: .85; }
+.input .i { color: var(--muted); margin-right: 8px; }
+.input .i.end { margin: 0 0 0 auto; }
+
+/* ---------- Components ---------- */
+.kit { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+.kit .card { display: grid; gap: 12px; align-content: start; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+.btn.danger { background: var(--cherry); color: var(--on-cherry); }
+.btn.attention { background: var(--pink-fill); color: var(--on-pink); }
+.btn.link { background: transparent; color: var(--cyan-text); padding: 0 6px; text-decoration: underline; text-underline-offset: 3px; }
+.btn.iconbtn { width: 40px; padding: 0; background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+.btn.sm { min-height: 32px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
+.btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.spin { animation: none; }
+@media (prefers-reduced-motion: no-preference) { .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } } }
+.input.error { border-color: var(--cherry); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cherry) 20%, transparent); color: var(--text); }
+.input.disabled { opacity: .55; }
+.hint { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.hint.err { color: var(--cherry-text); }
+.hint .i { width: 13px; height: 13px; }
+.sev { display: grid; gap: 8px; }
+.sevrow { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 4px 10px 10px 4px; border-left: 3px solid var(--c); background: color-mix(in srgb, var(--c) var(--tint), var(--surface-2)); }
+.sevrow .i { color: var(--ct); width: 18px; height: 18px; }
+.sevrow b { font-size: 13px; }
+.sevrow small { display: block; color: var(--muted); font-size: 11.5px; }
+.sevrow .pill { --c: inherit; }
+.s-crit { --c: var(--cherry); --ct: var(--cherry-text); }
+.s-act  { --c: var(--sun);    --ct: var(--sun-text); }
+.s-ok   { --c: var(--mint);   --ct: var(--mint-text); }
+.s-info { --c: var(--cyan);   --ct: var(--cyan-text); }
+.pill .i { width: 12px; height: 12px; stroke-width: 2.4; }
+.pill.icon::before { display: none; }
+.toast { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.toast .i { margin-top: 2px; color: var(--ct); }
+.toast b { font-size: 13px; display: block; }
+.toast span { font-size: 12px; color: var(--muted); }
+.legend { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+.legend li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
 /* ---------- Rollout / decisions ---------- */
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
 .step .n { font-family: var(--display); font-size: 2rem; color: var(--pink-text); line-height: 1; }
@@ -305,6 +349,34 @@ footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); co
 </style>
 </head>
 <body>
+<!-- Lucide icons (ISC licence), the same set the CRM imports from lucide-react. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-login" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-crit" viewBox="0 0 24 24"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-ai" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></symbol>
+  <symbol id="i-board" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+</svg>
 <a class="skip" href="#main">Skip to content</a>
 
 <div class="bar" role="banner">
@@ -376,6 +448,7 @@ footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); co
     <div class="sw"><div class="chip" style="background:var(--sun)"></div><div class="info"><b>Sun</b><code>#FFC83D · text #9A5B00</code><small>Warning, needs action</small></div></div>
     <div class="sw"><div class="chip" style="background:var(--cherry)"></div><div class="info"><b>Cherry</b><code>#FF4B5C · #C81E3A</code><small>Critical alerts and errors only</small></div></div>
     <div class="sw"><div class="chip" style="background:var(--mint)"></div><div class="info"><b>Mint</b><code>#6EE7B7 · text #047857</code><small>Resolved, success</small></div></div>
+    <div class="sw"><div class="chip" style="background:#000;color:#edfc47;letter-spacing:.1em">QUO</div><div class="info"><b>Quo citric<span class="new">PARTNER</span></b><code>#EDFC47 on #000000</code><small>Quo's own brand colours. Only on the Quo chip, never for our buttons.</small></div></div>
     <div class="sw"><div class="chip" style="background:var(--muted)"></div><div class="info"><b>Haze</b><code>#A6A9D6 · #5B5E8A</code><small>Secondary text, timestamps</small></div></div>
   </div>
 
@@ -394,6 +467,7 @@ footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); co
         <tr><td>Deep cyan text on white</td><td><span class="sample" style="background:#fff;color:#0e7490;border:1px solid #dcdff0">Schedule</span></td><td>Light</td><td><span class="pass">5.4:1 AA</span></td></tr>
         <tr><td>Violet text on Night</td><td><span class="sample" style="background:#13143a;color:#b57bff">AI status</span></td><td>Dark</td><td><span class="pass">6.1:1 AA</span></td></tr>
         <tr><td>Violet text on white</td><td><span class="sample" style="background:#fff;color:#6d28d9;border:1px solid #dcdff0">AI status</span></td><td>Light</td><td><span class="pass">7.1:1 AAA</span></td></tr>
+        <tr><td>Quo citric on black (Quo chip)</td><td><span class="sample" style="background:#000;color:#edfc47;letter-spacing:.1em">QUO</span></td><td>Both</td><td><span class="pass">18.6:1 AAA</span></td></tr>
         <tr><td>Haze on Night / muted on white</td><td><span class="sample" style="background:#13143a;color:#a6a9d6">8:36 PM</span> <span class="sample" style="background:#fff;color:#5b5e8a;border:1px solid #dcdff0">8:36 PM</span></td><td>Both</td><td><span class="pass">7.8 / 6.2:1</span></td></tr>
       </tbody>
     </table>
@@ -434,10 +508,10 @@ footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); co
         <div class="left brand-dark"><div class="dots" aria-hidden="true"></div><div class="rays" aria-hidden="true"></div><div class="stripe" aria-hidden="true"></div><div class="disp">Manage your leads with <span style="color:#d6f51b">precision.</span></div></div>
         <div class="right">
           <div class="disp">Welcome back</div>
-          <div class="field"><label>Email</label><div class="input">you@company.com</div></div>
-          <div class="field"><label>Password</label><div class="input focus">••••••••</div></div>
-          <span class="btn primary">Sign in →</span>
-          <a href="#main" style="font-size:12px;text-align:center">Use authenticator app instead</a>
+          <div class="field"><label>Email</label><div class="input"><svg class="i"><use href="#i-mail"/></svg>you@company.com</div></div>
+          <div class="field"><label>Password</label><div class="input focus"><svg class="i"><use href="#i-lock"/></svg>••••••••<svg class="i end" aria-label="Show password" role="img"><use href="#i-eye"/></svg></div></div>
+          <span class="btn primary"><svg class="i"><use href="#i-login"/></svg>Sign in</span>
+          <a href="#main" style="font-size:12px;display:inline-flex;gap:5px;align-items:center;justify-content:center"><svg class="i" style="width:14px;height:14px"><use href="#i-shield"/></svg>Use authenticator app instead</a>
           <small>© 2026 Pastry Marketing. All rights reserved.</small>
         </div>
       </div>
@@ -445,15 +519,15 @@ footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); co
 
     <div class="screen"><header>Lead card · urgent</header>
       <div class="body"><div class="lead"><div class="top"></div><div class="in">
-        <div class="row"><span class="name">Ricardo</span><span class="quo">QUO</span><span style="margin-left:auto" class="pill p-urgent">Urgent Job</span></div>
+        <div class="row"><span class="name">Ricardo</span><span class="quo"><svg class="i"><use href="#i-msg"/></svg>QUO</span><span style="margin-left:auto" class="pill icon p-urgent"><svg class="i"><use href="#i-flame"/></svg>Urgent Job</span></div>
         <div class="sub">LD-3M7KUG · 11/21/2026</div>
-        <div class="row"><span class="pill tinted p-cyan">Schedule: Nov 21 to Nov 24</span><span class="pill tinted p-violet">AI: Awaiting reply</span><span class="pill tinted p-sun">Tech Quick Chat · 4:40 AM</span></div>
-        <div class="row"><span class="pill tinted p-mint">Good coverage</span></div>
-        <div class="row" style="gap:8px;margin-top:4px"><span class="btn primary" style="flex:1;min-height:36px">Get CX Update</span><span class="btn ghost" style="flex:1;min-height:36px">Edit Lead</span></div>
+        <div class="row"><span class="pill icon tinted p-cyan"><svg class="i"><use href="#i-cal"/></svg>Schedule: Nov 21 to Nov 24</span><span class="pill icon tinted p-violet"><svg class="i"><use href="#i-ai"/></svg>AI: Awaiting reply</span><span class="pill icon tinted p-sun"><svg class="i"><use href="#i-clock"/></svg>Tech Quick Chat · 4:40 AM</span></div>
+        <div class="row"><span class="pill icon tinted p-mint"><svg class="i"><use href="#i-ok"/></svg>Good coverage</span></div>
+        <div class="row" style="gap:8px;margin-top:4px"><span class="btn primary" style="flex:1;min-height:36px"><svg class="i"><use href="#i-refresh"/></svg>Get CX Update</span><span class="btn ghost" style="flex:1;min-height:36px"><svg class="i"><use href="#i-edit"/></svg>Edit Lead</span></div>
       </div></div></div>
     </div>
 
-    <div class="screen"><header><span>Urgent leads <span class="count">90</span></span><span style="color:var(--cyan-text)">Refresh AI status</span></header>
+    <div class="screen"><header><span>Urgent leads <span class="count">90</span></span><span style="color:var(--cyan-text);display:inline-flex;gap:5px;align-items:center"><svg class="i" style="width:13px;height:13px"><use href="#i-refresh"/></svg>Refresh AI status</span></header>
       <div class="body xscroll"><table class="tbl">
         <thead><tr><th scope="col" style="width:24%">Customer</th><th scope="col" style="width:44%">AI status</th><th scope="col" style="width:32%">Schedule</th></tr></thead>
         <tbody>
@@ -473,19 +547,21 @@ footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); co
 
     <div class="screen"><header>Notifications</header>
       <div class="body">
-        <div class="nrow" style="--c:var(--cherry)"><span class="ic" aria-hidden="true">!</span><div><b>[Alert] Urgent Job</b> <span class="pill tinted p-red" style="margin-left:4px">Critical</span><p>Lead "Sailesh Kumar" changed to Urgent Job</p></div></div>
-        <div class="nrow" style="--c:var(--sun)"><span class="ic" aria-hidden="true">!</span><div><b>Lead cancellation request</b> <span class="pill tinted p-sun" style="margin-left:4px">Action required</span><p>Jeremy needs cancellation approval</p></div></div>
-        <div class="nrow" style="--c:var(--mint)"><span class="ic" aria-hidden="true">✓</span><div><b>Database load back to normal</b> <span class="pill tinted p-mint" style="margin-left:4px">Resolved</span><p>All readings below warning levels</p></div></div>
+        <div class="sevrow s-crit"><svg class="i"><use href="#i-crit"/></svg><div><b>[Alert] Urgent Job</b><small>Lead "Sailesh Kumar" changed to Urgent Job</small></div><span class="pill tinted p-red">Critical</span></div>
+        <div class="sevrow s-act"><svg class="i"><use href="#i-warn"/></svg><div><b>Lead cancellation request</b><small>Jeremy needs cancellation approval</small></div><span class="pill tinted p-sun">Needs action</span></div>
+        <div class="sevrow s-ok"><svg class="i"><use href="#i-ok"/></svg><div><b>Database load back to normal</b><small>All readings below warning levels</small></div><span class="pill tinted p-mint">Resolved</span></div>
+        <div class="sevrow s-info"><svg class="i"><use href="#i-info"/></svg><div><b>New Quo conversation linked</b><small>Matched to lead LD-3M7KUG</small></div><span class="pill tinted p-cyan">Info</span></div>
       </div>
     </div>
 
     <div class="screen"><header>Sidebar</header>
       <div class="body side">
-        <div class="navi on"><span class="ico"></span>All Leads</div>
-        <div class="navi"><span class="ico"></span>AI Assistance<span class="cnt tinted p-violet" style="border:0">64</span></div>
-        <div class="navi"><span class="ico"></span>Notifications<span class="cnt" style="background:var(--pink-fill);color:var(--on-pink)">19</span></div>
-        <div class="navi"><span class="ico"></span>Processor Board</div>
-        <div class="navi"><span class="ico"></span>Cancellation requests<span class="cnt tinted p-red" style="border:0">3</span></div>
+        <div class="navi on"><svg class="i"><use href="#i-users"/></svg>All Leads</div>
+        <div class="navi"><svg class="i"><use href="#i-msg"/></svg>QUO Inbox<span class="quo" style="margin-left:auto">QUO</span></div>
+        <div class="navi"><svg class="i"><use href="#i-ai"/></svg>AI Assistance<span class="cnt tinted p-violet" style="border:0">64</span></div>
+        <div class="navi"><svg class="i"><use href="#i-bell"/></svg>Notifications<span class="cnt" style="background:var(--pink-fill);color:var(--on-pink)">19</span></div>
+        <div class="navi"><svg class="i"><use href="#i-board"/></svg>Processor Board</div>
+        <div class="navi"><svg class="i"><use href="#i-x"/></svg>Cancellation requests<span class="cnt tinted p-red" style="border:0">3</span></div>
       </div>
     </div>
 
@@ -493,7 +569,71 @@ footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); co
 </div></section>
 
 <section><div class="wrap">
-  <div class="eyebrow">06 · Light mode rules</div>
+  <div class="eyebrow">06 · Components</div>
+  <h2>Buttons, fields and status</h2>
+  <p class="lede">The building blocks every screen reuses. Icons are the Lucide set the CRM already uses, always paired with a text label. Severity levels are the four the Notifications page already uses (Critical, Needs action, Resolved, Info), now in theme colours.</p>
+  <div class="kit">
+
+    <div class="card">
+      <h3>Buttons</h3>
+      <div class="btnrow">
+        <span class="btn primary"><svg class="i"><use href="#i-login"/></svg>Sign in</span>
+        <span class="btn secondary"><svg class="i"><use href="#i-edit"/></svg>Edit Lead</span>
+        <span class="btn ghost">Cancel</span>
+      </div>
+      <div class="btnrow">
+        <span class="btn attention"><svg class="i"><use href="#i-flame"/></svg>Mark Urgent</span>
+        <span class="btn danger"><svg class="i"><use href="#i-trash"/></svg>Reject</span>
+        <span class="btn iconbtn" role="img" aria-label="Call customer"><svg class="i"><use href="#i-phone"/></svg></span>
+      </div>
+      <div class="btnrow">
+        <span class="btn primary" aria-disabled="true"><svg class="i spin"><use href="#i-loader"/></svg>Saving…</span>
+        <span class="btn secondary" aria-disabled="true">Disabled</span>
+        <span class="btn link">View history</span>
+      </div>
+      <ul class="legend">
+        <li><b>Primary</b> one per screen: the main next step.</li>
+        <li><b>Pink</b> for urgent actions, <b>cherry</b> for destructive ones (always confirmed).</li>
+        <li>Loading keeps the label and blocks double clicks.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>Fields</h3>
+      <div class="field"><label>Email</label><div class="input"><svg class="i"><use href="#i-mail"/></svg>you@company.com</div></div>
+      <div class="field"><label>Phone (focused)</label><div class="input focus"><svg class="i"><use href="#i-phone"/></svg>(816) 555-0148</div></div>
+      <div class="field"><label>Password (error)</label><div class="input error"><svg class="i"><use href="#i-lock"/></svg>••••••</div><span class="hint err"><svg class="i"><use href="#i-crit"/></svg>Password is incorrect. Try again.</span></div>
+      <div class="field"><label>Lead ID (read only)</label><div class="input disabled">LD-3M7KUG</div><span class="hint"><svg class="i"><use href="#i-info"/></svg>Set by the system.</span></div>
+    </div>
+
+    <div class="card">
+      <h3>Severity (Notifications)</h3>
+      <div class="sev">
+        <div class="sevrow s-crit"><svg class="i"><use href="#i-crit"/></svg><div><b>Critical</b><small>Urgent jobs, failures, database load</small></div><span class="pill tinted p-red">Critical</span></div>
+        <div class="sevrow s-act"><svg class="i"><use href="#i-warn"/></svg><div><b>Needs action</b><small>Approvals, requests, sync behind</small></div><span class="pill tinted p-sun">Needs action</span></div>
+        <div class="sevrow s-ok"><svg class="i"><use href="#i-ok"/></svg><div><b>Resolved</b><small>Back to normal, confirmed</small></div><span class="pill tinted p-mint">Resolved</span></div>
+        <div class="sevrow s-info"><svg class="i"><use href="#i-info"/></svg><div><b>Info</b><small>Everything else</small></div><span class="pill tinted p-cyan">Info</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Priority, approvals and Quo</h3>
+      <ul class="legend">
+        <li><span class="pill icon p-urgent"><svg class="i"><use href="#i-flame"/></svg>Urgent Job</span> Priority: the only tilted sticker.</li>
+        <li><span class="pill icon tinted p-sun"><svg class="i"><use href="#i-clock"/></svg>Pending approval</span> Quote, payment, cancellation, tech change.</li>
+        <li><span class="pill icon tinted p-mint"><svg class="i"><use href="#i-check"/></svg>Approved</span> <span class="pill icon tinted p-red"><svg class="i"><use href="#i-x"/></svg>Rejected</span></li>
+        <li><span class="pill icon tinted p-violet"><svg class="i"><use href="#i-ai"/></svg>AI check</span> Advisory only, never a pass/fail by itself.</li>
+        <li><span class="pill icon tinted p-cyan"><svg class="i"><use href="#i-send"/></svg>Sent to Quo</span> <span class="quo"><svg class="i"><use href="#i-msg"/></svg>QUO</span> Quo's own black and citric yellow.</li>
+      </ul>
+      <h3 style="margin-top:6px">Toast</h3>
+      <div class="toast s-ok"><svg class="i"><use href="#i-ok"/></svg><div><b>Lead saved</b><span>AI summary is still running. Your save is safe.</span></div></div>
+    </div>
+
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">07 · Light mode rules</div>
   <h2>Same brand on white</h2>
   <p class="lede">Light mode is a full theme, not an afterthought. The rules that keep it readable:</p>
   <div class="grid2">
@@ -511,7 +651,7 @@ footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); co
 </div></section>
 
 <section><div class="wrap">
-  <div class="eyebrow">07 · Rollout</div>
+  <div class="eyebrow">08 · Rollout</div>
   <h2>Pilot, review, then everywhere</h2>
   <p class="lede">The pilot is switched on per person, so it can be tried on live work without changing anything for the rest of the team.</p>
   <div class="steps">
@@ -523,7 +663,7 @@ footer.f { padding-block: 28px calc(48px + env(safe-area-inset-bottom, 0px)); co
 </div></section>
 
 <section><div class="wrap">
-  <div class="eyebrow">08 · Decisions needed</div>
+  <div class="eyebrow">09 · Decisions needed</div>
   <h2>Four questions for Sir</h2>
   <div class="qs">
     <div class="q"><b>1. Headline font</b><span>Use Anton for titles and big numbers? It is a free Google font and adds one small font download. <em>Recommended: yes.</em> The alternative is Inter Extra Bold everywhere, which is safer but less like the poster.</span></div>
