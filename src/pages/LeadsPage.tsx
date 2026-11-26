@@ -9,6 +9,7 @@ import { useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Lead, LeadStatus, STATUS_LABELS, STATUS_DOT_COLORS, ALL_LEAD_STATUSES, compareLeadDisplayPriority } from "@/lib/constants";
 import { countTechs } from "@/lib/lead-techs";
+import { mergeNotePresence, type NotePresenceRow } from "@/lib/lead-note-presence";
 import { extractCity, extractState } from "@/lib/address-utils";
 import { buildNearbyUrgentMap, isUrgentLead } from "@/lib/lead-proximity";
 import { preloadZipDataset } from "@/lib/zipCentroids";
@@ -988,6 +989,49 @@ export default function LeadsPage() {
       active = false;
     };
   }, [pagedIdsStr, profiles, quoteApprovalVersion]);
+
+  // Notes added by someone else: keep the note dots (and processor tech count)
+  // on this page's cards live. Shares the one lead_notes channel per browser
+  // with open note threads; only leads on the current page trigger a read, and
+  // bursts are batched into one small query.
+  const pagedIdSetRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    pagedIdSetRef.current = new Set(pagedIdsStr ? pagedIdsStr.split(",") : []);
+  }, [pagedIdsStr]);
+  useEffect(() => {
+    if (!user || !role) return;
+    // RLS blocks realtime for a plain Operator; their poll refreshes the page instead.
+    if (isLocationOnlyOperator(role)) return;
+    const pending = new Set<string>();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+    const flush = async () => {
+      timer = null;
+      const ids = [...pending];
+      pending.clear();
+      if (!ids.length) return;
+      const { data, error } = await supabase
+        .from("lead_notes")
+        .select("lead_id, note_type, content")
+        .in("lead_id", ids);
+      if (disposed || error || !data) return;
+      setPagedMetadata((prev) => mergeNotePresence(prev, ids, data as NotePresenceRow[]));
+    };
+    const release = subscribeToTableChanges<{ new?: { lead_id?: string }; old?: { lead_id?: string } }>(
+      "lead_notes",
+      (payload) => {
+        const id = payload.new?.lead_id ?? payload.old?.lead_id;
+        if (!id || !pagedIdSetRef.current.has(id)) return;
+        pending.add(id);
+        timer ??= setTimeout(() => { void flush(); }, 300);
+      },
+    );
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+      release();
+    };
+  }, [user, role]);
 
   const countSource = activeTab === "shared" ? visibleSharedLeads : visibleMyLeads;
 
