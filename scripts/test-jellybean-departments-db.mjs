@@ -9,13 +9,15 @@ const require = createRequire(import.meta.url);
 const { PGlite } = await import(pathToFileURL(require.resolve("@electric-sql/pglite", { paths: [path.resolve(installation)] })).href);
 const root = fileURLToPath(new URL("../", import.meta.url));
 const sql = (file) => readFile(path.join(root, file), "utf8");
-const EXPECTED = 20;
+const EXPECTED = 25;
 const db = new PGlite();
 try {
   await db.exec(await sql("supabase/tests/fixtures/jellybean_lead_departments.sql"));
-  const migration = await sql("supabase/migrations/20261231000800_jellybean_lead_departments.sql");
-  await db.exec(migration);
-  await db.exec(migration);
+  const migrations = [
+    await sql("supabase/migrations/20261231000800_jellybean_lead_departments.sql"),
+    await sql("supabase/migrations/20261231000900_jellybean_match_queue.sql"),
+  ];
+  for (const migration of [...migrations, ...migrations]) await db.exec(migration);
   const checks = (await db.exec(await sql("supabase/tests/191_jellybean_lead_departments.sql"))).flatMap((r) => r.rows).filter((r) => r.name && r.result);
   console.table(checks);
   if (checks.length !== EXPECTED || checks.some((c) => c.result !== "PASS")) throw new Error("JellyBean department SQL harness failed");
