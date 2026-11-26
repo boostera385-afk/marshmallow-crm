@@ -769,6 +769,29 @@ export type Database = {
           },
         ]
       }
+      lead_jellybean_match_queue: {
+        Row: {
+          lead_id: string
+          queued_at: string
+        }
+        Insert: {
+          lead_id: string
+          queued_at?: string
+        }
+        Update: {
+          lead_id?: string
+          queued_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_jellybean_match_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_jellybean_matches: {
         Row: {
           checked_at: string

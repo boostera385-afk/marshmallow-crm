@@ -103,7 +103,7 @@ steps; see the latest audit in `docs/COPILOT_ROLLOUT.md` before publishing.
 
 CRM-only report; Donut has no Analytics (no extension change). Matching is
 server-side, so leads created from the CRM, Donut or anywhere else are covered
-the same way. Every minute, while a lead has no row in `lead_jellybean_matches`,
+the same way. Every minute, while a lead is waiting in `lead_jellybean_match_queue`,
 cron calls `jellybean-match-leads`, which asks JellyBean's
 `marshmallow-lead-lookup` (shared secret `JELLYBEAN_LOOKUP_SECRET` here /
 `MARSHMALLOW_LOOKUP_SECRET` there) for the latest JellyBean lead with the same
@@ -113,6 +113,13 @@ A JellyBean failure leaves leads pending (never "not in JellyBean"); a phone or
 landline edit re-queues the lead. Analytics → **Leads by Department** (Admin
 only; `get_lead_department_breakdown()` refuses other roles) shows department
 totals and a status × department table for the selected range, All Time included.
+
+Idle cost (migration 20261231000900, applied 2026-11-26): pending leads live in
+`lead_jellybean_match_queue` (filled by triggers on lead insert and phone edits,
+emptied when the answer is saved), so the per-minute cron only probes that
+queue instead of anti-joining every lead (~4,200 buffers / 68 ms per minute
+before, ~1 ms after). A daily `jellybean-lead-match-sweep` (03:53 UTC) re-queues
+any lead that has no answer as a safety net.
 
 ## CS Team Performance access (2026-10-27; migration 20261128000000 awaiting manual application)
 

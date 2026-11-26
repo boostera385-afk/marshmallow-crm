@@ -1,5 +1,6 @@
 -- WRITE-BASED, disposable fixture only; never run on shared production.
--- Behavioral checks for 20261231000800_jellybean_lead_departments.sql.
+-- Behavioral checks for 20261231000800_jellybean_lead_departments.sql
+-- and 20261231000900_jellybean_match_queue.sql.
 -- Run: node scripts/test-jellybean-departments-db.mjs <PGlite installation directory>
 BEGIN;
 CREATE TEMP TABLE jb_checks (name text, result text);
@@ -143,6 +144,33 @@ RESET ROLE;
 UPDATE jb_dispatched SET called = marshmallow_private.dispatch_jellybean_match();
 SELECT pg_temp.check_jb('20 with nothing pending, cron does not call the worker',
   NOT (SELECT called FROM jb_dispatched) AND (SELECT count(*) FROM net.calls) = 1);
+
+-- 6. Pending queue (20261231000900) -------------------------------------------
+SELECT pg_temp.check_jb('21 once every lead is answered the queue is empty',
+  NOT EXISTS (SELECT 1 FROM public.lead_jellybean_match_queue));
+INSERT INTO public.leads (id, status, created_by, customer_phone, created_at) VALUES
+  ('91000000-0000-4000-8000-000000000007', 'new', '91000000-0000-4000-8000-00000000000b', '4045550107', '2026-11-01'),
+  ('91000000-0000-4000-8000-000000000008', 'new', '91000000-0000-4000-8000-00000000000b', '4045550108', '2026-11-02');
+UPDATE jb_dispatched SET called = marshmallow_private.dispatch_jellybean_match();
+SELECT pg_temp.check_jb('22 a multi-row insert queues every new lead and wakes the worker',
+  (SELECT count(*) FROM public.lead_jellybean_match_queue) = 2
+  AND (SELECT called FROM jb_dispatched) AND (SELECT count(*) FROM net.calls) = 2);
+DELETE FROM public.leads WHERE id = '91000000-0000-4000-8000-000000000008';
+SELECT pg_temp.check_jb('23 deleting a lead removes it from the queue',
+  (SELECT array_agg(lead_id) FROM public.lead_jellybean_match_queue) = ARRAY['91000000-0000-4000-8000-000000000007'::uuid]);
+DELETE FROM public.lead_jellybean_match_queue;
+DELETE FROM public.lead_jellybean_matches WHERE lead_id = '91000000-0000-4000-8000-000000000001';
+CREATE TEMP TABLE jb_swept AS SELECT marshmallow_private.requeue_unchecked_jellybean_matches() AS first_run;
+ALTER TABLE jb_swept ADD COLUMN second_run integer;
+UPDATE jb_swept SET second_run = marshmallow_private.requeue_unchecked_jellybean_matches();
+SELECT pg_temp.check_jb('24 the daily sweep re-queues answerless leads that fell out of the queue',
+  (SELECT first_run = 2 AND second_run = 0 FROM jb_swept)
+  AND (SELECT array_agg(right(lead_id::text, 1) ORDER BY lead_id) FROM public.lead_jellybean_match_queue) = ARRAY['1','7']);
+SELECT pg_temp.check_jb('25 the queue and its sweep are not reachable by app users',
+  NOT has_table_privilege('authenticated', 'public.lead_jellybean_match_queue', 'SELECT')
+  AND NOT has_table_privilege('anon', 'public.lead_jellybean_match_queue', 'SELECT')
+  AND NOT has_function_privilege('authenticated', 'marshmallow_private.requeue_unchecked_jellybean_matches()', 'EXECUTE')
+  AND NOT has_function_privilege('service_role', 'marshmallow_private.requeue_unchecked_jellybean_matches()', 'EXECUTE'));
 
 SELECT * FROM jb_checks ORDER BY name;
 ROLLBACK;
