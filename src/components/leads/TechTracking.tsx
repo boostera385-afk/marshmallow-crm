@@ -1,4 +1,5 @@
-import { CircleDashed, Loader2, MessageSquare, Phone, RefreshCw, Users } from "lucide-react";
+import { useState } from "react";
+import { CircleDashed, Loader2, MessageSquare, MessagesSquare, Phone, RefreshCw, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -6,6 +7,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/date-time-format";
+import { TechChatDialog } from "./TechChatDialog";
 import {
   summarizeTechs,
   TECH_CONTACT_STATES,
@@ -18,7 +20,8 @@ import {
   type TechSummary,
 } from "@/lib/tech-status";
 import {
-  canSeeTechTracking,
+  canEditTechTracking,
+  canSeeTechStatus,
   useCheckTechStatus,
   useLeadTechContacts,
   useSetTechContactState,
@@ -57,13 +60,22 @@ function TechVerdictBadge({ tech }: { tech: LeadTechContact }) {
 }
 
 /** One tech: name, Not Texted / Texted / Called, and what the AI read from their chat. */
-function TechRow({ tech, leadId, canEdit }: { tech: LeadTechContact; leadId: string; canEdit: boolean }) {
+function TechRow({ tech, leadId, canEdit, onOpenChat }: {
+  tech: LeadTechContact;
+  leadId: string;
+  canEdit: boolean;
+  onOpenChat: (tech: LeadTechContact) => void;
+}) {
   const { user } = useAuth();
   const setState = useSetTechContactState(leadId, user);
   const check = useCheckTechStatus();
 
   const change = (value: string) => {
-    if (!value || value === tech.state) return;
+    // Clicking the Texted / Called the tech already has opens their chat.
+    if (!value || value === tech.state) {
+      if (tech.state !== "not_texted") onOpenChat(tech);
+      return;
+    }
     const state = value as TechContactState;
     setState.mutate(
       { techNumber: tech.tech_number, state },
@@ -93,6 +105,20 @@ function TechRow({ tech, leadId, canEdit }: { tech: LeadTechContact; leadId: str
         </span>
         {(setState.isPending || check.isPending) && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" aria-label="Saving" />}
         <TechVerdictBadge tech={tech} />
+        {tech.phone && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => onOpenChat(tech)}
+            className="h-6 shrink-0 gap-1 px-1.5 text-[10px]"
+            aria-label={`Open chat with Tech ${tech.tech_number}${tech.name ? `, ${tech.name}` : ""}`}
+            title="See what we sent and what the tech replied"
+          >
+            <MessagesSquare className="h-3.5 w-3.5" aria-hidden="true" />
+            Chat
+          </Button>
+        )}
       </div>
 
       <ToggleGroup
@@ -176,9 +202,13 @@ function RecheckButton({ leadId, hasContacted }: { leadId: string; hasContacted:
   );
 }
 
-function TechList({ leadId, techs }: { leadId: string; techs: LeadTechContact[] }) {
+function TechList({ leadId, techs, onOpenChat }: {
+  leadId: string;
+  techs: LeadTechContact[];
+  onOpenChat: (tech: LeadTechContact) => void;
+}) {
   const { role } = useAuth();
-  const canEdit = canSeeTechTracking(role);
+  const canEdit = canEditTechTracking(role);
   if (techs.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-border/60 px-2 py-2 text-[11px] text-muted-foreground">
@@ -189,7 +219,7 @@ function TechList({ leadId, techs }: { leadId: string; techs: LeadTechContact[] 
   return (
     <ul className="space-y-1.5">
       {techs.map((tech) => (
-        <TechRow key={tech.id} tech={tech} leadId={leadId} canEdit={canEdit} />
+        <TechRow key={tech.id} tech={tech} leadId={leadId} canEdit={canEdit} onOpenChat={onOpenChat} />
       ))}
     </ul>
   );
@@ -197,13 +227,15 @@ function TechList({ leadId, techs }: { leadId: string; techs: LeadTechContact[] 
 
 /** Top of the Processor notes thread: the job's tech status and every tech's contact state. */
 export function TechTrackingPanel({ leadId }: { leadId: string }) {
-  const { role } = useAuth();
-  const visible = canSeeTechTracking(role);
+  const { role, canAccess } = useAuth();
+  const visible = canSeeTechStatus(role, canAccess);
   const { data: techs, isLoading, isError } = useLeadTechContacts(leadId, visible);
+  const [chatTechNumber, setChatTechNumber] = useState<number | null>(null);
   if (!visible) return null;
 
   const list = techs ?? [];
   const summary = summarizeTechs(list);
+  const chatTech = list.find((tech) => tech.tech_number === chatTechNumber) ?? null;
 
   return (
     <section aria-label="Tech tracking" className="space-y-1.5 border-b border-border/35 p-2">
@@ -221,18 +253,28 @@ export function TechTrackingPanel({ leadId }: { leadId: string }) {
       {isError ? (
         <p className="text-[11px] text-destructive">Could not load tech tracking. It will retry automatically.</p>
       ) : (
-        !isLoading && <TechList leadId={leadId} techs={list} />
+        !isLoading && <TechList leadId={leadId} techs={list} onOpenChat={(tech) => setChatTechNumber(tech.tech_number)} />
       )}
+      <TechChatDialog leadId={leadId} tech={chatTech} onOpenChange={(open) => { if (!open) setChatTechNumber(null); }} />
     </section>
   );
 }
 
 /** Urgent table cell: summary badge, opening every tech's detail. */
 export function TechStatusCell({ leadId, techs }: { leadId: string; techs: LeadTechContact[] | undefined }) {
+  const [open, setOpen] = useState(false);
+  const [chatTechNumber, setChatTechNumber] = useState<number | null>(null);
   if (!techs) return <span className="text-muted-foreground">—</span>;
   const summary = summarizeTechs(techs);
+  const chatTech = techs.find((tech) => tech.tech_number === chatTechNumber) ?? null;
+  // The chat opens as its own dialog; the popover closes so the two never overlap.
+  const openChat = (tech: LeadTechContact) => {
+    setOpen(false);
+    setChatTechNumber(tech.tech_number);
+  };
   return (
-    <Popover>
+    <>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -251,9 +293,11 @@ export function TechStatusCell({ leadId, techs }: { leadId: string; techs: LeadT
           <RecheckButton leadId={leadId} hasContacted={summary.contacted > 0} />
         </div>
         <div className="max-h-80 overflow-y-auto pr-1">
-          <TechList leadId={leadId} techs={techs} />
+          <TechList leadId={leadId} techs={techs} onOpenChat={openChat} />
         </div>
       </PopoverContent>
     </Popover>
+    <TechChatDialog leadId={leadId} tech={chatTech} onOpenChange={(next) => { if (!next) setChatTechNumber(null); }} />
+    </>
   );
 }

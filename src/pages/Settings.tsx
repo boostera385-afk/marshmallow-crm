@@ -75,6 +75,7 @@ const NAV_SECTION_LABELS: Record<string, string> = {
       optimization: "Optimization",
   quick_chat: "CX Quickchat",
   tech_quick_chat: "Tech Quickchat",
+  tech_status: "AI Tech Status",
 };
 
 const roleColors: Record<AppRole, string> = {
@@ -792,12 +793,14 @@ const Settings = () => {
       label: NAV_SECTION_LABELS[section] || section,
       searchTerms: section === "cx_updates" ? ["Get CX Update", "Get Tech Update", "CX Updates", "Tech Updates", "Question More"]
         : section === "processor_board" ? ["Dispatch Board", "Job Update Board"]
-        : section === "cs_team_performance" ? ["Analytics", "CS Report", "Team Performance"] : [],
+        : section === "cs_team_performance" ? ["Analytics", "CS Report", "Team Performance"]
+        : section === "tech_status" ? ["Tech Status", "Urgent", "Texted", "Called", "Agreed"] : [],
       renderControl: (target: SettingsUser) => {
         const fixedReason = section === "optimization" || section === "payment_requests"
           ? "Admin only"
           : section === "ai_assistance" ? "Customer Service roles only"
           : section === "processor_board" ? "Admin and Processor roles only"
+          : section === "tech_status" && target.role === "cs_admin" ? "Tech details are hidden from CS Admin"
           : section === "cx_updates" || section === "notifications" ? "Admin, Processor, CS Admin and Customer Service roles"
           : section === "settings" ? "Controlled by Manage CS in Users"
           : section === "quote_pending_requests" ? "Controlled by Quotation Master"

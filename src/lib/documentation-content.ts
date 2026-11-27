@@ -99,6 +99,7 @@ export const NAV_ACCESS_ROWS: string[][] = [
   ["settings", "Settings", "Admin; CS Admin with Can Manage Users sees the Users tab only (fixed)"],
   ["quick_chat", "Quick Chat (customer)", "Admin; others when granted. Enforced by can_use_quick_chat()"],
   ["tech_quick_chat", "Tech Quick Chat", "Granted per user; hidden from CS Admin. Enforced by can_use_quick_chat()"],
+  ["tech_status", "AI Tech Status", "Admin and Processor by default; grantable per user. Enforced by can_see_tech_status() and lead-tech-status"],
 ];
 
 export const TAG_ROWS: string[][] = [

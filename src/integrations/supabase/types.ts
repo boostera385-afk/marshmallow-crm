@@ -3309,6 +3309,7 @@ export type Database = {
       can_create_manual_lead: { Args: never; Returns: boolean }
       can_edit_others_processor_notes: { Args: never; Returns: boolean }
       can_manage_map_coverage: { Args: { _user_id: string }; Returns: boolean }
+      can_see_tech_status: { Args: never; Returns: boolean }
       can_use_quick_chat: { Args: { _user_id: string }; Returns: boolean }
       claim_ai_status_refresh: {
         Args: { p_cooldown_seconds?: number; p_trigger: string }
@@ -3497,6 +3498,18 @@ export type Database = {
           department: string
           lead_count: number
           status: string
+        }[]
+      }
+      get_lead_tech_chat: {
+        Args: { p_lead_id: string; p_tech_number: number }
+        Returns: {
+          has_media: boolean
+          id: string
+          kind: string
+          message_time: string
+          sender: string
+          status: string
+          text: string
         }[]
       }
       get_operator_hold_alerts: { Args: never; Returns: Json }

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { subscribeToTableChanges } from "@/lib/realtime";
 import { logActivity } from "@/lib/activity";
 import { parseTechContact, TECH_STATE_LABELS, type LeadTechContact, type TechContactState } from "@/lib/tech-status";
+import { parseTechChat } from "@/lib/tech-chat";
 
 // lead_tech_contacts / set_lead_tech_contact_state: migration 20261127061449.
 const TECH_COLUMNS =
@@ -11,8 +12,20 @@ const TECH_COLUMNS =
 
 export const TECH_CONTACTS_KEY = ["lead-tech-contacts"] as const;
 
-/** Admin and Processor only (RLS returns nothing to anyone else). */
-export function canSeeTechTracking(role: string | null | undefined): boolean {
+/** Feature Access section that shows AI Tech Status (navigation_permissions.nav_section). */
+export const TECH_STATUS_SECTION = "tech_status";
+
+/**
+ * Who sees AI Tech Status: Admin and Processor by default; Admin can switch it on for anyone
+ * (or off for a Processor) in Settings > Feature Access. RLS on lead_tech_contacts applies the
+ * same rule (marshmallow_private.can_see_tech_status, migration 20261127085131).
+ */
+export function canSeeTechStatus(role: string | null | undefined, canAccess: (navItem: string) => boolean): boolean {
+  return role === "admin" || canAccess(TECH_STATUS_SECTION);
+}
+
+/** Marking techs Not Texted / Texted / Called stays with Admin and Processor (the RPC checks it). */
+export function canEditTechTracking(role: string | null | undefined): boolean {
   return role === "admin" || role === "processor";
 }
 
@@ -123,5 +136,23 @@ export function useCheckTechStatus() {
   return useMutation({
     mutationFn: ({ leadIds, force }: { leadIds: string[]; force?: boolean }) => requestTechStatusCheck(leadIds, force),
     onSettled: () => void queryClient.invalidateQueries({ queryKey: TECH_CONTACTS_KEY }),
+  });
+}
+
+/**
+ * One tech's saved Quo chat for this job (read-only). Loaded only while the chat is open and
+ * refreshed every 30 s so a new reply shows up without reopening.
+ */
+export function useLeadTechChat(leadId: string, techNumber: number | null) {
+  return useQuery({
+    queryKey: ["lead-tech-chat", leadId, techNumber],
+    enabled: Boolean(leadId) && techNumber !== null,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_lead_tech_chat", { p_lead_id: leadId, p_tech_number: techNumber as number });
+      if (error) throw error;
+      return parseTechChat(data);
+    },
   });
 }

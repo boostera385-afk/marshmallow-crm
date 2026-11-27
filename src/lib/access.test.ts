@@ -232,3 +232,24 @@ describe("canReactToProcessorNotes", () => {
     }
   });
 });
+
+describe("AI Tech Status feature access", () => {
+  const grant = (allowed: boolean): NavigationPermission[] => [{ id: "p", user_id: "u", nav_section: "tech_status", allowed }];
+
+  it("is on for Admin and Processor by default and off for other roles", () => {
+    expect(canAccessNavItem("admin", "tech_status")).toBe(true);
+    expect(canAccessNavItem("processor", "tech_status")).toBe(true);
+    for (const role of ["customer_service", "opr", "opr_admin"] as const) {
+      expect(canAccessNavItem(role, "tech_status")).toBe(false);
+    }
+  });
+
+  it("can be granted to another role, or switched off for a Processor", () => {
+    expect(canAccessNavItem("customer_service", "tech_status", grant(true))).toBe(true);
+    expect(canAccessNavItem("processor", "tech_status", grant(false))).toBe(false);
+  });
+
+  it("is never available to CS Admin, who cannot see tech details", () => {
+    expect(canAccessNavItem("cs_admin", "tech_status", grant(true))).toBe(false);
+  });
+});

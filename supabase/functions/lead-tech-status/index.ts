@@ -6,7 +6,11 @@
 // agreed to THIS job. Writes only the verdict columns of lead_tech_contacts.
 //
 // Callers
-//   manual  signed-in Admin / Processor. Body { leadIds?: string[], force?: boolean }.
+//   manual  signed-in user with AI Tech Status (Admin, Processor by default, or
+//           granted in Feature Access; public.can_see_tech_status(), migration
+//           20261127085131). Body { leadIds?: string[], force?: boolean }. Users
+//           other than Admin / Processor must name leads, and only leads they can
+//           see (their own RLS) are checked.
 //           Called after a tech is marked Texted/Called, from the tech status
 //           popover, and with the urgent table's Refresh AI Status button.
 //   cron    x-cron-secret header (pg_cron, see 20261127061709). All active
@@ -147,6 +151,8 @@ Deno.serve(async (req) => {
 
   // Who is calling.
   let trigger: "cron" | "manual" = "manual";
+  let staff = false; // Admin / Processor: may run a check over every active lead.
+  let userClient: SupabaseClient | null = null;
   const requestSecret = req.headers.get("x-cron-secret");
   if (requestSecret) {
     const envSecret = Deno.env.get("FUNCTION_CRON_SECRET");
@@ -163,19 +169,35 @@ Deno.serve(async (req) => {
     if (!authHeader.startsWith("Bearer ")) return jsonResponse({ error: "Not signed in." }, 401);
     const { data: userData, error: userError } = await admin.auth.getUser(authHeader.replace("Bearer ", ""));
     if (userError || !userData?.user) return jsonResponse({ error: "Not signed in." }, 401);
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    if (!anonKey) return jsonResponse({ error: "Server is not configured." }, 500);
+    userClient = createClient(supabaseUrl, anonKey, {
+      auth: { persistSession: false },
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: allowed, error: accessError } = await userClient.rpc("can_see_tech_status");
+    if (accessError) return jsonResponse({ error: "Could not check your access." }, 500);
+    if (allowed !== true) return jsonResponse({ error: "AI Tech Status is not enabled for you." }, 403);
     const { data: roleRows } = await admin.from("user_roles").select("role").eq("user_id", userData.user.id);
     const roles = new Set((roleRows ?? []).map((row) => String(row.role)));
-    if (!roles.has("admin") && !roles.has("processor")) {
-      return jsonResponse({ error: "Only Admins and Processors can check tech status." }, 403);
-    }
+    staff = roles.has("admin") || roles.has("processor");
   }
 
   let body: { leadIds?: unknown; force?: unknown } = {};
   try { body = await req.json(); } catch { body = {}; }
-  const requested = Array.isArray(body.leadIds)
+  let requested = Array.isArray(body.leadIds)
     ? [...new Set(body.leadIds.filter((id): id is string => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)))]
     : null;
   if (requested && requested.length > MAX_LEADS) return jsonResponse({ error: `At most ${MAX_LEADS} leads per request.` }, 400);
+  if (trigger === "manual" && !staff) {
+    // Granted users check only leads they name and can see.
+    if (!requested) return jsonResponse({ error: "Choose the leads to check." }, 400);
+    if (requested.length && userClient) {
+      const { data: visible, error: visibleError } = await userClient.from("leads").select("id").in("id", requested);
+      if (visibleError) return jsonResponse({ error: "Could not load the jobs." }, 500);
+      requested = (visible ?? []).map((row) => String(row.id));
+    }
+  }
   const force = trigger === "manual" && body.force === true;
 
   // Techs being tracked.

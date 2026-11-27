@@ -160,9 +160,8 @@ vi.mock("@/components/leads/LeadCard", () => ({ default: function Card({ lead, i
 vi.mock("@/components/leads/OprLeadCard", () => ({ default: () => null }));
 // First-contact icons load through TanStack Query; the page's own read counts are tested here.
 vi.mock("@/hooks/useLeadFirstContact", () => ({ usePrefetchFirstContacts: () => ({ ready: true, isError: false }) }));
-vi.mock("@/components/leads/FirstContactControl", () => ({ FirstContactCell: () => null }));
 vi.mock("@/hooks/useLeadTechContacts", () => ({
-  canSeeTechTracking: () => false,
+  canSeeTechStatus: () => false,
   requestTechStatusCheck: vi.fn(() => Promise.resolve({})),
   useTechContactsForLeads: () => ({ data: undefined }),
 }));

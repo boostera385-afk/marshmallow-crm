@@ -9,11 +9,23 @@
   event (`source = auto`) or by hand (`source = manual`, never overwritten automatically).
 - UI: solid icons (phone / envelope with an arrow, after the reference). Chip next to the date on
   the lead card, and on the full lead page with a strip of all four counts and the last contact (menu: history counts + "Set by hand" for
-  Admin / Processor / CS Admin / CS; "Use Quo automatically" clears a manual value) and a
-  **Contact** column in the Urgent leads table. Green = outgoing, blue = incoming; phone = call,
+  Admin / Processor / CS Admin / CS; "Use Quo automatically" clears a manual value). Not in the
+  Urgent leads table (after the live test: that table shows only the AI tech status). Green = outgoing, blue = incoming; phone = call,
   envelope = text. Plain Operators see nothing (they cannot read leads directly).
 
-### Phase 2: Tech Status (Admin and Processor only)
+### Phase 2: Tech Status (Feature Access "AI Tech Status")
+- Who sees it: Admin always; Processor by default; Admin can switch it on for other users (or off
+  for a Processor) in Settings > Feature Access (`navigation_permissions`, `tech_status`). Never
+  CS Admin (tech details are hidden from that role). Enforced by
+  `marshmallow_private.can_see_tech_status()` in RLS and by `lead-tech-status`; granted users
+  read techs only on leads they can see. Texted / Called stays Admin / Processor (migration
+  20261127085131).
+- Tech chat: each tech row has a **Chat** button, and clicking the Texted / Called the tech
+  already has opens the same read-only dialog: what our team sent (usually the Check Template),
+  the tech's replies and call events (transcripts kept, Quo bookkeeping hidden), newest 150 since
+  a day before the lead was created. The message the AI quoted is outlined. Served by
+  `get_lead_tech_chat(lead, tech_number)` (20261127085859): same gate as Tech Status plus lead
+  visibility; nothing is sent from the CRM.
 - `lead_tech_contacts` mirrors the "Tech N: name - phone - note" lines in the processor notes
   (trigger on `lead_notes`; notes stay the source of truth for who the techs are).
 - Each tech has **Not Texted / Texted / Called**. The note decides first: processors already write

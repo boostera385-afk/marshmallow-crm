@@ -3,7 +3,7 @@ import { ALL_LEAD_STATUSES, ALL_NAV_ITEMS, type NavItem } from "@/lib/constants"
 
 const DEFAULT_NAV_ACCESS: Record<AppRole, Set<NavItem>> = {
   admin: new Set(ALL_NAV_ITEMS),
-  processor: new Set(["leads", "schedule", "processor_board", "cancellation_requests", "map_view", "technicians", "cx_updates", "notifications"]),
+  processor: new Set(["leads", "schedule", "processor_board", "cancellation_requests", "map_view", "technicians", "cx_updates", "notifications", "tech_status"]),
   customer_service: new Set(["leads", "schedule", "quote_approval_requests", "ai_assistance", "cx_updates", "notifications"]),
   opr: new Set(["leads"]),
   // The urgent review queue is the CS Admin side of the AI check. customer_service
@@ -237,6 +237,12 @@ if (navItem === "crm_updates") {
     }
 
 
+
+  if (navItem === "tech_status" && role === "cs_admin") {
+    // Tech names and numbers are hidden from CS Admin (canSeeTechDetails), so the AI Tech
+    // Status that lists them is not grantable. can_see_tech_status() refuses it too.
+    return false;
+  }
 
   if (navItem === "cancellation_requests" && canAccessCancellationRequests(role)) {
     return true;
