@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Check, Loader2, PhoneCall, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -10,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useHoverOpen } from "@/hooks/useHoverOpen";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDateTime } from "@/lib/date-time-format";
 import {
@@ -40,7 +40,8 @@ interface FirstContactControlProps {
  */
 export function FirstContactControl({ leadId, prefetched, className }: FirstContactControlProps) {
   const { user, role } = useAuth();
-  const [open, setOpen] = useState(false);
+  // Hover shows the history menu (mouse); click / tap / Enter still work.
+  const { open, onOpenChange, hoverProps, triggerProps, isHoverOpen } = useHoverOpen();
   const { data: firstContact, isPending } = useLeadFirstContact(leadId, { prefetched });
   const events = useLeadContactEvents(leadId, open);
   const setFirstContact = useSetFirstContact(leadId, user);
@@ -65,13 +66,17 @@ export function FirstContactControl({ leadId, prefetched, className }: FirstCont
   const counts = events.data ? summarizeContactEvents(events.data) : null;
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          title={title}
           aria-label={title}
-          onClick={(event) => event.stopPropagation()}
+          {...hoverProps}
+          onPointerDown={triggerProps.onPointerDown}
+          onClick={(event) => {
+            event.stopPropagation();
+            triggerProps.onClick(event);
+          }}
           className={cn(
             "inline-flex h-5 items-center gap-1 rounded-full border px-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             firstContact && direction
@@ -93,7 +98,14 @@ export function FirstContactControl({ leadId, prefetched, className }: FirstCont
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="start" className="w-60" onClick={(event) => event.stopPropagation()}>
+      <DropdownMenuContent
+        align="start"
+        className="w-60"
+        {...hoverProps}
+        // Opened by hover: leave keyboard focus where it was.
+        onCloseAutoFocus={(event) => { if (isHoverOpen()) event.preventDefault(); }}
+        onClick={(event) => event.stopPropagation()}
+      >
         <DropdownMenuLabel className="space-y-0.5">
           <span className="block text-xs font-semibold">First contact</span>
           <span className="block text-[11px] font-normal text-muted-foreground">

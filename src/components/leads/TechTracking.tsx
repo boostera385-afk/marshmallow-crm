@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/date-time-format";
 import { TechChatDialog } from "./TechChatDialog";
+import { useHoverOpen } from "@/hooks/useHoverOpen";
 import {
   summarizeTechs,
   TECH_CONTACT_STATES,
@@ -253,7 +254,12 @@ export function TechTrackingPanel({ leadId }: { leadId: string }) {
       {isError ? (
         <p className="text-[11px] text-destructive">Could not load tech tracking. It will retry automatically.</p>
       ) : (
-        !isLoading && <TechList leadId={leadId} techs={list} onOpenChat={(tech) => setChatTechNumber(tech.tech_number)} />
+        !isLoading && (
+          // Capped so a job with many techs never pushes the notes out of the popover.
+          <div className="max-h-56 overflow-y-auto overscroll-contain pr-1">
+            <TechList leadId={leadId} techs={list} onOpenChat={(tech) => setChatTechNumber(tech.tech_number)} />
+          </div>
+        )
       )}
       <TechChatDialog leadId={leadId} tech={chatTech} onOpenChange={(open) => { if (!open) setChatTechNumber(null); }} />
     </section>
@@ -262,31 +268,43 @@ export function TechTrackingPanel({ leadId }: { leadId: string }) {
 
 /** Urgent table cell: summary badge, opening every tech's detail. */
 export function TechStatusCell({ leadId, techs }: { leadId: string; techs: LeadTechContact[] | undefined }) {
-  const [open, setOpen] = useState(false);
+  // Hover shows the techs (mouse); click / tap / Enter still work.
+  const { open, onOpenChange, hoverProps, triggerProps, isHoverOpen } = useHoverOpen();
   const [chatTechNumber, setChatTechNumber] = useState<number | null>(null);
   if (!techs) return <span className="text-muted-foreground">—</span>;
   const summary = summarizeTechs(techs);
   const chatTech = techs.find((tech) => tech.tech_number === chatTechNumber) ?? null;
   // The chat opens as its own dialog; the popover closes so the two never overlap.
   const openChat = (tech: LeadTechContact) => {
-    setOpen(false);
+    onOpenChange(false);
     setChatTechNumber(tech.tech_number);
   };
   return (
     <>
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <button
           type="button"
-          onClick={(event) => event.stopPropagation()}
+          {...hoverProps}
+          onClick={(event) => {
+            event.stopPropagation();
+            triggerProps.onClick(event);
+          }}
           className="max-w-full rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`Tech status: ${summary.label}. Show techs`}
-          title={summary.label}
         >
           <TechSummaryBadge summary={summary} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 space-y-2 p-3" onClick={(event) => event.stopPropagation()}>
+      <PopoverContent
+        align="start"
+        className="w-80 space-y-2 p-3"
+        {...hoverProps}
+        // Opened by hover: do not pull keyboard focus into the popup.
+        onOpenAutoFocus={(event) => { if (isHoverOpen()) event.preventDefault(); }}
+        onCloseAutoFocus={(event) => { if (isHoverOpen()) event.preventDefault(); }}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold">Techs for this job</span>
           <span className="ml-auto" />
