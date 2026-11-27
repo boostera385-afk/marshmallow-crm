@@ -4,18 +4,28 @@ import type { LeadTechContact } from "@/lib/tech-status";
 
 const state = vi.hoisted(() => ({
   role: "processor" as string,
+  // Feature Access "tech_status" switch (role default resolved by canAccess in the app).
+  granted: true,
   techs: [] as LeadTechContact[],
   setMutate: vi.fn(),
   checkMutate: vi.fn(),
 }));
 
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" }, role: state.role }) }));
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" }, role: state.role, canAccess: (item: string) => item === "tech_status" && state.granted }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/hooks/useLeadTechContacts", () => ({
-  canSeeTechTracking: (role: string) => role === "admin" || role === "processor",
+  canSeeTechStatus: (role: string, canAccess: (item: string) => boolean) => role === "admin" || canAccess("tech_status"),
+  canEditTechTracking: (role: string) => role === "admin" || role === "processor",
   useLeadTechContacts: () => ({ data: state.techs, isLoading: false, isError: false }),
   useSetTechContactState: () => ({ mutate: state.setMutate, isPending: false }),
   useCheckTechStatus: () => ({ mutate: state.checkMutate, isPending: false }),
+  useLeadTechChat: (_leadId: string, techNumber: number | null) => ({
+    data: techNumber === null ? undefined : [
+      { id: "m1", sender: "agent", kind: "text", text: "Can you take the Irving job tomorrow?", message_time: "2026-11-27T10:00:00Z", has_media: false },
+      { id: "m2", sender: "customer", kind: "text", text: "Yes I can do it", message_time: "2026-11-27T10:05:00Z", has_media: false },
+    ],
+    isLoading: false, isError: false, isFetching: false, refetch: vi.fn(),
+  }),
 }));
 
 import { TechTrackingPanel } from "./TechTracking";
@@ -29,6 +39,7 @@ const tech = (over: Partial<LeadTechContact>): LeadTechContact => ({
 describe("TechTrackingPanel", () => {
   beforeEach(() => {
     state.role = "processor";
+    state.granted = true;
     state.techs = [];
     state.setMutate.mockReset();
     state.checkMutate.mockReset();
@@ -41,10 +52,25 @@ describe("TechTrackingPanel", () => {
     expect(screen.getByRole("button", { name: /Re-check/ })).toBeDisabled();
   });
 
-  it("is hidden from roles other than Admin and Processor", () => {
-    state.role = "cs_admin";
+  it("is hidden from users without AI Tech Status in Feature Access", () => {
+    state.role = "customer_service";
+    state.granted = false;
     const { container } = render(<TechTrackingPanel leadId="l1" />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("is hidden from a Processor whose AI Tech Status was switched off", () => {
+    state.granted = false;
+    const { container } = render(<TechTrackingPanel leadId="l1" />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows a granted user the status, but only Admin / Processor can change Texted / Called", () => {
+    state.role = "customer_service";
+    state.techs = [tech({ state: "texted", verdict: "pending" })];
+    render(<TechTrackingPanel leadId="l1" />);
+    expect(screen.getByText("Waiting on 1 tech")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Called" })).toBeDisabled();
   });
 
   it("summarises agreed techs and shows the tech's own words", () => {
@@ -73,6 +99,24 @@ describe("TechTrackingPanel", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Not Texted" }));
     expect(state.setMutate).toHaveBeenCalledWith({ techNumber: 1, state: "not_texted" }, expect.any(Object));
     expect(state.checkMutate).not.toHaveBeenCalled();
+  });
+
+  it("opens the tech's chat when the Texted they already have is clicked", () => {
+    state.techs = [tech({ state: "texted", verdict: "agreed", evidence_quote: "Yes I can do it" })];
+    render(<TechTrackingPanel leadId="l1" />);
+    fireEvent.click(screen.getByRole("radio", { name: "Texted" }));
+    expect(state.setMutate).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: /Chat with Michael/ })).toBeInTheDocument();
+    expect(screen.getByText("Can you take the Irving job tomorrow?")).toBeInTheDocument();
+    expect(screen.getByText("The AI read this message")).toBeInTheDocument();
+  });
+
+  it("lets a granted user open the chat with the Chat button", () => {
+    state.role = "customer_service";
+    state.techs = [tech({ state: "texted", verdict: "pending" })];
+    render(<TechTrackingPanel leadId="l1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Open chat with Tech 1, Michael" }));
+    expect(screen.getByText("Yes I can do it")).toBeInTheDocument();
   });
 
   it("shows the processor's remark and where the AI's quote came from", () => {

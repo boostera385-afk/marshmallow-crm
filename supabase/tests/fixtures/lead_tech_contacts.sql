@@ -22,8 +22,18 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
 $$;
 GRANT EXECUTE ON FUNCTION marshmallow_private.caller_role() TO authenticated;
 
+-- Copies of the production has_role() and Feature Access table (tech_status grant, 20261127085131).
+CREATE FUNCTION public.has_role(_user_id uuid, _role public.app_role) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role)
+$$;
+CREATE TABLE public.navigation_permissions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, nav_section text, allowed boolean,
+  UNIQUE (user_id, nav_section));
+
 CREATE TABLE public.leads (id uuid PRIMARY KEY);
 INSERT INTO public.leads VALUES ('a1000000-0000-4000-8000-000000000001'), ('b1000000-0000-4000-8000-000000000002');
+GRANT SELECT ON public.leads TO authenticated; -- production: leads RLS decides which rows
 CREATE TABLE public.lead_notes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), lead_id uuid, note_type text, content text,
   created_at timestamptz DEFAULT now(), edited_at timestamptz);

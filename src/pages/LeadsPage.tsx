@@ -1,7 +1,6 @@
 import { redactLeadForOperator, withOperatorLocation, isLocationOnlyOperator } from "@/lib/operator-privacy";
 import { usePrefetchFirstContacts } from "@/hooks/useLeadFirstContact";
-import { FirstContactCell } from "@/components/leads/FirstContactControl";
-import { canSeeTechTracking, requestTechStatusCheck, useTechContactsForLeads } from "@/hooks/useLeadTechContacts";
+import { canSeeTechStatus, requestTechStatusCheck, useTechContactsForLeads } from "@/hooks/useLeadTechContacts";
 import { TechStatusCell } from "@/components/leads/TechTracking";
 import { fetchOperatorSafeLeads } from "@/lib/operator-safe-leads";
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -202,7 +201,7 @@ function isTodayOrTomorrow(scheduleText: string | null | undefined): boolean {
 }
 
 export default function LeadsPage() {
-  const { user, role, profile } = useAuth();
+  const { user, role, profile, canAccess } = useAuth();
   const { toggleNotepad, isNotepadOpen, activeUserIds } = useNotepad();
   const isAnyNotepadOpen = activeUserIds.length > 0;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1117,10 +1116,9 @@ export default function LeadsPage() {
     () => (isLocationOnlyOperator(role) ? [] : urgentTableLeads.map((l) => l.id)),
     [urgentTableLeads, role],
   );
-  usePrefetchFirstContacts(urgentIdList);
-
-  // Tech Status column: Admin and Processor only (the table's RLS returns nothing to others).
-  const showTechStatus = canSeeTechTracking(role);
+  // Tech Status column: Admin and Processor by default; Admin can grant it to others in
+  // Feature Access ("AI Tech Status"). The table's RLS applies the same rule.
+  const showTechStatus = canSeeTechStatus(role, canAccess);
   const { data: urgentTechContacts } = useTechContactsForLeads(urgentIdList, showTechStatus);
 
   // Most recent AI-status check across the urgent leads — shown as a freshness
@@ -1726,15 +1724,14 @@ export default function LeadsPage() {
             <table className="w-full table-fixed border-collapse text-left text-xs">
               <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
                 <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[11%]" : "w-[12%]"}`}>Customer</th>
-                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[12%]" : "w-[14%]"}`}>Service</th>
-                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[16%]" : "w-[18%]"}`}>AI Status</th>
-                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[11%]" : "w-[13%]"}`}>Area</th>
-                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[13%]" : "w-[15%]"}`}>Schedule</th>
-                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[8%]" : "w-[11%]"}`}>Terms</th>
-                  <th className="px-2 py-1.5 font-semibold w-[6%]" title="First contact: call or text, incoming or outgoing">Contact</th>
+                  <th className={`px-2 py-1.5 font-semibold w-[12%]`}>Customer</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[13%]" : "w-[15%]"}`}>Service</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[17%]" : "w-[19%]"}`}>AI Status</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[12%]" : "w-[14%]"}`}>Area</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[14%]" : "w-[16%]"}`}>Schedule</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[9%]" : "w-[13%]"}`}>Terms</th>
                   {showTechStatus && (
-                    <th className="px-2 py-1.5 font-semibold w-[15%]" title="AI reading of the techs' chats for this job (Admin and Processor)">Tech Status</th>
+                    <th className="px-2 py-1.5 font-semibold w-[15%]" title="AI reading of the techs' chats for this job">Tech Status</th>
                   )}
                   <th className={`px-2 py-1.5 font-semibold text-right ${showTechStatus ? "w-[8%]" : "w-[11%]"}`}>Date</th>
                 </tr>
@@ -1781,9 +1778,6 @@ export default function LeadsPage() {
                           </td>
                         );
                       })()}
-                      <td className="px-2 py-2">
-                        {isLocationOnlyOperator(role) ? <span className="text-muted-foreground">—</span> : <FirstContactCell leadId={l.id} />}
-                      </td>
                       {showTechStatus && (
                         <td className="overflow-hidden px-2 py-2" onClick={(event) => event.stopPropagation()}>
                           <TechStatusCell

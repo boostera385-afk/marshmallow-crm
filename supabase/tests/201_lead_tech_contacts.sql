@@ -139,5 +139,36 @@ SELECT pg_temp.check('a changed remark sends the tech back to the AI, keeping th
   (SELECT verdict='declined' AND verdict_checked_at IS NULL AND processor_note='called, he can do 2pm $300'
      FROM public.lead_tech_contacts WHERE lead_id='b1000000-0000-4000-8000-000000000002' AND tech_number=6));
 
+-- Feature Access: AI Tech Status (tech_status). Customer Service granted, a Processor switched
+-- off, CS Admin "granted" (never allowed), and the caller's own RPC answer.
+RESET ROLE;
+INSERT INTO public.navigation_permissions (user_id, nav_section, allowed) VALUES
+  ('30000000-0000-4000-8000-000000000003', 'tech_status', true),
+  ('30000000-0000-4000-8000-000000000002', 'tech_status', false),
+  ('30000000-0000-4000-8000-000000000004', 'tech_status', true);
+SET LOCAL ROLE authenticated;
+DO $$
+DECLARE n integer;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000003', true);
+  SELECT count(*) INTO n FROM public.lead_tech_contacts;
+  INSERT INTO checks VALUES ('granted customer_service reads techs', CASE WHEN n > 0 AND public.can_see_tech_status() THEN 'PASS' ELSE 'FAIL' END);
+  BEGIN
+    PERFORM public.set_lead_tech_contact_state('b1000000-0000-4000-8000-000000000002', 3, 'called');
+    INSERT INTO checks VALUES ('granted customer_service still cannot set tech state', 'FAIL');
+  EXCEPTION WHEN insufficient_privilege THEN
+    INSERT INTO checks VALUES ('granted customer_service still cannot set tech state', 'PASS');
+  END;
+  PERFORM set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000002', true);
+  SELECT count(*) INTO n FROM public.lead_tech_contacts;
+  INSERT INTO checks VALUES ('processor switched off reads no techs', CASE WHEN n = 0 AND NOT public.can_see_tech_status() THEN 'PASS' ELSE 'FAIL' END);
+  PERFORM set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000004', true);
+  SELECT count(*) INTO n FROM public.lead_tech_contacts;
+  INSERT INTO checks VALUES ('cs_admin is never granted tech status', CASE WHEN n = 0 AND NOT public.can_see_tech_status() THEN 'PASS' ELSE 'FAIL' END);
+  PERFORM set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000001', true);
+  INSERT INTO checks VALUES ('admin always sees tech status', CASE WHEN public.can_see_tech_status() THEN 'PASS' ELSE 'FAIL' END);
+END $$;
+RESET ROLE;
+
 SELECT name, result FROM checks ORDER BY name;
 ROLLBACK;

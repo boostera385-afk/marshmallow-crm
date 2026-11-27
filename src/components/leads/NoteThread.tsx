@@ -18,7 +18,7 @@ import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-h
 
 import { formatDateTime } from "@/lib/date-time-format";
 import { TechTrackingPanel } from "./TechTracking";
-import { canSeeTechTracking, requestTechStatusCheck } from "@/hooks/useLeadTechContacts";
+import { canEditTechTracking, requestTechStatusCheck } from "@/hooks/useLeadTechContacts";
 import { TECH_CONTACT_STATES, TECH_STATE_LABELS, TECH_STATE_NOTE_WORDS, type TechContactState } from "@/lib/tech-status";
 const NOTE_POLL_MS = 15000;
 
@@ -237,7 +237,7 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
   const [techNote, setTechNote] = useState("");
   // Texted / Called at the moment the tech is added starts AI tracking straight away.
   const [techState, setTechState] = useState<TechContactState>("not_texted");
-  const canTrackTechs = isTechThread && canSeeTechTracking(role);
+  const canTrackTechs = isTechThread && canEditTechTracking(role);
 
   const techCount = useMemo(
     () => (isTechThread ? countTechs(notes.map((n) => n.content)) : 0),
@@ -425,7 +425,8 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
         <h4 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">{label}</h4>
       </div>
 
-      {canTrackTechs && <TechTrackingPanel leadId={leadId} />}
+      {/* Shows itself only to users with AI Tech Status (Feature Access). */}
+      {isTechThread && <TechTrackingPanel leadId={leadId} />}
       <div ref={scrollRef} className="max-h-60 space-y-3 overflow-y-auto p-3">
         {notes.length === 0 && (
           <p className="text-[12px] text-muted-foreground/40 text-center py-6">No notes yet. Start the conversation.</p>

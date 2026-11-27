@@ -110,6 +110,7 @@ export const SCREENS: ScreenInfo[] = [
   { navItem: "settings", path: "/settings", purpose: "Users, Feature Access, Status Visibility, Templates, Security, CRM Updates, Google Sheets, Documentation, Structure.", edgeFunctions: ["admin-users", "google-sheets-sync", "sync-us-places"] },
   { navItem: "quick_chat", path: null, purpose: "Quick Chat with the customer from a lead.", edgeFunctions: [] },
   { navItem: "tech_quick_chat", path: null, purpose: "Quick Chat with the technician from a lead.", edgeFunctions: [] },
+  { navItem: "tech_status", path: null, purpose: "AI Tech Status in the urgent table and the Processor notes. Admin and Processor by default; grantable per user.", edgeFunctions: ["lead-tech-status"] },
 ];
 
 export type DonutTargetKind = "edge" | "rpc" | "table" | "storage" | "site";
