@@ -1,6 +1,6 @@
 import ScheduleRequirementDialog from "./ScheduleRequirementDialog";
 import { promptsForNewSchedule, requestScheduleRequirementPrompt } from "@/lib/schedule-requirement";
-import { redactLeadForOperator } from "@/lib/operator-privacy";
+import { isLocationOnlyOperator, redactLeadForOperator } from "@/lib/operator-privacy";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { memo } from "react";
@@ -99,6 +99,7 @@ import LeadStatusHistoryDialog from "./LeadStatusHistoryDialog";
 import LeadCoverageBadge from "./LeadCoverageBadge";
 import { ScheduleRequirementChip } from "./ScheduleRequirementChip";
 import UrgentAICheckDialog from "./UrgentAICheckDialog";
+import { FirstContactControl } from "./FirstContactControl";
 import { showsUrgentCheck } from "@/lib/urgent-verification";
 
 import { formatDateTime as formatDateTime12h } from "@/lib/date-time-format";
@@ -122,6 +123,8 @@ interface LeadCardProps {
   initialPendingCancellationRequest?: LeadCancellationRequest | null;
   /** A quote approval this lead is still waiting on a CS Admin to decide. */
   pendingQuoteApproval?: boolean;
+  /** The list already loaded this lead's first contact (call / text icon) into the cache. */
+  firstContactPrefetched?: boolean;
   /**
    * A quote approval this viewer can decide, rendered with its actions directly
    * above the status control. Supplied by the Quote Approval page; every other
@@ -717,6 +720,7 @@ function LeadCard({
   initialPendingCancellationRequest,
   pendingQuoteApproval = false,
   quoteApproval = null,
+  firstContactPrefetched = false,
 }: LeadCardProps) {
   const { user, role, profile, canAccess } = useAuth();
   // Operators see City, ST ZIP only: no address, customer number or technician.
@@ -1440,6 +1444,10 @@ function LeadCard({
                       <CalendarDays className="h-3 w-3" />
                       {formatDate(lead.created_at)}
                     </span>
+                  )}
+                  {/* Operators cannot read leads directly, so they have no contact history to show. */}
+                  {!isLocationOnlyOperator(role) && (
+                    <FirstContactControl leadId={lead.id} prefetched={firstContactPrefetched} />
                   )}
                   {isActivateCustomer && (
                     <span

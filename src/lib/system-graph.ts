@@ -57,12 +57,12 @@ export const NODE_KIND_INFO: Record<GraphNodeKind, { label: string; color: strin
 
 /** Groups of tables shown as one data dot. Login/role checks (user_roles, profiles) are left out. */
 export const DATA_HUBS = {
-  leads: { label: "Leads", description: "Lead records and what hangs off them: notes, photos, payments, shares, Operator assignments.", tables: ["leads", "lead_notes", "lead_photos", "lead_payments", "lead_updates", "lead_shares", "lead_operator_assignments"] },
+  leads: { label: "Leads", description: "Lead records and what hangs off them: notes, photos, payments, shares, Operator assignments.", tables: ["leads", "lead_notes", "lead_photos", "lead_payments", "lead_updates", "lead_shares", "lead_operator_assignments", "lead_contact_events", "lead_first_contacts"] },
   quo_data: { label: "Quo conversations", description: "The CRM's copy of Quo texts and calls: conversations, messages, webhook events, numbers, flags.", tables: ["quo_conversations", "quo_messages", "quo_webhook_events", "quo_phone_numbers", "quo_conversation_flags", "quo_sync_logs", "quo_outbound_messages", "quo_pinned_conversations", "quo_number_preferences"] },
   approvals: { label: "Approval requests", description: "Quote, payment, cancellation, urgent-review, CX/Tech update and technician-change requests.", tables: ["lead_cancellation_requests", "lead_payment_requests", "lead_quote_approval_requests", "lead_urgent_review_requests", "lead_cx_update_requests", "technician_change_requests"] },
   notifications: { label: "Notifications", description: "In-app notifications for each user.", tables: ["notifications"] },
   technicians: { label: "Technicians", description: "Technician directory and Technician Intelligence results.", tables: ["technicians", "technician_workflow_assessments"] },
-  ai_results: { label: "AI results", description: "Saved advisory AI output: Processor Board reviews and urgent AI Status labels.", tables: ["processor_job_assessments", "processor_job_refresh_locks", "lead_ai_statuses"] },
+  ai_results: { label: "AI results", description: "Saved advisory AI output: Processor Board reviews, urgent AI Status labels and per-job Tech Status.", tables: ["processor_job_assessments", "processor_job_refresh_locks", "lead_ai_statuses", "lead_tech_contacts"] },
   places: { label: "Census places", description: "US populated places and population used for nearby areas and coverage.", tables: ["us_places"] },
 } as const;
 
@@ -103,6 +103,7 @@ export const FUNCTION_FACTS: Record<string, FunctionFacts> = {
   "generate-nearby-areas": { census: true, data: ["leads", "places"] },
   "check-urgent-lead": { ai: true, google: ["maps"], data: ["leads", "quo_data"] },
   "refresh-urgent-statuses": { ai: true, data: ["leads", "quo_data", "ai_results"] },
+  "lead-tech-status": { ai: true, data: ["leads", "quo_data", "ai_results"] },
   "suggest-cancellation-reason": { ai: true, data: ["leads", "quo_data"] },
   "schedule-confirmation-monitor": { ai: true, data: [], dataViaDatabaseFunction: ["leads", "quo_data", "notifications"] },
   "technician-chat-assessment": { ai: true, quoApi: true, data: ["leads", "quo_data", "technicians"] },
@@ -123,7 +124,7 @@ export const FUNCTION_FACTS: Record<string, FunctionFacts> = {
  * directly by table. Screens can reach more through database functions.
  */
 export const SCREEN_DATA: Partial<Record<NavItem, DataHub[]>> = {
-  leads: ["leads", "quo_data", "approvals"],
+  leads: ["leads", "quo_data", "approvals", "ai_results"],
   schedule: ["leads", "quo_data"],
   processor_board: ["quo_data"],
   map_view: ["leads", "technicians", "places"],
@@ -131,8 +132,8 @@ export const SCREEN_DATA: Partial<Record<NavItem, DataHub[]>> = {
   ai_assistance: ["quo_data"],
   cancellation_requests: ["leads", "approvals"],
   payment_requests: ["leads", "approvals", "technicians"],
-  quote_approval_requests: ["leads", "quo_data", "approvals"],
-  quote_pending_requests: ["leads", "quo_data", "approvals"],
+  quote_approval_requests: ["leads", "quo_data", "approvals", "ai_results"],
+  quote_pending_requests: ["leads", "quo_data", "approvals", "ai_results"],
   technician_change_requests: ["technicians", "places"],
   technicians: ["leads", "quo_data", "technicians", "places"],
   areas: ["leads"],

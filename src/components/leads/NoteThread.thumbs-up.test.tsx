@@ -14,6 +14,8 @@ const state = vi.hoisted(() => ({
 }));
 const toastError = vi.hoisted(() => vi.fn());
 
+// The tech tracking panel loads through TanStack Query and is tested on its own.
+vi.mock("./TechTracking", () => ({ TechTrackingPanel: () => null }));
 vi.mock("sonner", () => ({ toast: { error: toastError, success: vi.fn() } }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({
   user: { id: "me" }, role: state.role, profile: { full_name: "Me" },

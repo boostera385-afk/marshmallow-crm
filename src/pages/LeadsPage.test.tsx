@@ -158,6 +158,15 @@ vi.mock("@/components/leads/LeadCard", () => ({ default: function Card({ lead, i
   return <div data-testid="lead-card" data-photo-count={initialPhotoCount} data-has-notes={initialHasNotes?.general} data-pending-quote={pendingQuoteApproval}>{lead.id}</div>;
 } }));
 vi.mock("@/components/leads/OprLeadCard", () => ({ default: () => null }));
+// First-contact icons load through TanStack Query; the page's own read counts are tested here.
+vi.mock("@/hooks/useLeadFirstContact", () => ({ usePrefetchFirstContacts: () => ({ ready: true, isError: false }) }));
+vi.mock("@/components/leads/FirstContactControl", () => ({ FirstContactCell: () => null }));
+vi.mock("@/hooks/useLeadTechContacts", () => ({
+  canSeeTechTracking: () => false,
+  requestTechStatusCheck: vi.fn(() => Promise.resolve({})),
+  useTechContactsForLeads: () => ({ data: undefined }),
+}));
+vi.mock("@/components/leads/TechTracking", () => ({ TechStatusCell: () => null }));
 vi.mock("@/components/leads/LeadTable", () => ({ default: () => <div data-testid="lead-table" /> }));
 vi.mock("@/components/leads/AddLeadDialog", () => ({ default: () => null }));
 vi.mock("@/components/leads/UrgentAICheckDialog", () => ({ default: () => null }));

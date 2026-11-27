@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   content: "Initial synthetic note",
   fail: false,
 }));
+// The tech tracking panel loads through TanStack Query and is tested on its own.
+vi.mock("./TechTracking", () => ({ TechTrackingPanel: () => null }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({
   user: { id: "synthetic-user" }, role: state.role, profile: { full_name: "Synthetic" },
 }) }));

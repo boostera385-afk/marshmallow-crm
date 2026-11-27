@@ -6,6 +6,8 @@ import { TECH_NOTE_COLORS, personNoteColor } from "@/lib/tech-note-colors";
 
 const state = vi.hoisted(() => ({ noteType: "processor" as string, role: "processor" as AppRole }));
 
+// The tech tracking panel loads through TanStack Query and is tested on its own.
+vi.mock("./TechTracking", () => ({ TechTrackingPanel: () => null }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({
   user: { id: "me" }, role: state.role, profile: { full_name: "Me" },

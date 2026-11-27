@@ -1,4 +1,8 @@
 import { redactLeadForOperator, withOperatorLocation, isLocationOnlyOperator } from "@/lib/operator-privacy";
+import { usePrefetchFirstContacts } from "@/hooks/useLeadFirstContact";
+import { FirstContactCell } from "@/components/leads/FirstContactControl";
+import { canSeeTechTracking, requestTechStatusCheck, useTechContactsForLeads } from "@/hooks/useLeadTechContacts";
+import { TechStatusCell } from "@/components/leads/TechTracking";
 import { fetchOperatorSafeLeads } from "@/lib/operator-safe-leads";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -766,6 +770,13 @@ export default function LeadsPage() {
   }, [filtered.length, page, totalPages]);
 
   const pagedIdsStr = paged.map((l) => l.id).join(",");
+  // First contact (call / text icon) for every card on the page in one request. Operators
+  // cannot read leads directly, so there is nothing to load for them.
+  const pagedIdList = useMemo(
+    () => (pagedIdsStr && !isLocationOnlyOperator(role) ? pagedIdsStr.split(",") : []),
+    [pagedIdsStr, role],
+  );
+  const pageFirstContacts = usePrefetchFirstContacts(pagedIdList);
   const usingMetadataFallback = metadataFallbackKey === pagedIdsStr;
   const pagedMetadataReady = usingMetadataFallback
     || paged.every((lead) => pagedMetadata[lead.id] !== undefined);
@@ -1101,6 +1112,16 @@ export default function LeadsPage() {
     });
   }, [user, role, leads]);
   refreshUrgentRef.current = refreshUrgentTable;
+
+  const urgentIdList = useMemo(
+    () => (isLocationOnlyOperator(role) ? [] : urgentTableLeads.map((l) => l.id)),
+    [urgentTableLeads, role],
+  );
+  usePrefetchFirstContacts(urgentIdList);
+
+  // Tech Status column: Admin and Processor only (the table's RLS returns nothing to others).
+  const showTechStatus = canSeeTechTracking(role);
+  const { data: urgentTechContacts } = useTechContactsForLeads(urgentIdList, showTechStatus);
 
   // Most recent AI-status check across the urgent leads — shown as a freshness
   // stamp so staff can tell how current the labels are (statuses auto-refresh
@@ -1664,6 +1685,12 @@ export default function LeadsPage() {
             )}
             <Button size="sm" variant="outline" onClick={async () => {
               toast.info("Checking AI statuses in the background...");
+              // Tech chats are checked alongside, for the roles that see Tech Status. Reported on its own.
+              if (showTechStatus && urgentIdList.length > 0) {
+                requestTechStatusCheck(urgentIdList.slice(0, 100)).catch((techError: unknown) => {
+                  toast.error(`Tech status check failed: ${techError instanceof Error ? techError.message : "try again"}`);
+                });
+              }
               const { data, error } = await supabase.functions.invoke("refresh-urgent-statuses");
               if (error) {
                 // supabase-js hides the function's JSON body in error.context (a Response);
@@ -1699,13 +1726,17 @@ export default function LeadsPage() {
             <table className="w-full table-fixed border-collapse text-left text-xs">
               <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
                 <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-2 py-1.5 font-semibold w-[12%]">Customer</th>
-                  <th className="px-2 py-1.5 font-semibold w-[15%]">Service</th>
-                  <th className="px-2 py-1.5 font-semibold w-[19%]">AI Status</th>
-                  <th className="px-2 py-1.5 font-semibold w-[14%]">Area</th>
-                  <th className="px-2 py-1.5 font-semibold w-[16%]">Schedule</th>
-                  <th className="px-2 py-1.5 font-semibold w-[13%]">Terms</th>
-                  <th className="px-2 py-1.5 font-semibold text-right w-[11%]">Date</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[11%]" : "w-[12%]"}`}>Customer</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[12%]" : "w-[14%]"}`}>Service</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[16%]" : "w-[18%]"}`}>AI Status</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[11%]" : "w-[13%]"}`}>Area</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[13%]" : "w-[15%]"}`}>Schedule</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[8%]" : "w-[11%]"}`}>Terms</th>
+                  <th className="px-2 py-1.5 font-semibold w-[6%]" title="First contact: call or text, incoming or outgoing">Contact</th>
+                  {showTechStatus && (
+                    <th className="px-2 py-1.5 font-semibold w-[15%]" title="AI reading of the techs' chats for this job (Admin and Processor)">Tech Status</th>
+                  )}
+                  <th className={`px-2 py-1.5 font-semibold text-right ${showTechStatus ? "w-[8%]" : "w-[11%]"}`}>Date</th>
                 </tr>
               </thead>
               <tbody>
@@ -1750,6 +1781,18 @@ export default function LeadsPage() {
                           </td>
                         );
                       })()}
+                      <td className="px-2 py-2">
+                        {isLocationOnlyOperator(role) ? <span className="text-muted-foreground">—</span> : <FirstContactCell leadId={l.id} />}
+                      </td>
+                      {showTechStatus && (
+                        <td className="overflow-hidden px-2 py-2" onClick={(event) => event.stopPropagation()}>
+                          <TechStatusCell
+                            leadId={l.id}
+                            // Undefined until loaded; a loaded lead with no rows reads "No Tech Added".
+                            techs={urgentTechContacts ? urgentTechContacts.get(l.id) ?? [] : undefined}
+                          />
+                        </td>
+                      )}
                       <td className="whitespace-nowrap px-2 py-2 text-right text-muted-foreground">
                         {dateStr}
                       </td>
@@ -1995,6 +2038,8 @@ export default function LeadsPage() {
                 initialPhotoPaths={metadata?.photoPaths}
                 initialPendingCancellationRequest={metadata?.pendingCancellationRequest}
                 pendingQuoteApproval={metadata?.pendingQuoteApproval}
+                // If the batch failed, each card loads its own value instead.
+                firstContactPrefetched={pagedIdList.length > 0 && !pageFirstContacts.isError}
               />
             </motion.div>
             );
