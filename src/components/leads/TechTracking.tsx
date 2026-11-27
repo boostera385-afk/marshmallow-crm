@@ -119,16 +119,32 @@ function TechRow({ tech, leadId, canEdit }: { tech: LeadTechContact; leadId: str
         })}
       </ToggleGroup>
 
+      {tech.processor_note && (
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          <span className="font-semibold text-foreground/80">Note:</span> {tech.processor_note}
+        </p>
+      )}
       {tech.state !== "not_texted" && (tech.verdict_reason || tech.evidence_quote) && (
         <p className="text-[11px] leading-snug text-muted-foreground">
           {tech.verdict_reason}
           {tech.evidence_quote && (
-            <span className="mt-0.5 block italic text-foreground/80">“{tech.evidence_quote}”</span>
+            <span className="mt-0.5 block italic text-foreground/80">
+              “{tech.evidence_quote}”
+              {tech.evidence_source && (
+                <span className="ml-1 not-italic text-[10px] text-muted-foreground">
+                  ({tech.evidence_source === "processor_note" ? "processor note" : "tech's text"})
+                </span>
+              )}
+            </span>
           )}
         </p>
       )}
-      {tech.state !== "not_texted" && tech.verdict_checked_at && (
-        <p className="text-[10px] text-muted-foreground/70">AI checked {formatDateTime(tech.verdict_checked_at)}</p>
+      {tech.state !== "not_texted" && (
+        <p className="text-[10px] text-muted-foreground/70">
+          {tech.state_source === "note" ? "From the note" : tech.state_source === "manual" ? "Set here" : null}
+          {tech.state_source && tech.verdict_checked_at ? " · " : null}
+          {tech.verdict_checked_at ? `AI checked ${formatDateTime(tech.verdict_checked_at)}` : tech.state_source ? " · AI check pending" : null}
+        </p>
       )}
     </li>
   );

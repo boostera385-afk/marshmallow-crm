@@ -63,3 +63,40 @@ describe("lead tech status rules", () => {
     expect(transcript([offer, yes])).toMatch(/OUR TEAM: Can you do.*\n.*TECH: Yes I can do it/);
   });
 });
+
+describe("processor notes in the tech status check", () => {
+  it("treats bare contact words as no remark", async () => {
+    const { hasProcessorRemark } = await import("../../supabase/functions/_shared/lead-tech-status");
+    expect(hasProcessorRemark("texted")).toBe(false);
+    expect(hasProcessorRemark("not-texted")).toBe(false);
+    expect(hasProcessorRemark("called")).toBe(false);
+    expect(hasProcessorRemark("ooa")).toBe(true);
+    expect(hasProcessorRemark("caution - texted")).toBe(true);
+    expect(hasProcessorRemark("today 1-3pm for $950 labor")).toBe(true);
+  });
+
+  it("asks the model when the processor wrote a remark, even without a chat or a reply", () => {
+    expect(ruleVerdict([], "ooa")).toBeNull();
+    expect(ruleVerdict([offer], "far away")).toBeNull();
+    expect(ruleVerdict([], "texted")?.verdict).toBe("no_chat");
+    expect(ruleVerdict([offer], "texted")?.verdict).toBe("pending");
+  });
+
+  it("accepts a quote from the processor note and records the source", () => {
+    expect(verifyModelVerdict({ verdict: "declined", reason: "Out of area", quote: "ooa", quote_source: "processor_note" }, [offer], "ooa"))
+      .toMatchObject({ verdict: "declined", quote: "ooa", quote_source: "processor_note", quote_at: null });
+    // The source comes from where the quote is found, not from the model's claim.
+    expect(verifyModelVerdict({ verdict: "agreed", reason: "Said yes", quote: "Yes I can do it", quote_source: "processor_note" }, [offer, yes], "texted"))
+      .toMatchObject({ verdict: "agreed", quote_source: "tech_chat" });
+    expect(verifyModelVerdict({ verdict: "agreed", reason: "x", quote: "for $950", quote_source: "processor_note" }, [offer], "texted"))
+      .toMatchObject({ verdict: "unclear", quote_source: null });
+  });
+
+  it("fences the processor note next to the chat", () => {
+    const prompt = userPrompt(job, [], "today 1-3pm for $950 labor");
+    expect(prompt).toContain("BEGIN PROCESSOR NOTE");
+    expect(prompt).toContain("today 1-3pm for $950 labor");
+    expect(prompt).toContain("(no messages since contact)");
+    expect(userPrompt(job, [offer])).toContain("--- BEGIN PROCESSOR NOTE (our team, about this technician) ---\n(none)");
+  });
+});

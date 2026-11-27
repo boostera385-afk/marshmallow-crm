@@ -101,5 +101,43 @@ SELECT pg_temp.check('repeated number: newest line wins, still two techs',
   (SELECT name FROM public.lead_tech_contacts WHERE lead_id='a1000000-0000-4000-8000-000000000001' AND tech_number=1) = 'Mike R'
   AND (SELECT count(*) FROM public.lead_tech_contacts WHERE lead_id='a1000000-0000-4000-8000-000000000001') = 2);
 
+-- Note words set the state (20261127065829)
+INSERT INTO public.lead_notes (lead_id, note_type, content, created_at) VALUES
+  ('b1000000-0000-4000-8000-000000000002', 'processor', 'Tech 4: Ana - 3055550144 - texted', '2026-11-04 10:00+00'),
+  ('b1000000-0000-4000-8000-000000000002', 'processor', 'Tech 5: Bo - 3055550155 - not-texted', '2026-11-04 10:01+00'),
+  ('b1000000-0000-4000-8000-000000000002', 'processor', 'Tech 6: Cy - 3055550166 - called, no answer', '2026-11-04 10:02+00'),
+  ('b1000000-0000-4000-8000-000000000002', 'processor', 'Tech 7: Di - 3055550177 - ooa', '2026-11-04 10:03+00');
+SELECT pg_temp.check('note "texted" starts tracking at the note time',
+  (SELECT state='texted' AND state_source='note' AND contacted_at='2026-11-04 10:00+00' AND verdict='pending'
+     FROM public.lead_tech_contacts WHERE lead_id='b1000000-0000-4000-8000-000000000002' AND tech_number=4));
+SELECT pg_temp.check('note "not-texted" stays not texted',
+  (SELECT state='not_texted' AND contacted_at IS NULL FROM public.lead_tech_contacts WHERE lead_id='b1000000-0000-4000-8000-000000000002' AND tech_number=5));
+SELECT pg_temp.check('note "called, no answer" is called',
+  (SELECT state='called' FROM public.lead_tech_contacts WHERE lead_id='b1000000-0000-4000-8000-000000000002' AND tech_number=6));
+SELECT pg_temp.check('remark is stored for the AI ("ooa"), no state from it',
+  (SELECT processor_note='ooa' AND state='not_texted' FROM public.lead_tech_contacts WHERE lead_id='b1000000-0000-4000-8000-000000000002' AND tech_number=7));
+SELECT pg_temp.check('remark excludes name and phone',
+  (SELECT processor_note='called, no answer' FROM public.lead_tech_contacts WHERE lead_id='b1000000-0000-4000-8000-000000000002' AND tech_number=6));
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000002', true);
+SELECT public.set_lead_tech_contact_state('b1000000-0000-4000-8000-000000000002', 4, 'not_texted');
+RESET ROLE;
+INSERT INTO public.lead_notes (lead_id, note_type, content, created_at) VALUES
+  ('b1000000-0000-4000-8000-000000000002', 'processor', 'Tech 8: Ed - 3055550188', '2026-11-04 11:00+00');
+SELECT pg_temp.check('a manual change newer than the note survives a re-sync',
+  (SELECT state='not_texted' AND state_source='manual' FROM public.lead_tech_contacts WHERE lead_id='b1000000-0000-4000-8000-000000000002' AND tech_number=4));
+UPDATE public.lead_notes SET content='Tech 4: Ana - 3055550144 - texted again', edited_at=now() + interval '1 minute'
+ WHERE content='Tech 4: Ana - 3055550144 - texted';
+SELECT pg_temp.check('editing the line later makes the note win again',
+  (SELECT state='texted' AND state_source='note' FROM public.lead_tech_contacts WHERE lead_id='b1000000-0000-4000-8000-000000000002' AND tech_number=4));
+
+UPDATE public.lead_tech_contacts SET verdict='declined', verdict_checked_at=now() WHERE tech_number=6 AND lead_id='b1000000-0000-4000-8000-000000000002';
+UPDATE public.lead_notes SET content='Tech 6: Cy - 3055550166 - called, he can do 2pm $300', edited_at=now() + interval '2 minutes'
+ WHERE content='Tech 6: Cy - 3055550166 - called, no answer';
+SELECT pg_temp.check('a changed remark sends the tech back to the AI, keeping the verdict meanwhile',
+  (SELECT verdict='declined' AND verdict_checked_at IS NULL AND processor_note='called, he can do 2pm $300'
+     FROM public.lead_tech_contacts WHERE lead_id='b1000000-0000-4000-8000-000000000002' AND tech_number=6));
+
 SELECT name, result FROM checks ORDER BY name;
 ROLLBACK;

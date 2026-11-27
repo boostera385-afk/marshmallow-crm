@@ -16,8 +16,10 @@
 // the model runs only when the tech wrote something new since the last check
 // (or force). At most MAX_MODEL_CALLS per run.
 //
-// Chats are untrusted data: fenced, labelled, and an agreed/declined verdict
-// must quote the tech's own words (verified) or it is stored as "unclear".
+// The processor's remark on the tech's line ("ooa", "today 1-3pm for $950")
+// is given to the model next to the chat. Both are fenced as data, and an
+// agreed/declined verdict must quote the tech's own words or the processor's
+// note (verified, source recorded) or it is stored as "unclear".
 // =============================================================================
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -57,7 +59,7 @@ const CONCURRENCY = 4;
 const ACTIVE_STATUSES = ["urgent_job", "need_tech"];
 
 const JOB_COLUMNS = "id, service_type, service_details, city, state, zip_code, scheduled_date, customer_schedule_requirements, terms, created_at";
-const TECH_COLUMNS = "id, lead_id, tech_number, name, phone_key, state, contacted_at, verdict, verdict_checked_at, last_tech_message_at";
+const TECH_COLUMNS = "id, lead_id, tech_number, name, phone_key, state, contacted_at, verdict, verdict_checked_at, last_tech_message_at, processor_note";
 
 function extractCronSecret(value: unknown): string | null {
   if (Array.isArray(value)) return value.find((item): item is string => typeof item === "string" && item.trim().length > 0) ?? null;
@@ -68,7 +70,7 @@ function extractCronSecret(value: unknown): string | null {
   return null;
 }
 
-async function askModel(apiKey: string, job: TechJob, messages: TechMessage[]): Promise<unknown | null> {
+async function askModel(apiKey: string, job: TechJob, messages: TechMessage[], processorNote: string | null): Promise<unknown | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -83,7 +85,7 @@ async function askModel(apiKey: string, job: TechJob, messages: TechMessage[]): 
         response_format: { type: "json_schema", json_schema: { name: "tech_verdict", strict: true, schema: RESPONSE_SCHEMA } },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt(job, messages) },
+          { role: "user", content: userPrompt(job, messages, processorNote) },
         ],
       }),
     });
@@ -203,16 +205,16 @@ Deno.serve(async (req) => {
     if (!since) return;
     try {
       const messages = await loadTechMessages(admin, tech, since);
-      let result: VerdictResult | null = ruleVerdict(messages);
+      let result: VerdictResult | null = ruleVerdict(messages, tech.processor_note);
       if (!result) {
         const latest = lastTechMessageAt(messages);
         if (!needsModelCheck(tech, latest, force)) return;
         if (!apiKey) { modelUnavailable = true; deferred++; return; }
         if (modelCalls >= MAX_MODEL_CALLS) { deferred++; return; }
         modelCalls++;
-        const raw = await askModel(apiKey, job, messages);
+        const raw = await askModel(apiKey, job, messages, tech.processor_note ?? null);
         if (raw === null) { failed++; return; } // keep the previous verdict on an AI failure
-        result = verifyModelVerdict(raw, messages);
+        result = verifyModelVerdict(raw, messages, tech.processor_note);
       }
       const { error } = await admin
         .from("lead_tech_contacts")
@@ -221,6 +223,7 @@ Deno.serve(async (req) => {
           verdict_reason: result.reason,
           evidence_quote: result.quote,
           evidence_at: result.quote_at,
+          evidence_source: result.quote_source,
           last_tech_message_at: result.last_tech_message_at,
           verdict_checked_at: new Date().toISOString(),
         })

@@ -47,6 +47,8 @@ for (const path of [
   "./UrgentAICheckDialog", "./LeadCoverageBadge", "./MultiDateTimePicker", "./NumberNameCombobox", "./NearbyAreasList",
   "./LeadUpdatesSection", "./LeadStatusHistoryDialog", "./AssignLeadToOperatorDialog",
 ]) vi.doMock(path, () => ({ default: Null }));
+// Named exports: the first-contact chip and contact history strip load through TanStack Query.
+vi.doMock("./FirstContactControl", () => ({ FirstContactControl: Null, ContactHistoryStrip: Null, FirstContactCell: Null }));
 vi.mock("@/components/service-combobox", () => ({ ServiceCombobox: () => null }));
 
 const { default: LeadDetailPanel } = await import("./LeadDetailPanel");

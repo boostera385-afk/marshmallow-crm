@@ -165,3 +165,36 @@ export function FirstContactCell({ leadId }: { leadId: string }) {
     </span>
   );
 }
+
+/**
+ * Every call / text on the lead, as four icon counts plus the most recent one. Shown under the
+ * lead on the full lead page; reads lead_contact_events (one small query).
+ */
+export function ContactHistoryStrip({ leadId, className }: { leadId: string; className?: string }) {
+  const events = useLeadContactEvents(leadId, true);
+  if (events.isLoading) {
+    return <span className={cn("inline-block h-4 w-40 animate-pulse rounded-full bg-muted/60", className)} aria-hidden="true" />;
+  }
+  if (events.isError) return null;
+  const list = events.data ?? [];
+  if (list.length === 0) {
+    return <span className={cn("text-[11px] text-muted-foreground", className)}>No calls or texts recorded yet</span>;
+  }
+  const counts = summarizeContactEvents(list);
+  const last = list[0];
+  const lastType = `${last.kind}_${last.direction}` as ContactType;
+  return (
+    <span className={cn("inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground", className)} aria-label="Contact history">
+      {CONTACT_TYPES.map((type) => (
+        <span key={type} className="inline-flex items-center gap-1" title={`${counts[type]} × ${CONTACT_LABELS[type]}`}>
+          <ContactTypeIcon type={type} />
+          <b className="tabular-nums text-foreground">{counts[type]}</b>
+          <span className="sr-only">{CONTACT_LABELS[type]}</span>
+        </span>
+      ))}
+      <span className="inline-flex items-center gap-1">
+        Last: <ContactTypeIcon type={lastType} /> {CONTACT_LABELS[lastType]} · {formatDateTime(last.occurred_at)}
+      </span>
+    </span>
+  );
+}

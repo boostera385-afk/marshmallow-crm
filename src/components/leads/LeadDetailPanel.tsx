@@ -45,6 +45,8 @@ import CompleteLeadCopyButton from "./CompleteLeadCopyButton";
 import CxUpdateRequestButton from "./CxUpdateRequestButton";
 import TechUpdateRequestButton from "./TechUpdateRequestButton";
 import NoteThread from "./NoteThread";
+import { ContactHistoryStrip, FirstContactControl } from "./FirstContactControl";
+import { isLocationOnlyOperator } from "@/lib/operator-privacy";
 import NearbyAreasList, { type NearbyAreasData } from "./NearbyAreasList";
 import CancellationRequestSheet from "./CancellationRequestSheet";
 import CancellationRequestPanel from "./CancellationRequestPanel";
@@ -790,6 +792,14 @@ const LeadDetailPanel = ({ leadId, onClose, onUpdate }: Props) => {
                     <span className="inline-flex items-center gap-1.5">
                       <CalendarDays className="h-3.5 w-3.5" />
                       Created {format(new Date(lead.created_at), "MMM d, yyyy")}
+                    </span>
+                  )}
+
+                  {/* Call / text history (Operators cannot read leads directly, so they have none). */}
+                  {!isLocationOnlyOperator(role) && (
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      <FirstContactControl leadId={lead.id} />
+                      <ContactHistoryStrip leadId={lead.id} />
                     </span>
                   )}
 

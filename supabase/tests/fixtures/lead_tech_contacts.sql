@@ -26,7 +26,7 @@ CREATE TABLE public.leads (id uuid PRIMARY KEY);
 INSERT INTO public.leads VALUES ('a1000000-0000-4000-8000-000000000001'), ('b1000000-0000-4000-8000-000000000002');
 CREATE TABLE public.lead_notes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), lead_id uuid, note_type text, content text,
-  created_at timestamptz DEFAULT now());
+  created_at timestamptz DEFAULT now(), edited_at timestamptz);
 
 -- Existing notes before the migration (backfill): one line per tech, plus noise.
 INSERT INTO public.lead_notes (lead_id, note_type, content, created_at) VALUES

@@ -55,11 +55,16 @@ export function nextTechNumber(contents: Array<string | null | undefined>): numb
  */
 export function buildTechEntry(
   techNumber: number,
-  fields: { name: string; phone?: string | null; note?: string | null },
+  fields: { name: string; phone?: string | null; note?: string | null; contact?: string | null },
 ): string {
-  const parts = [fields.name.trim(), (fields.phone ?? "").trim(), (fields.note ?? "").trim()].filter(
-    Boolean,
-  );
+  // The contact word ("Texted" / "Called" / "Not texted") sits right after the number, where
+  // processors already write it; the database reads it to start AI tracking.
+  const parts = [
+    fields.name.trim(),
+    (fields.phone ?? "").trim(),
+    (fields.contact ?? "").trim(),
+    (fields.note ?? "").trim(),
+  ].filter(Boolean);
 
   return `Tech ${techNumber}: ${parts.join(" - ")}`;
 }
