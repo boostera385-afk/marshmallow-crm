@@ -17,6 +17,9 @@ import { toast } from "sonner";
 import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-health";
 
 import { formatDateTime } from "@/lib/date-time-format";
+import { TechTrackingPanel } from "./TechTracking";
+import { canSeeTechTracking, requestTechStatusCheck, setTechContactState } from "@/hooks/useLeadTechContacts";
+import { TECH_CONTACT_STATES, TECH_STATE_LABELS, type TechContactState } from "@/lib/tech-status";
 const NOTE_POLL_MS = 15000;
 
 interface LeadNote {
@@ -232,6 +235,9 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
   const [techName, setTechName] = useState("");
   const [techPhone, setTechPhone] = useState("");
   const [techNote, setTechNote] = useState("");
+  // Texted / Called at the moment the tech is added starts AI tracking straight away.
+  const [techState, setTechState] = useState<TechContactState>("not_texted");
+  const canTrackTechs = isTechThread && canSeeTechTracking(role);
 
   const techCount = useMemo(
     () => (isTechThread ? countTechs(notes.map((n) => n.content)) : 0),
@@ -246,6 +252,7 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
     setTechName("");
     setTechPhone("");
     setTechNote("");
+    setTechState("not_texted");
   };
 
   // Sent to the thread as an ordinary note, the same as typing one.
@@ -279,9 +286,24 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
       return;
     }
 
+    const addedNumber = nextTech;
+    const addedState = techState;
     resetTechForm();
     await fetchNotes();
     onNotesChanged?.();
+
+    // The note is saved; contact state and the AI check are follow-ups reported on their own.
+    if (canTrackTechs && addedState !== "not_texted") {
+      try {
+        await setTechContactState(leadId, addedNumber, addedState);
+      } catch (stateError) {
+        toast.error(`Tech added, but "${TECH_STATE_LABELS[addedState]}" was not saved: ${stateError instanceof Error ? stateError.message : "try again"}`);
+        return;
+      }
+      requestTechStatusCheck([leadId]).catch((checkError: unknown) => {
+        toast.error(`Tech added, but the AI check did not run: ${checkError instanceof Error ? checkError.message : "try again"}`);
+      });
+    }
   };
 
   const handleTechKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -407,6 +429,7 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
         <h4 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">{label}</h4>
       </div>
 
+      {canTrackTechs && <TechTrackingPanel leadId={leadId} />}
       <div ref={scrollRef} className="max-h-60 space-y-3 overflow-y-auto p-3">
         {notes.length === 0 && (
           <p className="text-[12px] text-muted-foreground/40 text-center py-6">No notes yet. Start the conversation.</p>
@@ -589,6 +612,26 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
                   />
                 </div>
               </div>
+
+              {canTrackTechs && (
+                <div className="flex items-center gap-1" role="group" aria-label={`Tech ${nextTech} contact`}>
+                  {TECH_CONTACT_STATES.map((state) => (
+                    <button
+                      key={state}
+                      type="button"
+                      aria-pressed={techState === state}
+                      onClick={() => setTechState(state)}
+                      className={`h-6 rounded-md border px-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        techState === state
+                          ? "border-primary/50 bg-primary/15 text-foreground"
+                          : "border-border/60 text-muted-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      {TECH_STATE_LABELS[state]}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="flex gap-1.5">
                 <Input

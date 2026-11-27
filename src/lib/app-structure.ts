@@ -59,6 +59,7 @@ export const EDGE_FUNCTIONS: EdgeFunctionInfo[] = [
 
   { name: "check-urgent-lead", group: "AI checks (advisory)", purpose: "Urgent check: compares the saved lead with the customer chat before a lead becomes Urgent. Unavailable is never treated as passed.", callers: ["crm", "donut"] },
   { name: "refresh-urgent-statuses", group: "AI checks (advisory)", purpose: "Short AI Status label for each urgent lead, from its customer chat.", callers: ["crm", "schedule"] },
+  { name: "lead-tech-status", group: "AI checks (advisory)", purpose: "Tech Status for a job: whether each tech marked Texted / Called agreed to it, read from their stored Quo chat (Admin and Processor).", callers: ["crm", "schedule"] },
   { name: "suggest-cancellation-reason", group: "AI checks (advisory)", purpose: "Suggests a cancellation reason from a fixed list.", callers: ["crm"] },
   { name: "schedule-confirmation-monitor", group: "AI checks (advisory)", purpose: "Reads replies on leads Waiting for CX for schedule confirmation and sets Ready to schedule or Customer Require New Schedule.", callers: ["schedule"] },
   { name: "technician-chat-assessment", group: "AI checks (advisory)", purpose: "Technician Intelligence: advisory labels from technicians' recent Quo messages (Admin and Processor).", callers: ["crm", "donut"] },
@@ -86,7 +87,7 @@ export interface ScreenInfo {
 }
 
 export const SCREENS: ScreenInfo[] = [
-  { navItem: "leads", path: "/leads", purpose: "All Leads, Urgent Leads, Need Attention and the lead page: create, edit, status, tags, notes, photos, quotes and requests.", edgeFunctions: ["check-urgent-lead", "refresh-urgent-statuses", "geocode-lead-address", "generate-nearby-areas", "suggest-cancellation-reason"] },
+  { navItem: "leads", path: "/leads", purpose: "All Leads, Urgent Leads, Need Attention and the lead page: create, edit, status, tags, notes, photos, quotes and requests.", edgeFunctions: ["check-urgent-lead", "refresh-urgent-statuses", "lead-tech-status", "geocode-lead-address", "generate-nearby-areas", "suggest-cancellation-reason"] },
   { navItem: "schedule", path: "/schedule", purpose: "Scheduled jobs by date.", edgeFunctions: [] },
   { navItem: "processor_board", path: "/processor-board", purpose: "Processors' assigned, unfinished jobs with AI facts from the technician chat.", edgeFunctions: ["processor-board"] },
   { navItem: "map_view", path: "/map-view", purpose: "Leads and technicians on a map, with coverage circles.", edgeFunctions: [] },

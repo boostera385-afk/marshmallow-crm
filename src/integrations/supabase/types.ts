@@ -525,6 +525,50 @@ export type Database = {
           },
         ]
       }
+      lead_contact_events: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          direction: string
+          id: string
+          kind: string
+          lead_id: string
+          occurred_at: string
+          source: string
+          source_key: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          direction: string
+          id?: string
+          kind: string
+          lead_id: string
+          occurred_at: string
+          source?: string
+          source_key: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          direction?: string
+          id?: string
+          kind?: string
+          lead_id?: string
+          occurred_at?: string
+          source?: string
+          source_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_contact_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_copy_role_permissions: {
         Row: {
           allowed: boolean
@@ -723,6 +767,41 @@ export type Database = {
             foreignKeyName: "lead_drafts_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_first_contacts: {
+        Row: {
+          contact: string
+          lead_id: string
+          occurred_at: string | null
+          set_by: string | null
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          contact: string
+          lead_id: string
+          occurred_at?: string | null
+          set_by?: string | null
+          source: string
+          updated_at?: string
+        }
+        Update: {
+          contact?: string
+          lead_id?: string
+          occurred_at?: string | null
+          set_by?: string | null
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_first_contacts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1383,6 +1462,74 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_tech_contacts: {
+        Row: {
+          contacted_at: string | null
+          created_at: string
+          evidence_at: string | null
+          evidence_quote: string | null
+          id: string
+          last_tech_message_at: string | null
+          lead_id: string
+          name: string
+          phone: string | null
+          phone_key: string | null
+          state: string
+          state_set_by: string | null
+          tech_number: number
+          updated_at: string
+          verdict: string | null
+          verdict_checked_at: string | null
+          verdict_reason: string | null
+        }
+        Insert: {
+          contacted_at?: string | null
+          created_at?: string
+          evidence_at?: string | null
+          evidence_quote?: string | null
+          id?: string
+          last_tech_message_at?: string | null
+          lead_id: string
+          name?: string
+          phone?: string | null
+          phone_key?: string | null
+          state?: string
+          state_set_by?: string | null
+          tech_number: number
+          updated_at?: string
+          verdict?: string | null
+          verdict_checked_at?: string | null
+          verdict_reason?: string | null
+        }
+        Update: {
+          contacted_at?: string | null
+          created_at?: string
+          evidence_at?: string | null
+          evidence_quote?: string | null
+          id?: string
+          last_tech_message_at?: string | null
+          lead_id?: string
+          name?: string
+          phone?: string | null
+          phone_key?: string | null
+          state?: string
+          state_set_by?: string | null
+          tech_number?: number
+          updated_at?: string
+          verdict?: string | null
+          verdict_checked_at?: string | null
+          verdict_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_tech_contacts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]
@@ -3256,6 +3403,7 @@ export type Database = {
       copilot_usage_summary: { Args: never; Returns: Json }
       copilot_visible_statuses: { Args: never; Returns: string[] }
       cron_google_sheets_sync_worker: { Args: never; Returns: undefined }
+      cron_lead_tech_status: { Args: never; Returns: undefined }
       cron_quo_reconcile_sync: { Args: never; Returns: undefined }
       cron_quo_sync_contacts: { Args: never; Returns: undefined }
       cron_refresh_urgent_ai_status: { Args: never; Returns: undefined }
@@ -3846,6 +3994,14 @@ export type Database = {
           p_user_id: string
         }
         Returns: undefined
+      }
+      set_lead_first_contact: {
+        Args: { p_contact: string; p_lead_id: string }
+        Returns: Json
+      }
+      set_lead_tech_contact_state: {
+        Args: { p_lead_id: string; p_state: string; p_tech_number: number }
+        Returns: Json
       }
       set_paid_lead_access: {
         Args: {
