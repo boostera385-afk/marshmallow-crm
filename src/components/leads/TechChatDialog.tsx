@@ -72,7 +72,13 @@ export function TechChatDialog({ leadId, tech, onOpenChange }: {
 
   return (
     <Dialog open={tech !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-3 p-4" onClick={(event) => event.stopPropagation()}>
+      {/* Above the lead card's notes popover (z-100), like ImageLightbox; solid so the thread
+          behind never shows through. */}
+      <DialogContent
+        overlayClassName="z-[110]"
+        className="z-[110] flex max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg flex-col gap-3 bg-background/95 p-4"
+        onClick={(event) => event.stopPropagation()}
+      >
         <DialogHeader className="space-y-1 text-left">
           <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
             <span>Chat with {techName}</span>
