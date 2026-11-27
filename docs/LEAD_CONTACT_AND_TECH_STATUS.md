@@ -31,11 +31,11 @@
   "1 declined, text more") with a per-tech popover.
 
 ## Apply / deploy (in order)
-1. Migration `20261231001100_lead_contact_events.sql` (backfills events and first contacts).
-2. Migration `20261231001200_lead_tech_contacts.sql` (backfills techs from processor notes).
+1. Migration `20261127061235_lead_contact_events.sql` (backfills events and first contacts).
+2. Migration `20261127061449_lead_tech_contacts.sql` (backfills techs from processor notes).
 3. Deploy Edge Function `lead-tech-status` (needs `OPENAI_API_KEY`; same cron secret as
    `refresh-urgent-statuses`).
-4. Migration `20261231001300_lead_tech_status_cron.sql` (15-minute schedule).
+4. Migration `20261127061709_lead_tech_status_cron.sql` (15-minute schedule).
 5. Regenerate `src/integrations/supabase/types.ts`; then the `as never` casts in
    `src/hooks/useLeadFirstContact.ts` and `src/hooks/useLeadTechContacts.ts` can be removed.
 6. Publish the CRM. Donut has no counterpart (no saved-lead cards or urgent table).

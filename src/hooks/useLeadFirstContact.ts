@@ -12,7 +12,7 @@ import {
   type FirstContact,
 } from "@/lib/contact-direction";
 
-// lead_first_contacts / lead_contact_events / set_lead_first_contact: migration 20261231001100.
+// lead_first_contacts / lead_contact_events / set_lead_first_contact: migration 20261127061235.
 const FIRST_CONTACT_COLUMNS = "lead_id, contact, source, occurred_at, set_by, updated_at";
 
 export const firstContactKey = (leadId: string) => ["lead-first-contact", leadId] as const;

@@ -1,6 +1,6 @@
 /**
  * Processor view of a job's techs: Not Texted / Texted / Called per tech (lead_tech_contacts,
- * migration 20261231001200) plus the advisory AI verdict from that tech's Quo chat
+ * migration 20261127061449) plus the advisory AI verdict from that tech's Quo chat
  * (`lead-tech-status` Edge Function), merged into one 3-4 word status for the urgent table.
  */
 

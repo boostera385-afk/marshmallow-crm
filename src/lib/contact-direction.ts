@@ -3,7 +3,7 @@
  *
  * Stored per lead in `lead_first_contacts` (first contact, auto or manual) and per interaction in
  * `lead_contact_events`. Both are written by the database (triggers on Quo messages and the
- * `set_lead_first_contact` RPC); see migration 20261231001100.
+ * `set_lead_first_contact` RPC); see migration 20261127061235.
  */
 
 export const CONTACT_TYPES = ["call_in", "call_out", "msg_in", "msg_out"] as const;

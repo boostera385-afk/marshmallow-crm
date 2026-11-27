@@ -9,7 +9,7 @@
 //   manual  signed-in Admin / Processor. Body { leadIds?: string[], force?: boolean }.
 //           Called after a tech is marked Texted/Called, from the tech status
 //           popover, and with the urgent table's Refresh AI Status button.
-//   cron    x-cron-secret header (pg_cron, see 20261231001300). All active
+//   cron    x-cron-secret header (pg_cron, see 20261127061709). All active
 //           urgent / need-tech leads.
 //
 // Cost control: rules decide "no chat" and "no reply yet" without the model, and

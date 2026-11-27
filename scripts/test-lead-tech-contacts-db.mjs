@@ -12,7 +12,7 @@ const sql = (file) => readFile(path.join(root, file), "utf8");
 const EXPECTED = 27;
 try {
   await db.exec(await sql("supabase/tests/fixtures/lead_tech_contacts.sql"));
-  const migration = await sql("supabase/migrations/20261231001200_lead_tech_contacts.sql");
+  const migration = await sql("supabase/migrations/20261127061449_lead_tech_contacts.sql");
   await db.exec(migration);
   await db.exec(migration);
   const checks = (await db.exec(await sql("supabase/tests/201_lead_tech_contacts.sql"))).flatMap((result) => result.rows).filter((row) => row.result);
