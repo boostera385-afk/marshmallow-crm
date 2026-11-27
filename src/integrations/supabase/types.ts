@@ -1472,14 +1472,19 @@ export type Database = {
           created_at: string
           evidence_at: string | null
           evidence_quote: string | null
+          evidence_source: string | null
           id: string
           last_tech_message_at: string | null
           lead_id: string
           name: string
+          note_at: string | null
           phone: string | null
           phone_key: string | null
+          processor_note: string | null
           state: string
+          state_set_at: string | null
           state_set_by: string | null
+          state_source: string | null
           tech_number: number
           updated_at: string
           verdict: string | null
@@ -1491,14 +1496,19 @@ export type Database = {
           created_at?: string
           evidence_at?: string | null
           evidence_quote?: string | null
+          evidence_source?: string | null
           id?: string
           last_tech_message_at?: string | null
           lead_id: string
           name?: string
+          note_at?: string | null
           phone?: string | null
           phone_key?: string | null
+          processor_note?: string | null
           state?: string
+          state_set_at?: string | null
           state_set_by?: string | null
+          state_source?: string | null
           tech_number: number
           updated_at?: string
           verdict?: string | null
@@ -1510,14 +1520,19 @@ export type Database = {
           created_at?: string
           evidence_at?: string | null
           evidence_quote?: string | null
+          evidence_source?: string | null
           id?: string
           last_tech_message_at?: string | null
           lead_id?: string
           name?: string
+          note_at?: string | null
           phone?: string | null
           phone_key?: string | null
+          processor_note?: string | null
           state?: string
+          state_set_at?: string | null
           state_set_by?: string | null
+          state_source?: string | null
           tech_number?: number
           updated_at?: string
           verdict?: string | null

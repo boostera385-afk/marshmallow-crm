@@ -17,7 +17,7 @@ vi.mock("@/hooks/useLeadFirstContact", () => ({
   useSetFirstContact: () => ({ mutate: state.mutate, isPending: false }),
 }));
 
-import { FirstContactCell, FirstContactControl } from "./FirstContactControl";
+import { ContactHistoryStrip, FirstContactCell, FirstContactControl } from "./FirstContactControl";
 
 // Radix opens the menu from the keyboard as well as the pointer; Enter is reliable in jsdom.
 const openMenu = (trigger: HTMLElement) => fireEvent.keyDown(trigger, { key: "Enter" });
@@ -73,5 +73,14 @@ describe("FirstContactCell", () => {
     state.firstContact = null;
     render(<FirstContactCell leadId="l1" />);
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+});
+
+describe("ContactHistoryStrip", () => {
+  it("counts every type and names the last contact", () => {
+    render(<ContactHistoryStrip leadId="l1" />);
+    const strip = screen.getByLabelText("Contact history");
+    expect(strip).toHaveTextContent("Call Incoming");
+    expect(strip).toHaveTextContent("Last:");
   });
 });

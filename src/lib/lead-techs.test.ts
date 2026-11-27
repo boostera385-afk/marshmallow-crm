@@ -112,3 +112,13 @@ describe("writing a tech entry", () => {
     expect(nextTechNumber([first, second])).toBe(3);
   });
 });
+
+describe("buildTechEntry contact word", () => {
+  it("writes Texted / Called right after the number, where the database reads it", () => {
+    expect(buildTechEntry(3, { name: "Ana", phone: "(305) 555-0144", contact: "Texted", note: "asked $400" })).toBe(
+      "Tech 3: Ana - (305) 555-0144 - Texted - asked $400",
+    );
+    expect(buildTechEntry(4, { name: "Bo", contact: "Not texted" })).toBe("Tech 4: Bo - Not texted");
+    expect(buildTechEntry(5, { name: "Cy", contact: null })).toBe("Tech 5: Cy");
+  });
+});

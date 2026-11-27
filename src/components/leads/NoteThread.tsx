@@ -18,8 +18,8 @@ import { useRealtimeAwareInterval, useRealtimeReconnect } from "@/lib/realtime-h
 
 import { formatDateTime } from "@/lib/date-time-format";
 import { TechTrackingPanel } from "./TechTracking";
-import { canSeeTechTracking, requestTechStatusCheck, setTechContactState } from "@/hooks/useLeadTechContacts";
-import { TECH_CONTACT_STATES, TECH_STATE_LABELS, type TechContactState } from "@/lib/tech-status";
+import { canSeeTechTracking, requestTechStatusCheck } from "@/hooks/useLeadTechContacts";
+import { TECH_CONTACT_STATES, TECH_STATE_LABELS, TECH_STATE_NOTE_WORDS, type TechContactState } from "@/lib/tech-status";
 const NOTE_POLL_MS = 15000;
 
 interface LeadNote {
@@ -268,6 +268,8 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
     const entry = buildTechEntry(nextTech, {
       name: techName,
       phone: techPhone,
+      // Written into the line like processors already do; the database reads it to start tracking.
+      contact: canTrackTechs ? TECH_STATE_NOTE_WORDS[techState] : null,
       note: techNote,
     });
 
@@ -286,20 +288,14 @@ export default function NoteThread({ leadId, noteType, label, profiles = {}, onN
       return;
     }
 
-    const addedNumber = nextTech;
     const addedState = techState;
     resetTechForm();
     await fetchNotes();
     onNotesChanged?.();
 
-    // The note is saved; contact state and the AI check are follow-ups reported on their own.
+    // The note is saved and the database has already read its contact word. The AI check is a
+    // follow-up reported on its own.
     if (canTrackTechs && addedState !== "not_texted") {
-      try {
-        await setTechContactState(leadId, addedNumber, addedState);
-      } catch (stateError) {
-        toast.error(`Tech added, but "${TECH_STATE_LABELS[addedState]}" was not saved: ${stateError instanceof Error ? stateError.message : "try again"}`);
-        return;
-      }
       requestTechStatusCheck([leadId]).catch((checkError: unknown) => {
         toast.error(`Tech added, but the AI check did not run: ${checkError instanceof Error ? checkError.message : "try again"}`);
       });

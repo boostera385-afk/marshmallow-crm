@@ -22,7 +22,7 @@ import { TechTrackingPanel } from "./TechTracking";
 
 const tech = (over: Partial<LeadTechContact>): LeadTechContact => ({
   id: "t1", lead_id: "l1", tech_number: 1, name: "Michael", phone: "(305) 555-0123", state: "not_texted",
-  contacted_at: null, verdict: null, verdict_reason: null, evidence_quote: null, evidence_at: null,
+  contacted_at: null, verdict: null, verdict_reason: null, evidence_quote: null, evidence_at: null, evidence_source: null, processor_note: null, state_source: null,
   verdict_checked_at: null, ...over,
 });
 
@@ -73,5 +73,14 @@ describe("TechTrackingPanel", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Not Texted" }));
     expect(state.setMutate).toHaveBeenCalledWith({ techNumber: 1, state: "not_texted" }, expect.any(Object));
     expect(state.checkMutate).not.toHaveBeenCalled();
+  });
+
+  it("shows the processor's remark and where the AI's quote came from", () => {
+    state.techs = [tech({ state: "texted", state_source: "note", verdict: "declined", verdict_reason: "Out of area",
+      evidence_quote: "ooa", evidence_source: "processor_note", processor_note: "ooa" })];
+    render(<TechTrackingPanel leadId="l1" />);
+    expect(screen.getByText("No tech in area")).toBeInTheDocument();
+    expect(screen.getByText(/\(processor note\)/)).toBeInTheDocument();
+    expect(screen.getByText(/From the note/)).toBeInTheDocument();
   });
 });

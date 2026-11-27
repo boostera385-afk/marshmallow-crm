@@ -5,7 +5,7 @@ let n = 0;
 const tech = (over: Partial<LeadTechContact>): LeadTechContact => ({
   id: `t${++n}`, lead_id: "l1", tech_number: n, name: `Tech${n}`, phone: null, state: "not_texted",
   contacted_at: null, verdict: null, verdict_reason: null, evidence_quote: null, evidence_at: null,
-  verdict_checked_at: null, ...over,
+  evidence_source: null, verdict_checked_at: null, processor_note: null, state_source: null, ...over,
 });
 
 describe("summarizeTechs", () => {

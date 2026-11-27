@@ -7,7 +7,7 @@ import { parseTechContact, TECH_STATE_LABELS, type LeadTechContact, type TechCon
 
 // lead_tech_contacts / set_lead_tech_contact_state: migration 20261127061449.
 const TECH_COLUMNS =
-  "id, lead_id, tech_number, name, phone, state, contacted_at, verdict, verdict_reason, evidence_quote, evidence_at, verdict_checked_at";
+  "id, lead_id, tech_number, name, phone, state, state_source, contacted_at, verdict, verdict_reason, evidence_quote, evidence_at, evidence_source, verdict_checked_at, processor_note";
 
 export const TECH_CONTACTS_KEY = ["lead-tech-contacts"] as const;
 

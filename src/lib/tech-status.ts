@@ -20,11 +20,24 @@ export interface LeadTechContact {
   verdict_reason: string | null;
   evidence_quote: string | null;
   evidence_at: string | null;
+  /** Where the AI's quote came from. */
+  evidence_source: "tech_chat" | "processor_note" | null;
   verdict_checked_at: string | null;
+  /** The rest of the tech's line in the processor notes ("ooa", "today 1-3pm for $950"). */
+  processor_note: string | null;
+  /** note = read from the processor's tech line; manual = set with the Texted / Called switch. */
+  state_source: "note" | "manual" | null;
 }
 
 export const TECH_STATE_LABELS: Record<TechContactState, string> = {
   not_texted: "Not Texted",
+  texted: "Texted",
+  called: "Called",
+};
+
+/** The word written into a new tech line for each state (read back by the database). */
+export const TECH_STATE_NOTE_WORDS: Record<TechContactState, string> = {
+  not_texted: "Not texted",
   texted: "Texted",
   called: "Called",
 };
@@ -83,6 +96,8 @@ export function parseTechContact(row: unknown): LeadTechContact | null {
   if (!(TECH_CONTACT_STATES as readonly string[]).includes(String(value.state))) return null;
   const str = (key: string) => (typeof value[key] === "string" ? (value[key] as string) : null);
   const verdict = str("verdict");
+  const evidenceSource = str("evidence_source");
+  const stateSource = str("state_source");
   return {
     id: value.id,
     lead_id: value.lead_id,
@@ -95,7 +110,10 @@ export function parseTechContact(row: unknown): LeadTechContact | null {
     verdict_reason: str("verdict_reason"),
     evidence_quote: str("evidence_quote"),
     evidence_at: str("evidence_at"),
+    evidence_source: evidenceSource === "tech_chat" || evidenceSource === "processor_note" ? evidenceSource : null,
     verdict_checked_at: str("verdict_checked_at"),
+    processor_note: str("processor_note"),
+    state_source: stateSource === "note" || stateSource === "manual" ? stateSource : null,
   };
 }
 
