@@ -212,6 +212,34 @@ export function leadNeedsAttention(lead: { status?: string | null; customer_sche
   return lead.status === "urgent_job" && scheduleRequirementDueOrOverdue(lead.customer_schedule_requirements);
 }
 
+/**
+ * Schedule filter for the Urgent leads overview table. `due` = today/overdue
+ * (same rule as Need Attention), `range` = schedule overlaps the picked days,
+ * `undated` = no readable date in the schedule text.
+ */
+export type UrgentScheduleFilter =
+  | { mode: "all" }
+  | { mode: "due" }
+  | { mode: "undated" }
+  | { mode: "range"; range: { from?: Date; to?: Date }; label?: string };
+
+export function filterUrgentBySchedule<T extends { customer_schedule_requirements?: string | null }>(
+  rows: T[],
+  filter: UrgentScheduleFilter,
+): T[] {
+  switch (filter.mode) {
+    case "due":
+      return rows.filter((r) => scheduleRequirementDueOrOverdue(r.customer_schedule_requirements));
+    case "undated":
+      return rows.filter((r) => findDatesInScheduleText(r.customer_schedule_requirements ?? "").length === 0);
+    case "range":
+      if (!filter.range.from) return rows;
+      return rows.filter((r) => doesLeadMatchScheduleDateRange(r.customer_schedule_requirements, filter.range));
+    default:
+      return rows;
+  }
+}
+
 export const SCHEDULE_PRESETS = [
   {
     label: "2 Days",
