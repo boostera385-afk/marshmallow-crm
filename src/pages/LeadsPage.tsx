@@ -34,7 +34,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { type DateRange } from "react-day-picker";
 import { ScheduleDateFilter } from "@/components/leads/ScheduleDateFilter";
-import { doesLeadMatchScheduleDateRange, leadNeedsAttention } from "@/lib/schedule-date-filter";
+import { doesLeadMatchScheduleDateRange, filterUrgentBySchedule, leadNeedsAttention, type UrgentScheduleFilter as UrgentScheduleFilterValue } from "@/lib/schedule-date-filter";
+import { UrgentScheduleFilter } from "@/components/leads/UrgentScheduleFilter";
 import { readLeadsCacheEntry, writeLeadsCache } from "@/lib/leadsCache";
 import { subscribeToLeadChanges, subscribeToTableChanges } from "@/lib/realtime";
 import { useRealtimeReconnect } from "@/lib/realtime-health";
@@ -1056,6 +1057,12 @@ export default function LeadsPage() {
   // broad leads realtime hiccups, without polling the whole table. Server-
   // ordered newest-urgent first.
   const [urgentTableLeads, setUrgentTableLeads] = useState<UrgentRow[]>([]);
+  // Schedule filter for the Urgent leads table only (independent of the main list's).
+  const [urgentScheduleFilter, setUrgentScheduleFilter] = useState<UrgentScheduleFilterValue>({ mode: "all" });
+  const filteredUrgentTableLeads = useMemo(
+    () => filterUrgentBySchedule(urgentTableLeads, urgentScheduleFilter),
+    [urgentTableLeads, urgentScheduleFilter],
+  );
 
   const refreshUrgentTable = useCallback(async () => {
     if (!user || !role) return;
@@ -1671,8 +1678,13 @@ export default function LeadsPage() {
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-destructive status-pulse" />
             <h3 className="text-sm font-semibold text-foreground">Urgent leads</h3>
-            <span className="rounded-full bg-destructive/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-destructive">
-              {urgentTableLeads.length}
+            <span
+              className="rounded-full bg-destructive/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-destructive"
+              title={urgentScheduleFilter.mode !== "all" ? "Shown / total urgent leads" : undefined}
+            >
+              {urgentScheduleFilter.mode !== "all"
+                ? `${filteredUrgentTableLeads.length} / ${urgentTableLeads.length}`
+                : urgentTableLeads.length}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -1728,7 +1740,10 @@ export default function LeadsPage() {
                   <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[13%]" : "w-[15%]"}`}>Service</th>
                   <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[17%]" : "w-[19%]"}`}>AI Status</th>
                   <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[12%]" : "w-[14%]"}`}>Area</th>
-                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[14%]" : "w-[16%]"}`}>Schedule</th>
+                  <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[14%]" : "w-[16%]"}`}>
+                    Schedule
+                    <UrgentScheduleFilter value={urgentScheduleFilter} onChange={setUrgentScheduleFilter} rows={urgentTableLeads} />
+                  </th>
                   <th className={`px-2 py-1.5 font-semibold ${showTechStatus ? "w-[9%]" : "w-[13%]"}`}>Terms</th>
                   {showTechStatus && (
                     <th className="px-2 py-1.5 font-semibold w-[15%]" title="AI reading of the techs' chats for this job">Tech Status</th>
@@ -1737,7 +1752,17 @@ export default function LeadsPage() {
                 </tr>
               </thead>
               <tbody>
-                {urgentTableLeads.map((row) => redactLeadForOperator(row, role)).map((l) => {
+                {filteredUrgentTableLeads.length === 0 && (
+                  <tr>
+                    <td colSpan={showTechStatus ? 8 : 7} className="px-4 py-6 text-center text-xs text-muted-foreground">
+                      No urgent leads match this schedule filter.{" "}
+                      <button type="button" className="font-medium text-primary hover:underline" onClick={() => setUrgentScheduleFilter({ mode: "all" })}>
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                )}
+                {filteredUrgentTableLeads.map((row) => redactLeadForOperator(row, role)).map((l) => {
                   const c = l.city || extractCity(l.address);
                   const s = l.state || extractState(l.address);
                   const areaText = [c, s].filter((x) => x && x !== "Unknown").join(", ") || "—";
